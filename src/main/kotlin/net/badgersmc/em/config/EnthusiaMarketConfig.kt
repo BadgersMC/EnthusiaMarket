@@ -26,6 +26,15 @@ class EnthusiaMarketConfig {
     var lang: Lang = Lang()
     @Comment("Purchase-sign trigger token + permissions (REQ-250..253)")
     var signs: Signs = Signs()
+    @Comment("Schematic save/restore settings (TDD-270/271)")
+    var schematics: Schematics = Schematics()
+
+    class Schematics {
+        @Comment("Enable schematic capture on stall import and restore on sellback")
+        var enabled: Boolean = true
+        @Comment("Directory (relative to plugin data folder) where schematics are stored")
+        var directory: String = "schematics"
+    }
 
     class Signs {
         @Comment("First-line token a player writes to register a purchase sign (e.g. [em]).")

@@ -4,15 +4,23 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.RegionProvider
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ImportStallsServiceTest {
+
+    private val config = EnthusiaMarketConfig().apply {
+        market.world = "world"
+        market.regionPrefix = "stall_"
+        schematics.enabled = false   // disable schematic capture in unit tests
+    }
 
     private fun service(
         regions: List<RegionProvider.RegionRef>,
@@ -25,7 +33,14 @@ class ImportStallsServiceTest {
             val region = secondArg<String>()
             existing.firstOrNull { it.regionId == region }
         }
-        return ImportStallsService(regionProvider, repo, defaultRent = RentTerms.formula(1.0)) to repo
+        return ImportStallsService(
+            regions = regionProvider,
+            stalls = repo,
+            defaultRent = RentTerms.formula(1.0),
+            config = config,
+            dataFolder = File("."),
+            schematics = null,
+        ) to repo
     }
 
     @Test fun `creates a stall for every matched region`() {

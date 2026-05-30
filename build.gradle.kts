@@ -17,17 +17,11 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://oss.sonatype.org/content/repositories/snapshots")
     maven("https://jitpack.io")
-    maven("https://maven.enginehub.org/repo/") // WorldGuard
+    maven("https://maven.enginehub.org/repo/") // WorldGuard + WorldEdit
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
 
-    // Nexus releases — served via JitPack (https://jitpack.io). No token
-    // required; the repo at https://github.com/BadgersMC/Nexus is public.
-    // jitpack.io is already declared above.
-
-    // Opt-in to a locally-published Nexus snapshot: ./gradlew -PuseMavenLocal=true …
-    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
-        mavenLocal()
-    }
+    // nexus-worldedit is published to mavenLocal until Nexus PR #10 ships to JitPack.
+    mavenLocal()
 }
 
 dependencies {
@@ -61,6 +55,12 @@ dependencies {
     implementation("com.github.BadgersMC.Nexus:nexus-paper-listeners:v2.1.1")
     implementation("com.github.BadgersMC.Nexus:nexus-vault:v2.1.1")
     implementation("com.github.BadgersMC.Nexus:nexus-paper-loader:v2.1.1")
+
+    // nexus-worldedit: WE/FAWE facade for schematic capture/restore (TDD-270/271).
+    // compileOnly — WE is server-provided; this module carries zero runtime weight.
+    // Pin to mavenLocal until Nexus PR #10 ships to JitPack.
+    compileOnly("net.badgersmc:nexus-worldedit:2.1.2")
+    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
 
     // Runtime-downloaded by Paper via plugin.yml `libraries:` — kept on compile +
     // test classpath but excluded from the shaded jar to shrink it from ~27 MB

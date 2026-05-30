@@ -4,6 +4,7 @@ import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicPort
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -14,6 +15,7 @@ import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
+import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -45,6 +47,9 @@ class StallSellbackService(
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
     private val regionMembers: RegionMemberSync,
+    private val dataFolder: File,
+    /** Null when WE/FAWE is not present on the server — restore is skipped. */
+    private val schematics: SchematicPort?,
 ) {
 
     private val log = Logger.getLogger(StallSellbackService::class.java.name)
@@ -155,9 +160,26 @@ class StallSellbackService(
 
         fireStateChanged(stallId.value, previousState, StallState.UNOWNED)
 
-        // TODO: TDD-270/271 — when SchematicService lands, call
-        //       schematicService.restore(stallId, stall.region) here
-        //       to revert the geometry to the pre-claim snapshot.
+        // TDD-271: Restore pristine schematic captured at import time.
+        // Best-effort — sellback still completes even if restore fails.
+        if (config.schematics.enabled && schematics != null) {
+            val schematicFile = File(dataFolder, "${config.schematics.directory}/${stallId.value}.schem")
+            if (!schematicFile.exists()) {
+                log.warning("StallSellbackService: no schematic found for ${stallId.value}; skipping restore")
+            } else {
+                val bukkitWorld = Bukkit.getWorld(stall.world)
+                if (bukkitWorld == null) {
+                    log.warning("StallSellbackService: world ${stall.world} not loaded; skipping schematic restore for ${stallId.value}")
+                } else {
+                    when (val r = schematics.restore(stallId.value, bukkitWorld, schematicFile)) {
+                        is SchematicPort.Result.Success ->
+                            log.fine("Schematic restore queued for ${stallId.value}")
+                        is SchematicPort.Result.Failure ->
+                            log.warning("Schematic restore failed for ${stallId.value}: ${r.cause.message}")
+                    }
+                }
+            }
+        }
 
         return ExecuteResult.Sold(refund, wiped)
     }

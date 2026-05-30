@@ -58,6 +58,8 @@ class AdminCommands(
                 "admin.import.result",
                 "created" to r.created,
                 "skipped" to r.skipped,
+                "captured" to r.capturedSchematics,
+                "schematic_errors" to r.schematicErrors,
                 KEY_WORLD to config.market.world,
                 KEY_REGION_PREFIX to config.market.regionPrefix
             )
