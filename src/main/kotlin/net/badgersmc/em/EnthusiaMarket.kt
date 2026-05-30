@@ -101,6 +101,7 @@ open class EnthusiaMarket : JavaPlugin() {
                 nexus = ctx,
             )
         } catch (e: Exception) {
+            @Suppress("TooGenericExceptionThrown")
             throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
         }
 

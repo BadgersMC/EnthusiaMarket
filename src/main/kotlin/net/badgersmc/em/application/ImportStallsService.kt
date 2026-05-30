@@ -23,6 +23,7 @@ class ImportStallsService(
 
     private val log = Logger.getLogger(javaClass.name)
 
+    @Suppress("NestedBlockDepth")
     fun import(world: String, prefix: String): Result {
         var created = 0
         var skipped = 0
