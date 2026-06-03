@@ -2,6 +2,7 @@ package net.badgersmc.em.infrastructure.commands
 
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
+import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
 import net.badgersmc.nexus.i18n.LangService
@@ -17,6 +18,7 @@ import org.bukkit.entity.Player
 @Command(name = "shop", description = "Manage your shops", aliases = ["shops"])
 class ShopCommands(
     private val management: ShopManagementService,
+    private val shopRepository: ShopRepository,
     private val lang: LangService,
 ) {
     @Subcommand("list")
@@ -75,5 +77,36 @@ class ShopCommands(
         }
         val n = management.untrustAll(player.uniqueId, target.uniqueId)
         player.sendMessage(lang.msg("shop.cmd.untrusted_all", "name" to name, "count" to n))
+    }
+
+    @Subcommand("edit")
+    @Permission("enthusiamarket.shop.use")
+    fun edit(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        if (management.shopsOwnedBy(player.uniqueId).isEmpty()) {
+            player.sendMessage(lang.msg("shop.cmd.none_owned")); return
+        }
+        net.badgersmc.em.interaction.gui.OwnedShopsMenu(player.uniqueId, shopRepository, management, lang).open(player)
+    }
+
+    @Subcommand("delete")
+    @Permission("enthusiamarket.shop.use")
+    fun delete(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "menu",
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        if (mode.equals("all", ignoreCase = true)) {
+            if (!player.hasPermission("enthusiamarket.shop.delete.all")) {
+                player.sendMessage(lang.msg("shop.cmd.no_permission")); return
+            }
+            val n = management.deleteAll(player.uniqueId)
+            player.sendMessage(lang.msg("shop.cmd.deleted_all", "count" to n))
+            return
+        }
+        if (management.shopsOwnedBy(player.uniqueId).isEmpty()) {
+            player.sendMessage(lang.msg("shop.cmd.none_owned")); return
+        }
+        net.badgersmc.em.interaction.gui.DeleteShopsMenu(player.uniqueId, management, lang).open(player)
     }
 }
