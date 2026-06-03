@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.commands
 
+import net.badgersmc.em.application.BreakDeleteMode
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -19,6 +20,7 @@ import org.bukkit.entity.Player
 class ShopCommands(
     private val management: ShopManagementService,
     private val shopRepository: ShopRepository,
+    private val breakDelete: BreakDeleteMode,
     private val lang: LangService,
 ) {
     @Subcommand("list")
@@ -108,5 +110,22 @@ class ShopCommands(
             player.sendMessage(lang.msg("shop.cmd.none_owned")); return
         }
         net.badgersmc.em.interaction.gui.DeleteShopsMenu(player.uniqueId, management, lang).open(player)
+    }
+
+    @Subcommand("breakdelete")
+    @Permission("enthusiamarket.shop.use")
+    fun breakDeleteCmd(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "on",
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val durationMs = BreakDeleteMode.parseDurationMs(mode)
+        if (durationMs == null) {
+            breakDelete.disable(player.uniqueId)
+            player.sendMessage(lang.msg("shop.cmd.breakdelete_off"))
+            return
+        }
+        breakDelete.enable(player.uniqueId, durationMs)
+        player.sendMessage(lang.msg("shop.cmd.breakdelete_on", "minutes" to (durationMs / 60_000)))
     }
 }
