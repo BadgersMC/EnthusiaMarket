@@ -70,6 +70,9 @@ class ShopCommands(
     fun untrust(
         @Context sender: CommandSender,
         @net.badgersmc.nexus.commands.annotations.Arg("player") name: String,
+        // Accepted for parity (`/shop untrust <player> all`) but untrust is always
+        // bulk in ItemShops, so the value is not branched on.
+        @Suppress("UnusedParameter")
         @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "all",
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
