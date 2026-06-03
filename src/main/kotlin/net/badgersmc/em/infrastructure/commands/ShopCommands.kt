@@ -40,4 +40,40 @@ class ShopCommands(
             )
         }
     }
+
+    @Subcommand("trust")
+    @Permission("enthusiamarket.shop.use")
+    fun trust(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("player") name: String,
+        @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "menu",
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val target = org.bukkit.Bukkit.getOfflinePlayer(name)
+        if (target.name == null && !target.hasPlayedBefore()) {
+            player.sendMessage(lang.msg("shop.cmd.unknown_player", "name" to name)); return
+        }
+        if (mode.equals("all", ignoreCase = true)) {
+            val n = management.trustAll(player.uniqueId, target.uniqueId)
+            player.sendMessage(lang.msg("shop.cmd.trusted_all", "name" to name, "count" to n))
+            return
+        }
+        net.badgersmc.em.interaction.gui.BulkTrustMenu(player.uniqueId, target.uniqueId, name, management, lang).open(player)
+    }
+
+    @Subcommand("untrust")
+    @Permission("enthusiamarket.shop.use")
+    fun untrust(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("player") name: String,
+        @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "all",
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val target = org.bukkit.Bukkit.getOfflinePlayer(name)
+        if (target.name == null && !target.hasPlayedBefore()) {
+            player.sendMessage(lang.msg("shop.cmd.unknown_player", "name" to name)); return
+        }
+        val n = management.untrustAll(player.uniqueId, target.uniqueId)
+        player.sendMessage(lang.msg("shop.cmd.untrusted_all", "name" to name, "count" to n))
+    }
 }
