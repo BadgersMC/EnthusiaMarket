@@ -14,6 +14,8 @@ import java.util.UUID
 class ShopManagementService(
     private val shopRepository: ShopRepository,
 ) {
+    private val log = java.util.logging.Logger.getLogger(ShopManagementService::class.java.name)
+
     fun shopsOwnedBy(owner: UUID): List<Shop> = shopRepository.findByOwner(owner)
 
     /** Trust [target] on each of [shopIds] the [actor] actually owns. Returns count changed. */
@@ -35,14 +37,35 @@ class ShopManagementService(
         val shop = shopRepository.findById(shopId) ?: return false
         if (shop.owner != actor) return false
         shopRepository.delete(shopId)
+        fireShopDeleted(shop.owner)
         return true
     }
 
     /** Delete every shop [actor] owns. Returns count deleted. */
     fun deleteAll(actor: UUID): Int {
         val owned = shopsOwnedBy(actor)
-        owned.forEach { shopRepository.delete(it.id) }
+        owned.forEach {
+            shopRepository.delete(it.id)
+            fireShopDeleted(it.owner)
+        }
         return owned.size
+    }
+
+    /**
+     * Fire [ShopDeletedEvent] so listeners (analytics, advancement hooks, sign
+     * cleanup) react to command/menu/breakdelete deletes the same way they do to
+     * container-break deletes. Null-safe + best-effort: `getServer()` is null in
+     * unit tests (no event fired, no NPE), mirroring AuctionLifecycleService.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun fireShopDeleted(owner: UUID) {
+        try {
+            org.bukkit.Bukkit.getServer()?.pluginManager?.callEvent(
+                net.badgersmc.em.events.ShopDeletedEvent(owner)
+            )
+        } catch (e: Exception) {
+            log.warning("Failed to fire ShopDeletedEvent: ${e.message}")
+        }
     }
 
     private fun mutateOwned(actor: UUID, shopIds: List<Long>, edit: (Shop) -> Shop): Int {
