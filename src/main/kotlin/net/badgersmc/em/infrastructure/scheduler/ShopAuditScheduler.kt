@@ -46,7 +46,10 @@ class ShopAuditScheduler(
         val all = shops.all()
         if (all.isEmpty()) return
         var processed = 0
-        val max = config.shopAudit.maxPerTick
+        // Cap at the list size so a tick never re-audits the same shop when
+        // there are fewer shops than maxPerTick. The cursor still advances
+        // across ticks, so over time every shop is swept.
+        val max = minOf(config.shopAudit.maxPerTick, all.size)
         while (processed < max) {
             if (cursor >= all.size) cursor = 0
             val shop = all[cursor]
