@@ -5,11 +5,13 @@ object ShopAuditDecision {
     enum class Decision { KEEP, REMOVE, SKIP }
 
     /**
-     * @param worldLoaded     is the shop's container world currently loaded?
-     * @param blockIsContainer when the world is loaded, is the container block still a Container?
-     * SKIP when the world is unloaded (NEVER delete — we can't see the block). KEEP when the
-     * container is present. REMOVE only when the world is loaded and the block is not a container.
+     * @param blockObservable  can the container block actually be read right now? This requires the
+     *   world AND the container's chunk to be loaded — Paper returns AIR for blocks in unloaded
+     *   chunks, so an unloaded chunk must count as "not observable", not as a missing container.
+     * @param blockIsContainer  when observable, is the container block still a Container?
+     * SKIP when the block isn't observable (NEVER delete — we can't see it). KEEP when the
+     * container is present. REMOVE only when the block is observable and is not a container.
      */
-    fun evaluate(worldLoaded: Boolean, blockIsContainer: Boolean): Decision =
-        if (!worldLoaded) Decision.SKIP else if (blockIsContainer) Decision.KEEP else Decision.REMOVE
+    fun evaluate(blockObservable: Boolean, blockIsContainer: Boolean): Decision =
+        if (!blockObservable) Decision.SKIP else if (blockIsContainer) Decision.KEEP else Decision.REMOVE
 }

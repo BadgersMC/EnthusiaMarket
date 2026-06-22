@@ -61,11 +61,17 @@ class ShopAuditScheduler(
 
     private fun auditOne(shop: net.badgersmc.em.domain.shop.Shop) {
         val world = Bukkit.getWorld(shop.containerWorld)
-        val loaded = world != null
-        val isContainer = loaded && world!!.getBlockAt(
+        // Gate on the CONTAINER'S CHUNK being loaded, not just the world: Paper returns AIR for
+        // blocks in unloaded chunks, so `state is Container` would read false and REMOVE a valid
+        // shop. Mirror the safe pattern in EnthusiaMarket.loadedContainer. When the chunk is not
+        // loaded we pass canSee=false → ShopAuditDecision returns SKIP (never delete what we can't
+        // verify). >> 4 converts a block coord to its chunk coord.
+        val chunkLoaded = world != null &&
+            world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)
+        val isContainer = chunkLoaded && world!!.getBlockAt(
             shop.containerX, shop.containerY, shop.containerZ
         ).state is Container
-        when (ShopAuditDecision.evaluate(loaded, isContainer)) {
+        when (ShopAuditDecision.evaluate(chunkLoaded, isContainer)) {
             ShopAuditDecision.Decision.REMOVE -> {
                 if (config.shopAudit.repairEnabled) {
                     shops.delete(shop.id)
