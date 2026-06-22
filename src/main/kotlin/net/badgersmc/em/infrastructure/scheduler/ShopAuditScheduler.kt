@@ -60,29 +60,27 @@ class ShopAuditScheduler(
     }
 
     private fun auditOne(shop: net.badgersmc.em.domain.shop.Shop) {
+        // Gate on the container's CHUNK being loaded, not just the world: Paper returns AIR for
+        // blocks in unloaded chunks, so an unloaded chunk must read as unobservable → SKIP, never
+        // REMOVE. Mirrors EnthusiaMarket.loadedContainer; `shr 4` maps a block coord to its chunk.
         val world = Bukkit.getWorld(shop.containerWorld)
-        // Gate on the CONTAINER'S CHUNK being loaded, not just the world: Paper returns AIR for
-        // blocks in unloaded chunks, so `state is Container` would read false and REMOVE a valid
-        // shop. Mirror the safe pattern in EnthusiaMarket.loadedContainer. When the chunk is not
-        // loaded we pass canSee=false → ShopAuditDecision returns SKIP (never delete what we can't
-        // verify). >> 4 converts a block coord to its chunk coord.
         val chunkLoaded = world != null &&
             world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)
         val isContainer = chunkLoaded && world!!.getBlockAt(
             shop.containerX, shop.containerY, shop.containerZ
         ).state is Container
-        when (ShopAuditDecision.evaluate(chunkLoaded, isContainer)) {
-            ShopAuditDecision.Decision.REMOVE -> {
-                if (config.shopAudit.repairEnabled) {
-                    shops.delete(shop.id)
-                    plugin.logger.info(
-                        "[audit] removed orphaned shop ${shop.id} at " +
-                        "${shop.containerWorld} ${shop.containerX}," +
-                        "${shop.containerY},${shop.containerZ}"
-                    )
-                }
-            }
-            else -> {}
+        if (ShopAuditDecision.evaluate(chunkLoaded, isContainer) == ShopAuditDecision.Decision.REMOVE &&
+            config.shopAudit.repairEnabled
+        ) {
+            removeOrphan(shop)
         }
+    }
+
+    private fun removeOrphan(shop: net.badgersmc.em.domain.shop.Shop) {
+        shops.delete(shop.id)
+        plugin.logger.info(
+            "[audit] removed orphaned shop ${shop.id} at " +
+            "${shop.containerWorld} ${shop.containerX},${shop.containerY},${shop.containerZ}"
+        )
     }
 }
