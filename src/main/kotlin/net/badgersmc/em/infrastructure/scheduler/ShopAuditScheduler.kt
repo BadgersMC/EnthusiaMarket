@@ -1,6 +1,5 @@
 package net.badgersmc.em.infrastructure.scheduler
 
-import net.badgersmc.em.application.ShopAuditDecision
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.annotations.Component
@@ -73,22 +72,22 @@ class ShopAuditScheduler(
     private enum class Decision { KEPT, REMOVED, SKIPPED }
 
     private fun auditOne(shop: net.badgersmc.em.domain.shop.Shop): Decision {
-        // Gate on the container's CHUNK being loaded, not just the world: Paper returns AIR for
-        // blocks in unloaded chunks, so an unloaded chunk must read as unobservable → SKIP, never
-        // REMOVE. Mirrors EnthusiaMarket.loadedContainer; `shr 4` maps a block coord to its chunk.
-        val world = Bukkit.getWorld(shop.containerWorld)
-        val chunkLoaded = world != null &&
-            world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)
-        val isContainer = chunkLoaded && world!!.getBlockAt(
-            shop.containerX, shop.containerY, shop.containerZ
-        ).state is Container
-        if (ShopAuditDecision.evaluate(chunkLoaded, isContainer) == ShopAuditDecision.Decision.REMOVE &&
-            config.shopAudit.repairEnabled
-        ) {
+        if (containerIsMissing(shop) && config.shopAudit.repairEnabled) {
             removeOrphan(shop)
             return Decision.REMOVED
         }
+        val world = Bukkit.getWorld(shop.containerWorld)
+        val chunkLoaded = world != null &&
+            world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)
         return if (chunkLoaded) Decision.KEPT else Decision.SKIPPED
+    }
+
+    /** Returns true when the container block is observable and is NOT a Container. */
+    private fun containerIsMissing(shop: net.badgersmc.em.domain.shop.Shop): Boolean {
+        val world = Bukkit.getWorld(shop.containerWorld) ?: return false
+        if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return false
+        val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
+        return block.state !is Container
     }
 
     private fun removeOrphan(shop: net.badgersmc.em.domain.shop.Shop) {
