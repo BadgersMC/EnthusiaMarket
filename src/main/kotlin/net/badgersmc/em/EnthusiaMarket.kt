@@ -128,14 +128,6 @@ open class EnthusiaMarket : JavaPlugin() {
         ctx.registerBean("nexusScheduler", NexusScheduler::class, sched)
         scheduler = sched
 
-        // Register defaultRent from config
-        val defaultRent = if (cfg.rent.mode == "flat") {
-            RentTerms.flat(cfg.rent.flatAmount)
-        } else {
-            RentTerms.formula(cfg.rent.formulaPct)
-        }
-        ctx.registerBean("defaultRent", RentTerms::class, defaultRent)
-
         // Provisioning priority for stall regions (REQ Workstream F) — a
         // plain Int bean so ImportStallsService can be DI-constructed.
         ctx.registerBean("stallPriority", Int::class, cfg.market.stallPriority)
