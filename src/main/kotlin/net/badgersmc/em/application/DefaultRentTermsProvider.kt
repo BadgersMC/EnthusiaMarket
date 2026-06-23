@@ -17,9 +17,11 @@ class DefaultRentTermsProvider(
     private val config: EnthusiaMarketConfig,
 ) {
     fun current(): RentTerms =
-        if (config.rent.mode == "flat") {
-            RentTerms.flat(config.rent.flatAmount)
-        } else {
-            RentTerms.formula(config.rent.formulaPct)
+        when (config.rent.mode.lowercase()) {
+            "flat" -> RentTerms.flat(config.rent.flatAmount)
+            "formula" -> RentTerms.formula(config.rent.formulaPct)
+            else -> throw IllegalStateException(
+                "Unknown rent mode '${config.rent.mode}'. Expected 'flat' or 'formula' in enthusiamarket.yaml"
+            )
         }
 }
