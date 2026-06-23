@@ -24,6 +24,10 @@ class RentTermsResyncService(
      *  Logs progress every 50 stalls to avoid silent main-thread stalls on large servers (M-3 audit 2026-06-23). */
     fun resync(): Int {
         val all = stalls.all()
+        if (all.isEmpty()) {
+            log.info("Rent resync: 0/0 stalls processed")
+            return 0
+        }
         var changed = 0
         for ((i, stall) in all.withIndex()) {
             if (stall.rentTerms != defaultRent) {

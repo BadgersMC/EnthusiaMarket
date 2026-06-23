@@ -119,8 +119,8 @@ class ShopVaultMenu(
                     // void it. Redeem-All loops this path, so a full inventory must never lose items.
                     returnLeftover.values.forEach { drop -> player.world.dropItem(player.location, drop) }
                 }
-                // Items didn't all fit — report inventory as full so Redeem All stops batching.
-                return leftoverAmount >= removed
+                // Items didn't all fit — inventory is full; signal caller to stop batching.
+                return false
             } else {
                 player.sendMessage(lang.msg("gui.vault.withdrew", "amount" to removed, "item" to item.type.name.lowercase()))
             }
