@@ -95,6 +95,14 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
     override fun delete(id: Long) {
         ds.connection.use { conn ->
+            // Clean up orphaned transaction history first — shop_transactions has no FK to
+            // shop_items, so a plain DELETE on shop_items leaves un-referenced rows that
+            // the prune timer (historyRetentionDays) can never reach because shop_id no
+            // longer matches any live shop (M-1 from 2026-06-23 audit).
+            conn.prepareStatement("DELETE FROM shop_transactions WHERE shop_id = ?").use { ps ->
+                ps.setLong(1, id)
+                ps.executeUpdate()
+            }
             conn.prepareStatement("DELETE FROM shop_items WHERE id = ?").use { ps ->
                 ps.setLong(1, id)
                 ps.executeUpdate()

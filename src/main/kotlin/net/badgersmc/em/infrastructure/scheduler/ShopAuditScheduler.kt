@@ -46,6 +46,8 @@ class ShopAuditScheduler(
         val all = shops.all()
         if (all.isEmpty()) return
         var processed = 0
+        var removed = 0
+        val skips = mutableListOf<String>()
         // Cap at the list size so a tick never re-audits the same shop when
         // there are fewer shops than maxPerTick. The cursor still advances
         // across ticks, so over time every shop is swept.
@@ -55,11 +57,22 @@ class ShopAuditScheduler(
             val shop = all[cursor]
             cursor++
             processed++
-            auditOne(shop)
+            val decision = auditOne(shop)
+            if (decision == Decision.REMOVED) removed++ else if (decision == Decision.SKIPPED) {
+                skips.add(shop.id.toString())
+            }
+        }
+        if (removed > 0 || skips.isNotEmpty()) {
+            plugin.logger.info(
+                "[audit] sweep: $processed checked, $removed removed" +
+                if (skips.isNotEmpty()) ", ${skips.size} skipped (unloaded chunks: ${skips.take(3).joinToString()})" else ""
+            )
         }
     }
 
-    private fun auditOne(shop: net.badgersmc.em.domain.shop.Shop) {
+    private enum class Decision { KEPT, REMOVED, SKIPPED }
+
+    private fun auditOne(shop: net.badgersmc.em.domain.shop.Shop): Decision {
         // Gate on the container's CHUNK being loaded, not just the world: Paper returns AIR for
         // blocks in unloaded chunks, so an unloaded chunk must read as unobservable → SKIP, never
         // REMOVE. Mirrors EnthusiaMarket.loadedContainer; `shr 4` maps a block coord to its chunk.
@@ -73,7 +86,9 @@ class ShopAuditScheduler(
             config.shopAudit.repairEnabled
         ) {
             removeOrphan(shop)
+            return Decision.REMOVED
         }
+        return if (chunkLoaded) Decision.KEPT else Decision.SKIPPED
     }
 
     private fun removeOrphan(shop: net.badgersmc.em.domain.shop.Shop) {
