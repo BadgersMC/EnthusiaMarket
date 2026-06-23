@@ -4,7 +4,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -27,12 +26,8 @@ class RentTermsResyncServiceTest {
         winningBid = 0L, rentTerms = terms,
     )
 
-    private fun provider(rent: RentTerms): DefaultRentTermsProvider {
-        val cfg = EnthusiaMarketConfig()
-        return mockk {
-            every { current() } returns rent
-        }
-    }
+    private fun provider(rent: RentTerms): DefaultRentTermsProvider =
+        mockk { every { current() } returns rent }
 
     @Test
     fun `resync rewrites stalls whose terms differ and skips matching ones`() {

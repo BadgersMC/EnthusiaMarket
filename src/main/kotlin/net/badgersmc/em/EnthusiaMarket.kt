@@ -4,7 +4,6 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
 import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
 import net.badgersmc.em.infrastructure.scheduler.AuctionScheduler
