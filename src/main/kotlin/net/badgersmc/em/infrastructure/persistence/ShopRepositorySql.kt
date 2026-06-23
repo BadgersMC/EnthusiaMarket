@@ -116,6 +116,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
     }
 
+    @Suppress("NestedBlockDepth")
     override fun deleteByContainer(world: String, x: Int, y: Int, z: Int) {
         ds.connection.use { conn ->
             val prevAutoCommit = conn.autoCommit
@@ -150,6 +151,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
     }
 
+    @Suppress("NestedBlockDepth")
     override fun deleteByOwner(owner: UUID): Int {
         ds.connection.use { conn ->
             val prevAutoCommit = conn.autoCommit
