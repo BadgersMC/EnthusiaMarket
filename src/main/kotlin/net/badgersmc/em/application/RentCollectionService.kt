@@ -5,11 +5,8 @@ import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
-import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
-import net.badgersmc.em.domain.ports.RegionMemberSync
-import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -18,7 +15,6 @@ import net.badgersmc.nexus.annotations.Service
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import java.util.logging.Logger
 
 /**
  * Report from a single rent collection tick.
@@ -37,17 +33,12 @@ data class RentReport(
 @Service
 class RentCollectionService(
     private val stallRepository: StallRepository,
-    private val offers: SellOfferRepository,
     private val shops: net.badgersmc.em.domain.shop.ShopRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
-    private val regionMembers: RegionMemberSync,
     private val auctionRepository: AuctionRepository,
-    private val schematics: SchematicService = SchematicService.Disabled,
 ) {
-
-    private val log = java.util.logging.Logger.getLogger(RentCollectionService::class.java.name)
 
     private val activeStates = setOf(StallState.OWNED, StallState.GRACE)
 

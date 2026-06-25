@@ -1,9 +1,11 @@
 ﻿package net.badgersmc.em.application
 
 import io.mockk.every
+import io.mockk.match
 import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -56,38 +58,26 @@ class SchematicRestoreTest {
     )
 
     @Test
-    fun `eviction restores the stored schematic`() {
+    fun `grace expiry starts emergency auction, does NOT restore schematic`() {
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
         every { stallRepo.all() } returns listOf(graceStall)
         val economy = mockk<EconomyProvider>()
         every { economy.withdraw(any(), any()) } returns false
         val schematics = mockk<SchematicService>(relaxed = true)
+        val auctionRepo = mockk<AuctionRepository>(relaxed = true)
+        val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, mockk<SellOfferRepository>(relaxed = true), mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(), mockk(relaxed = true), schematics,
+            stallRepo, shopRepo, economy, mockk<GuildProvider>(relaxed = true), config(), auctionRepo,
         )
 
         val report = service.tick(now)
 
-        // Sanity: the stall was actually evicted.
+        // Emergency auction triggered, not eviction
         require(report.evictions == 1)
-        verify(exactly = 1) { schematics.restore("stall_02", "world", "stall_02") }
-    }
-
-    @Test
-    fun `eviction skips restore when snapshots disabled`() {
-        val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
-        every { stallRepo.all() } returns listOf(graceStall)
-        val economy = mockk<EconomyProvider>()
-        every { economy.withdraw(any(), any()) } returns false
-        val schematics = mockk<SchematicService>(relaxed = true)
-
-        val service = RentCollectionService(
-            stallRepo, mockk<SellOfferRepository>(relaxed = true), mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(enabled = false), mockk(relaxed = true), schematics,
-        )
-
-        service.tick(now)
-
+        verify { auctionRepo.create(any()) }
+        verify { stallRepo.save(match { it.state == StallState.EMERGENCY_AUCTIONING }) }
+        // Schematic must NOT be restored (auction winner inherits the plot)
         verify(exactly = 0) { schematics.restore(any(), any(), any()) }
     }
 

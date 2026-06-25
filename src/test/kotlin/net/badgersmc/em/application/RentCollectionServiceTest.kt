@@ -6,7 +6,6 @@ import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionRepository
-import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -95,7 +94,8 @@ class RentCollectionServiceTest {
         val shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
         val economy: EconomyProvider,
         val config: EnthusiaMarketConfig,
-        val guildProvider: GuildProvider
+        val guildProvider: GuildProvider,
+        val auctionRepo: AuctionRepository
     )
 
     private fun buildService(
@@ -119,12 +119,13 @@ class RentCollectionServiceTest {
         val auctionRepo = mockk<AuctionRepository>(relaxed = true)
 
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, mockk(relaxed = true), shopRepo, economy, guildProvider, cfg, mockk(relaxed = true), auctionRepo),
+            service = RentCollectionService(stallRepo, shopRepo, economy, guildProvider, cfg, auctionRepo),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             economy = economy,
             config = cfg,
-            guildProvider = guildProvider
+            guildProvider = guildProvider,
+            auctionRepo = auctionRepo
         )
     }
 
@@ -148,6 +149,8 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions) // still counted as eviction
         // Shops must NOT be deleted (auction winner inherits them)
         verify(exactly = 0) { svc.shopRepo.delete(any()) }
+        // An emergency auction must be created
+        verify { svc.auctionRepo.create(any()) }
         // Stall must be EMERGENCY_AUCTIONING, not UNOWNED
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
@@ -203,6 +206,7 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
+        verify { svc.auctionRepo.create(any()) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }
@@ -383,6 +387,7 @@ class RentCollectionServiceTest {
 
         verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
         verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify { svc.auctionRepo.create(any()) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }
