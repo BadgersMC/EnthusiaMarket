@@ -7,12 +7,12 @@ import net.badgersmc.em.events.PostShopTransactionEvent
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
+import net.badgersmc.nexus.paper.listeners.Listener
 import org.bukkit.Bukkit
 import org.bukkit.block.Container
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
-import org.bukkit.event.Listener
 import org.bukkit.inventory.Inventory
 
 /**
@@ -27,12 +27,12 @@ import org.bukkit.inventory.Inventory
  * This catches stock drift from shift-click, hopper, or other-plugin inventory mutations
  * without needing per-event listeners.
  */
-@net.badgersmc.nexus.paper.listeners.Listener
+@Listener
 @Component
 class ContainerStockListener(
     private val shopRepository: ShopRepository,
     private val lang: LangService
-) : Listener {
+) : org.bukkit.event.Listener {
 
     /** shopId → last-persisted raw stock (dedup: skip sign update if unchanged). */
     private val lastRawStock: MutableMap<Long, Int> = mutableMapOf()
@@ -67,16 +67,22 @@ class ContainerStockListener(
     private fun refreshOne(shop: Shop, inventory: Inventory) {
         val rawStock = rawStockOf(inventory, shop)
         if (rawStock == lastRawStock[shop.id]) return                      // unchanged → skip
-        lastRawStock[shop.id] = rawStock
 
+        // Check sign availability BEFORE persisting cache + DB — if the sign
+        // chunk is unloaded we bail, and the next tick will retry with the
+        // still-not-updated lastRawStock so the update is never lost.
+        val sign = loadedSign(shop) ?: return
+
+        lastRawStock[shop.id] = rawStock
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         shopRepository.updateStock(shop.id, rawStock)
-        val sign = loadedSign(shop) ?: return
         updateSignStock(sign, trades)
         trackDepletion(shop, trades)
     }
 
-    /** The shop's container inventory, or null if the world/chunk/block is unavailable. */
+    /** The shop's container inventory, or null if the world/chunk/block is unavailable.
+     *  Never force-loads a chunk — the [isChunkLoaded] guard is required because
+     *  [World.getBlockAt] loads the chunk synchronously when it isn't in memory. */
     private fun containerInventoryIfLoaded(shop: Shop): Inventory? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
         if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
@@ -94,14 +100,19 @@ class ContainerStockListener(
             .sumOf { it.amount }
     }
 
+    /** The shop's container block state. Never force-loads — must call only
+     *  when the chunk is known to be loaded (trade path already verified). */
     private fun loadedContainer(shop: Shop): Container? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
         return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
             .state as? Container
     }
 
+    /** The shop's sign block state, or null if the sign chunk isn't loaded.
+     *  The [isChunkLoaded] guard is mandatory — [World.getBlockAt] force-loads. */
     private fun loadedSign(shop: Shop): Sign? {
         val world = Bukkit.getWorld(shop.signWorld) ?: return null
+        if (!world.isChunkLoaded(shop.signX shr 4, shop.signZ shr 4)) return null
         return world.getBlockAt(shop.signX, shop.signY, shop.signZ)
             .state as? Sign
     }

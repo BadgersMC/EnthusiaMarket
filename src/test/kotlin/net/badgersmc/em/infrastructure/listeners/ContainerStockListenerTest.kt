@@ -30,59 +30,64 @@ class ContainerStockListenerTest {
 
     /** Creates a shop with the given coordinates. */
     private fun shop(
-        signX: Int = 100, signY: Int = 64, signZ: Int = 200,
-        contX: Int = 50, contY: Int = 64, contZ: Int = 60,
         sellAmount: Int = 1,
         owner: UUID = UUID.randomUUID()
     ): Shop = Shop(
         id = 1L, stallId = "s1", owner = owner,
-        signWorld = "world", signX = signX, signY = signY, signZ = signZ,
-        containerWorld = "world", containerX = contX, containerY = contY, containerZ = contZ,
+        signWorld = "world", signX = 100, signY = 64, signZ = 200,
+        containerWorld = "world", containerX = 50, containerY = 64, containerZ = 60,
         sellItem = "base64item", sellAmount = sellAmount,
         costItem = "base64cost", costAmount = 10
     )
 
-    /**
-     * Sets up Bukkit mocks: getWorld("world"), block states for sign + container.
-     * [contents] are placed in the container's inventory.
-     * Returns the sign mock for verification.
-     */
-    private fun mockWorld(
-        contents: Array<ItemStack?>,
-        signX: Int = 100, signY: Int = 64, signZ: Int = 200,
-        contX: Int = 50, contY: Int = 64, contZ: Int = 60
-    ): Sign {
+    // ── Mock helpers (split to stay under Codacy param/NLOC limits) ────
+
+    /** Sets up a mocked World with sign + container blocks. Returns the sign mock. */
+    private fun mockWorld(contents: Array<ItemStack?>): Sign {
         mockkStatic(Bukkit::class)
-        val world = mockk<World>(relaxed = true)
-        every { world.isChunkLoaded(any(), any()) } returns true
+        val world = mockWorldWithChunksLoaded()
         every { Bukkit.getWorld("world") } returns world
 
-        // Sign
+        val sign = mockSignAt(world)
+        mockContainerAt(world, contents)
+        stubPluginManager()
+        return sign
+    }
+
+    /** Returns a World mock where all chunks report as loaded. */
+    private fun mockWorldWithChunksLoaded(): World {
+        val world = mockk<World>(relaxed = true)
+        every { world.isChunkLoaded(any(), any()) } returns true
+        return world
+    }
+
+    /** Creates a sign block at (100,64,200) on [world] and returns the sign mock. */
+    private fun mockSignAt(world: World): Sign {
         val sign = mockk<Sign>(relaxed = true)
         val signBlock = mockk<Block>(relaxed = true)
         every { signBlock.state } returns sign
-        every { world.getBlockAt(signX, signY, signZ) } returns signBlock
+        every { world.getBlockAt(100, 64, 200) } returns signBlock
+        return sign
+    }
 
-        // Container
+    /** Creates a container block at (50,64,60) on [world] with the given contents. */
+    private fun mockContainerAt(world: World, contents: Array<ItemStack?>) {
         val containerInv = mockk<Inventory>(relaxed = true)
         every { containerInv.contents } returns contents
         val container = mockk<Container>(relaxed = true)
         every { container.inventory } returns containerInv
         val contLoc = mockk<Location>(relaxed = true)
         every { contLoc.world?.name } returns "world"
-        every { contLoc.blockX } returns contX
-        every { contLoc.blockY } returns contY
-        every { contLoc.blockZ } returns contZ
+        every { contLoc.blockX } returns 50; every { contLoc.blockY } returns 64; every { contLoc.blockZ } returns 60
         val containerBlock = mockk<Block>(relaxed = true)
         every { containerBlock.location } returns contLoc
         every { containerBlock.state } returns container
-        every { world.getBlockAt(contX, contY, contZ) } returns containerBlock
+        every { world.getBlockAt(50, 64, 60) } returns containerBlock
+    }
 
-        // PluginManager stub so container edit path doesn't NPE when firing events
-        val pm = mockk<PluginManager>(relaxed = true)
-        every { Bukkit.getPluginManager() } returns pm
-
-        return sign
+    /** Stubs Bukkit.getPluginManager() with a relaxed mock so depletion tracking doesn't NPE. */
+    private fun stubPluginManager() {
+        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
     }
 
     // ── Timer path tests ──────────────────────────────────────────────
@@ -129,19 +134,17 @@ class ContainerStockListenerTest {
 
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
 
-        // First call — should update
         listener.refreshAllSigns()
         verify(exactly = 1) { sign.line(3, any<Component>()) }
         verify(exactly = 1) { repo.updateStock(s.id, 10) }
 
-        // Second call — stock unchanged, should skip
         listener.refreshAllSigns()
         verify(exactly = 1) { sign.line(3, any<Component>()) }
         verify(exactly = 1) { repo.updateStock(s.id, 10) }
     }
 
     @Test
-    fun `refreshAllSigns skips unloaded chunk`() {
+    fun `refreshAllSigns skips unloaded container chunk`() {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(shop())
 
@@ -153,7 +156,6 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
         listener.refreshAllSigns()
 
-        // Should never call getBlockAt — chunk not loaded
         verify(exactly = 0) { world.getBlockAt(any(), any(), any()) }
     }
 
@@ -165,6 +167,40 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
         listener.refreshAllSigns()
         // Should not throw
+    }
+
+    @Test
+    fun `refreshAllSigns skips update when sign chunk not loaded`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
+
+        val contItem = mockk<ItemStack>(relaxed = true)
+        every { contItem.isSimilar(sellStack) } returns true
+        every { contItem.amount } returns 10
+
+        mockkStatic(Bukkit::class)
+        val world = mockk<World>(relaxed = true)
+        // Container chunk IS loaded, sign chunk is NOT
+        every { world.isChunkLoaded(50 shr 4, 60 shr 4) } returns true
+        every { world.isChunkLoaded(100 shr 4, 200 shr 4) } returns false
+        every { Bukkit.getWorld("world") } returns world
+
+        val sign = mockSignAt(world)
+        mockContainerAt(world, arrayOf(contItem))
+        stubPluginManager()
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+
+        // DB must NOT be updated (sign not loaded → bail)
+        verify(exactly = 0) { repo.updateStock(any(), any()) }
+        // Sign must NOT be touched
+        verify(exactly = 0) { sign.line(3, any<Component>()) }
     }
 
     // ── Trade path tests ──────────────────────────────────────────────
@@ -212,13 +248,13 @@ class ContainerStockListenerTest {
         )
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
         listener.onTransaction(event)
-        // Should not throw — returns early on null shop
+        // Should not throw
     }
 
     // ── Depletion event tests ─────────────────────────────────────────
 
     @Test
-    fun `zero stock fires ShopStockDepletedEvent via PluginManager`() {
+    fun `zero stock fires ShopStockDepletedEvent`() {
         val sellStack = mockk<ItemStack>(relaxed = true)
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
@@ -228,7 +264,6 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        // Non-matching item → stock = 0
         val diffItem = mockk<ItemStack>(relaxed = true)
         every { diffItem.isSimilar(sellStack) } returns false
 
@@ -269,11 +304,9 @@ class ContainerStockListenerTest {
 
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
 
-        // First refresh at zero — should fire
         listener.refreshAllSigns()
         verify(exactly = 1) { pm.callEvent(any<ShopStockDepletedEvent>()) }
 
-        // Second refresh still at zero — should NOT fire again
         listener.refreshAllSigns()
         verify(exactly = 1) { pm.callEvent(any<ShopStockDepletedEvent>()) }
     }
