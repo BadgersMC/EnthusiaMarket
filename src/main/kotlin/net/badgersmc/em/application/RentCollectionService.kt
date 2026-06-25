@@ -123,8 +123,9 @@ class RentCollectionService(
     private fun collect(stall: Stall, now: Instant): ProcessResult {
         val nextRent = now.plus(collectionInterval())
         if (stall.state == StallState.GRACE) {
-            shops.freezeByStall(stall.id.value, frozen = false)
+            // Save stall FIRST so shop unfreeze failure doesn't leave a GRACE stall with unfrozen shops.
             stallRepository.save(stall.copy(state = StallState.OWNED, ownerSince = now, nextRentAt = nextRent))
+            shops.freezeByStall(stall.id.value, frozen = false)
         } else {
             stallRepository.save(stall.copy(nextRentAt = nextRent))
         }
@@ -134,9 +135,9 @@ class RentCollectionService(
     /** Payment failed — OWNED defaults into GRACE (freeze shops); GRACE past its window starts emergency auction. */
     private fun handleFailure(stall: Stall, now: Instant, rentDue: Long): ProcessResult = when (stall.state) {
         StallState.OWNED -> {
-            // First failure — move to GRACE (defaulted), freeze all shops, start grace timer.
+            // Save stall FIRST: if shop freeze fails we're at least in GRACE for next tick retry.
+            stallRepository.save(stall.copy(state = StallState.GRACE, ownerSince = now))
             shops.freezeByStall(stall.id.value, frozen = true)
-            stallRepository.save(stall.copy(state = StallState.GRACE, ownerSince = Instant.now()))
             ProcessResult.Defaulted
         }
         StallState.GRACE -> {
@@ -172,8 +173,11 @@ class RentCollectionService(
             highBid = null,
             antiSnipeWindow = antiSnipe,
         )
-        auctionRepository.create(auction)
+        // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
+        // (admin must manually create one). This prevents duplicate auctions on retry — the stall
+        // won't be processed again once it leaves GRACE/OWNED activeStates.
         stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING, ownerSince = now))
+        auctionRepository.create(auction)
         return ProcessResult.Evicted  // reuse Evicted for counting
     }
 

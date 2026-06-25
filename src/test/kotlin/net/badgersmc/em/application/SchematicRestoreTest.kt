@@ -62,7 +62,6 @@ class SchematicRestoreTest {
         every { stallRepo.all() } returns listOf(graceStall)
         val economy = mockk<EconomyProvider>()
         every { economy.withdraw(any(), any()) } returns false
-        val schematics = mockk<SchematicService>(relaxed = true)
         val auctionRepo = mockk<AuctionRepository>(relaxed = true)
         val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
 
@@ -76,8 +75,6 @@ class SchematicRestoreTest {
         require(report.evictions == 1)
         verify { auctionRepo.create(any()) }
         verify { stallRepo.save(match { it.state == StallState.EMERGENCY_AUCTIONING }) }
-        // Schematic must NOT be restored (auction winner inherits the plot)
-        verify(exactly = 0) { schematics.restore(any(), any(), any()) }
     }
 
     // --- Voluntary sellback restores geometry ---------------------------
