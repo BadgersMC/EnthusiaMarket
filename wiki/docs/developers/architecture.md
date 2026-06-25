@@ -14,7 +14,7 @@ EnthusiaMarket follows a hexagonal (ports-and-adapters) architecture with three 
 
 ## Layer structure
 
-```
+```text
 ┌──────────────────────────────────────────┐
 │         infrastructure/                   │
 │  adapters, frameworks, I/O, commands      │

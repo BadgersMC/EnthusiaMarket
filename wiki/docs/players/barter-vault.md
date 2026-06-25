@@ -14,7 +14,7 @@ When you run a **TRADE** shop, players pay you in items — not money. Those pay
 
 ## Opening your vault
 
-```
+```text
 /shopvault open
 ```
 
