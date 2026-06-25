@@ -68,16 +68,18 @@ class ContainerStockListener(
         val rawStock = rawStockOf(inventory, shop)
         if (rawStock == lastRawStock[shop.id]) return                      // unchanged → skip
 
-        // Check sign availability BEFORE persisting cache + DB — if the sign
-        // chunk is unloaded we bail, and the next tick will retry with the
-        // still-not-updated lastRawStock so the update is never lost.
-        val sign = loadedSign(shop) ?: return
-
+        // Persist stock_count to DB regardless of sign availability —
+        // /shop search reads shop.stockCount (V019). This is the whole
+        // point of the denormalized column: search results must stay
+        // accurate even when the sign chunk happens to be unloaded.
         lastRawStock[shop.id] = rawStock
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         shopRepository.updateStock(shop.id, rawStock)
-        updateSignStock(sign, trades)
         trackDepletion(shop, trades)
+
+        // Best-effort sign update — if the sign chunk isn't loaded,
+        // the text will catch up on the next tick when it loads.
+        loadedSign(shop)?.let { updateSignStock(it, trades) }
     }
 
     /** The shop's container inventory, or null if the world/chunk/block is unavailable.

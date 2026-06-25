@@ -197,9 +197,10 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
         listener.refreshAllSigns()
 
-        // DB must NOT be updated (sign not loaded → bail)
-        verify(exactly = 0) { repo.updateStock(any(), any()) }
-        // Sign must NOT be touched
+        // DB must STILL be updated — stock_count exists for /shop search,
+        // and the container chunk IS loaded (V019 design).
+        verify(exactly = 1) { repo.updateStock(s.id, 10) }
+        // Sign must NOT be touched (chunk not loaded)
         verify(exactly = 0) { sign.line(3, any<Component>()) }
     }
 
