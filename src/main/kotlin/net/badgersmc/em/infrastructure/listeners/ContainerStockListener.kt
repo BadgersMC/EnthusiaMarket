@@ -11,10 +11,12 @@ import net.badgersmc.nexus.paper.listeners.Listener
 import org.bukkit.Bukkit
 import org.bukkit.block.Chest
 import org.bukkit.block.Container
+import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.inventory.Inventory
+import org.bukkit.inventory.InventoryHolder
 
 /**
  * Keeps shop sign stock text in sync with linked container inventories.
@@ -95,7 +97,11 @@ class ContainerStockListener(
         if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
         val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
         return when (val state = block.state) {
-            is Chest -> state.blockInventory       // Paper API — live, bypass snapshot
+            is Chest -> {
+                val singleInv = state.blockInventory       // Paper API — live for this half
+                val holder = singleInv.holder
+                if (holder is DoubleChest) holder.inventory else singleInv
+            }
             is Container -> state.inventory
             else -> null
         }
