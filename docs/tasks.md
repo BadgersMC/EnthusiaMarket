@@ -904,3 +904,23 @@ set only at insert (no relocate path), so create + delete fully cover location c
 - [x] Verify no `<em>`, `<i>`, `<bold>`, `<b>` tags remain in GUI keys.
 - **REF:** REQ-295
 - **Evidence:** en_US.yml — 11 `<bold>` tags removed; zero `<em>/<i>/<b>/<bold>` tags remaining; colors already aligned per existing convention
+
+---
+
+## Wiki — GitHub Pages player docs (REQ-296..298)
+
+### DOC-296 — Wiki scaffold: mkdocs config, directory structure, and all content pages
+
+- [ ] **DOC-296** — Build the complete mkdocs-material wiki mirroring LumaGuilds layout
+  References: REQ-296, REQ-297
+  Tag: DOC
+  Description: Create `mkdocs.yml` (site name "EnthusiaMarket", URL `badgersmc.github.io/EnthusiaMarket`, indigo theme, awesome-pages, redirects, llmstxt plugins). Create `wiki/requirements.txt` (mkdocs 1.6.1, material 9.5.49, awesome-pages 2.9.3, redirects 1.2.2, llmstxt 0.2.0). Create `wiki/docs/.pages` defining Getting Started → Players → Admins → Developers nav order. Create `wiki/docs/index.md` (home page with nav cards). Create `wiki/docs/getting-started/` (welcome, walkthrough, faq). Create `wiki/docs/players/` (how-do-i, stalls, rent, shop-creation, buy-sell-trade, barter-vault, shop-search, shop-management, bedrock). Create `wiki/docs/admins/` (installation, config, permissions, integration, geyser, troubleshooting). Create `wiki/docs/developers/` (architecture, domain, application, infrastructure). All pages must carry YAML frontmatter matching LumaGuilds schema (title, audience, topic, summary, keywords, related, updated). Cross-reference links must be relative and valid. Verify with `mkdocs build --strict` → 0 warnings.
+  Evidence: ` `
+
+### INFRA-296 — Wiki CI workflows, lint tools, and markdown lint config
+
+- [ ] **INFRA-296** — Add wiki quality gates and auto-deployment
+  References: REQ-297, REQ-298
+  Tag: INFRA
+  Description: Create `.github/workflows/wiki-deploy.yml` (build + deploy to GitHub Pages on push to main touching wiki/**, mkdocs.yml). Create `.github/workflows/wiki-checks.yml` (frontmatter lint, topic parity, markdown lint, mkdocs strict build on PR). Create `tools/wiki/lint_frontmatter.py` (pyyaml-based frontmatter validator). Create `tools/wiki/check_topic_parity.py` (ensure every wiki page topic has a corresponding in-game help topic). Create `.markdownlint.jsonc` (MD013/025/033/034/041/047/060 off, MD031/040 on, MD024 siblings_only). Verify wiki-deploy.yml targets `badgersmc.github.io/EnthusiaMarket`.
+  Evidence: ` `
