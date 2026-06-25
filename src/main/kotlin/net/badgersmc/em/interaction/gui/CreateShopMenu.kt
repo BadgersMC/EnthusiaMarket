@@ -32,15 +32,16 @@ class CreateShopMenu(
     private val shopRepository: ShopRepository,
     private val lang: LangService,
     private val initialDirection: SignDirection = SignDirection.SELL,
+    private val initialAmount: Int = 1,
+    private val initialPrice: Long = 100,
     private val initialCostItemB64: String? = null,
     private val initialCostAmount: Int? = null,
 ) : Menu {
 
     private var direction: SignDirection = initialDirection
-    private var price: Long = 100
-    private var amount: Int = 1
+    private var price: Long = initialPrice
+    private var amount: Int = initialAmount
     // Barter-mode cost (TRADE shops use an item, not Vault currency)
-    private var costMode: SignDirection? = if (initialCostItemB64 != null) SignDirection.TRADE else null
     private var costItemB64: String? = initialCostItemB64
     private var costItemAmount: Int = initialCostAmount ?: 1
 
@@ -65,8 +66,8 @@ class CreateShopMenu(
             pane.addItem(GuiItem(decorated(mat, lang.msg("gui.shop.create.dir_${dir.name.lowercase()}", "sel" to sel))) { event ->
                 event.isCancelled = true
                 direction = dir
-                // Reset cost mode when switching away from TRADE
-                if (dir != SignDirection.TRADE) costMode = null
+                // Clear barter item when switching away from TRADE (CR#3)
+                if (dir != SignDirection.TRADE) costItemB64 = null
                 render(player)
             }, 1 + idx * 3, 0)
         }

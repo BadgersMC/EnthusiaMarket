@@ -121,6 +121,7 @@ class SignPlaceListenerTest {
             override fun openCreateGui(
                 stallId: String, owner: UUID, signLoc: Location, containerLoc: Location,
                 sellItemB64: String, direction: net.badgersmc.em.domain.shop.SignDirection,
+                initialAmount: Int, initialPrice: Long,
                 costItemB64: String?, costAmountOverride: Int?, player: Player,
             ) {
                 // No-op: skip IFramework GUI creation in tests

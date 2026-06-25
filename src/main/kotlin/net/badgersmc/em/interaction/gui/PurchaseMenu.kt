@@ -48,12 +48,8 @@ class PurchaseMenu(
         val pane = StaticPane(9, 3)
 
         val ownerName = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
-        val tradesAvailable = if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
-        val dirLabel = when (shop.direction) {
-            SignDirection.SELL -> "Sell"
-            SignDirection.BUY -> "Buy"
-            SignDirection.TRADE -> "Trade"
-        }
+        val dirLabel = ShopDisplay.directionLabel(shop.direction)
+        val tradesAvailable = ShopDisplay.tradesAvailable(shop)
 
         pane.addItem(GuiItem(decorated(
             Material.DIAMOND,

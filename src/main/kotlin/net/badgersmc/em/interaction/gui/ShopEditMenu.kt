@@ -56,12 +56,8 @@ class ShopEditMenu(
         val pane = StaticPane(9, 3)
 
         // Direction + stock info.
-        val dirLabel = when (shop.direction) {
-            SignDirection.SELL -> "Sell"
-            SignDirection.BUY -> "Buy"
-            SignDirection.TRADE -> "Trade"
-        }
-        val tradesAvailable = if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
+        val dirLabel = ShopDisplay.directionLabel(shop.direction)
+        val tradesAvailable = ShopDisplay.tradesAvailable(shop)
         pane.addItem(GuiItem(decorated(
             Material.OAK_SIGN,
             lang.msg("gui.shop.edit.direction", "direction" to dirLabel),

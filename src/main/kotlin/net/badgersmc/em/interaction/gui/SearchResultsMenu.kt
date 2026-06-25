@@ -43,11 +43,7 @@ class SearchResultsMenu(
             val meta = icon.itemMeta
             if (meta != null) {
                 val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
-                val dirLabel = when (shop.direction) {
-                    net.badgersmc.em.domain.shop.SignDirection.SELL -> "<green>Sell</green>"
-                    net.badgersmc.em.domain.shop.SignDirection.BUY -> "<gold>Buy</gold>"
-                    net.badgersmc.em.domain.shop.SignDirection.TRADE -> "<light_purple>Trade</light_purple>"
-                }
+                val dirLabel = ShopDisplay.directionLabel(shop.direction)
                 meta.displayName(lang.msg(
                     "gui.shop.search.result",
                     "sell_amt" to shop.sellAmount, "cost" to shop.costAmount,

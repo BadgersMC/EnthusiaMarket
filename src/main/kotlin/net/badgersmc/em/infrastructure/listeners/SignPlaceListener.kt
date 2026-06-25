@@ -183,6 +183,8 @@ open class SignPlaceListener(
             containerLoc = attached.location,
             sellItemB64 = sellItemB64,
             direction = direction,
+            initialAmount = amount,
+            initialPrice = initialPrice,
             costItemB64 = costItemB64,
             costAmountOverride = costAmountOverride,
             player = player,
@@ -190,16 +192,19 @@ open class SignPlaceListener(
     }
 
     /** Open for testability — override in tests to bypass IFramework GUI creation. */
+    @Suppress("LongParameterList")
     open fun openCreateGui(
         stallId: String, owner: UUID, signLoc: Location, containerLoc: Location,
         sellItemB64: String, direction: SignDirection,
+        initialAmount: Int, initialPrice: Long,
         costItemB64: String?, costAmountOverride: Int?,
         player: Player,
     ) {
         net.badgersmc.em.interaction.gui.CreateShopMenu(
             stallId = stallId, stallOwner = owner, signLoc = signLoc, containerLoc = containerLoc,
             sellItemBase64 = sellItemB64, shopRepository = shopRepository, lang = lang,
-            initialDirection = direction, initialCostItemB64 = costItemB64,
+            initialDirection = direction, initialAmount = initialAmount, initialPrice = initialPrice,
+            initialCostItemB64 = costItemB64,
             initialCostAmount = costAmountOverride,
         ).open(player)
     }
