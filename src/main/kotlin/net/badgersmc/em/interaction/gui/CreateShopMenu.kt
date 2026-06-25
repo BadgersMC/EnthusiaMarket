@@ -3,17 +3,20 @@ package net.badgersmc.em.interaction.gui
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
-import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopFactory
+import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
-import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
+import net.badgersmc.em.interaction.blockItemTheft
+import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.block.Sign
+import org.bukkit.block.sign.Side
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import java.util.UUID
@@ -108,6 +111,7 @@ class CreateShopMenu(
                 guildId = guildId,
             )
             shopRepository.upsert(shop)
+            writeSignText(shop)
             player.closeInventory()
             player.sendMessage(lang.msg("shop.create.success"))
         }, 7, 3)
@@ -163,5 +167,24 @@ class CreateShopMenu(
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item
+    }
+
+    /** Write the shop's direction/amount/price onto the sign after creation. */
+    private fun writeSignText(shop: Shop) {
+        val world = signLoc.world ?: return
+        val block = world.getBlockAt(signLoc.blockX, signLoc.blockY, signLoc.blockZ)
+        val sign = block.state as? Sign ?: return
+        val side = sign.getSide(Side.FRONT)
+        side.line(0, Component.text("[${shop.direction.name}]"))
+        side.line(1, Component.text("${shop.sellAmount}"))
+        val costText = if (shop.direction == SignDirection.TRADE) {
+            val costItem = try { ItemStackSerializer.deserialize(shop.costItem) } catch (_: Exception) { null }
+            "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "?"}"
+        } else {
+            "${shop.costAmount}"
+        }
+        side.line(2, Component.text(costText))
+        side.line(3, Component.text("[Shop]"))
+        sign.update(true, false)
     }
 }
