@@ -42,7 +42,7 @@ Permission: `enthusiamarket.stall.buyout` (default: all players).
 
 If a stall owner listed their stall for sale with `/em stall offer`, you can buy it:
 
-```
+```text
 /em stall buy <stallId>
 ```
 
@@ -52,13 +52,13 @@ The listed price plus tax is deducted from your balance.
 
 Stalls can be auctioned. Browse open auctions:
 
-```
+```text
 /em auctions
 ```
 
 Place a bid:
 
-```
+```text
 /em bid <auctionId> <amount>
 ```
 
@@ -70,7 +70,7 @@ At auction end, the highest bidder wins. The seller receives the bid minus the a
 
 List your OWNED stall for a fixed price:
 
-```
+```text
 /em stall offer <stallId> <price>
 ```
 
@@ -80,7 +80,7 @@ Anyone can then buy it with `/em stall buy`. Cancel with `/em stall offer cancel
 
 Start an auction on your stall:
 
-```
+```text
 /em auction start <stallId> <startingPrice> [duration]
 ```
 
@@ -90,13 +90,13 @@ Duration is optional (default 24h, format: `PT24H` for 24 hours).
 
 Give up your stall for a prorated refund:
 
-```
+```text
 /em sellback <stallId>
 ```
 
 Review the warning (refund amount, number of shops that will be wiped), then confirm within 30 seconds:
 
-```
+```text
 /em sellback confirm <stallId>
 ```
 
@@ -104,7 +104,7 @@ Review the warning (refund amount, number of shops that will be wiped), then con
 
 You can add co-owners to build and manage shops inside your stall:
 
-```
+```text
 /em stall members add <stallId> <player>
 /em stall members remove <stallId> <player>
 /em stall members list <stallId>
@@ -116,7 +116,7 @@ Permission: `enthusiamarket.stall.members`
 
 See details about any stall:
 
-```
+```text
 /em stall info <stallId>
 ```
 
@@ -126,7 +126,7 @@ Shows owner, state, rent terms, member count, and region bounds.
 
 Render a particle outline of a stall's region:
 
-```
+```text
 /em stall outline <stallId> <seconds>
 ```
 

@@ -49,7 +49,7 @@ The application layer (`application/`) implements use cases. It depends on domai
 
 `IndexedShopRepository` wraps any `ShopRepository` delegate:
 
-```
+```text
 consumers → ShopRepository (interface)
                 ↓
          IndexedShopRepository (decorator, application layer)

@@ -12,7 +12,7 @@ updated: 2026-06-25
 
 Find shops selling what you need — or buying what you have.
 
-```
+```text
 /shop search <item>
 ```
 

@@ -30,7 +30,7 @@ Every TRADE transaction deposits the payment items into your vault. The vault is
 
 Admins can view another player's vault:
 
-```
+```text
 /shop admin vault <player>
 ```
 

@@ -76,7 +76,8 @@ All permissions default to **OP** unless noted otherwise. Permissions are regist
 Permission nodes matching `enthusiamarket.limit.<group-name>` grant membership in a named limit group from config. Effective limits merge by taking the best value per dimension across all granted groups.
 
 Example:
-```
+
+```text
 enthusiamarket.limit.vip      → total: 3 stalls
 enthusiamarket.limit.premium  → total: 10 stalls
 ```

@@ -95,13 +95,13 @@ After the plugin is running:
 
 ## Reloading
 
-```
+```text
 /em reload
 ```
 
 Reloads `enthusiamarket.yaml` and language files without a full server restart.
 
-```
+```text
 /em rent resync
 ```
 

@@ -18,7 +18,7 @@ Rent depends on the server's config:
 
 ### Formula mode (default)
 
-```
+```text
 dailyRent = purchasePrice × rentPct%
 ```
 
@@ -26,7 +26,7 @@ Example: you bought a stall for $10,000. At 1%, your daily rent is $100.
 
 ### Flat mode
 
-```
+```text
 dailyRent = flatAmount
 ```
 
@@ -58,7 +58,7 @@ Use the purchase sign — the fourth line shows your remaining rent time in `dd:
 
 Or run:
 
-```
+```text
 /em stall info <stallId>
 ```
 

@@ -42,7 +42,7 @@ Guild stall rent can be paid from the **guild bank** instead of a personal accou
 
 Guild leaders can set economic policies against other guilds:
 
-```
+```text
 /em guild policy
 ```
 

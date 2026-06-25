@@ -49,7 +49,7 @@ Alternatively, use `/em sellback` for a prorated refund (partial, not the full p
 
 ## How do I search for items to buy?
 
-```
+```text
 /shop search <item>
 ```
 

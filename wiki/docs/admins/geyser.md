@@ -43,14 +43,17 @@ The forms have the same functionality but use chat-based menus instead of chest 
 ## Troubleshooting
 
 **Forms don't open for Bedrock players:**
+
 - Check Floodgate is installed and the player joined through Geyser.
 - Verify the player has `enthusiamarket.shop.use` permission.
 - Toggle `bedrock.forceForms: true` and test.
 
 **Forms time out:**
+
 - Increase `bedrock.formTimeoutSec`.
 - Default is 60 seconds — long enough for most interactions.
 
 **Bedrock players can't edit signs:**
+
 - Set `shop.allowBedrockEdit: true`.
 - The player must own or be trusted on the shop.

@@ -15,11 +15,13 @@ updated: 2026-06-25
 **Symptom:** Console shows errors on startup, plugin doesn't load.
 
 Check:
+
 1. Paper 1.21.11 or later — run `/version`.
 2. All hard dependencies installed: WorldGuard, Vault, EnthusiaCurrency, LumaGuilds.
 3. Console error messages — they name the missing dependency.
 
 Enable debug logging:
+
 ```yaml
 debug:
   logEconomy: true
@@ -31,6 +33,7 @@ debug:
 **Symptom:** No stalls show up, `/em list` is empty.
 
 Run `/em import` to register WorldGuard regions. Check:
+
 1. `market.world` matches your world name.
 2. `market.regionPrefix` matches your region naming (e.g. `stall` for `stall1`).
 3. WorldGuard regions exist and are loaded.
@@ -57,6 +60,7 @@ Then run `/em rent resync` to push terms to existing stalls.
 **Symptom:** Players can't create shops, transactions fail.
 
 Check:
+
 1. Player owns the stall or has member access.
 2. For guild stalls: player has `MANAGE_SHOPS` guild permission.
 3. Economy plugin (EnthusiaCurrency) is loaded — check `/plugins`.

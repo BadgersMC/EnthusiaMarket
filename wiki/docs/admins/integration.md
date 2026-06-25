@@ -25,6 +25,7 @@ Stall regions are WorldGuard regions. EnthusiaMarket manages region ownership, A
 - Flags: BUILD, CHEST_ACCESS, BLOCK_PLACE, BLOCK_BREAK, USE, PISTONS, and more.
 
 Commands:
+
 - `/em import` — register matching WG regions as stalls.
 - `/em rg resync` — rebuild region ACLs from stall data.
 

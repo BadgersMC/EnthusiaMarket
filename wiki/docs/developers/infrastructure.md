@@ -52,8 +52,8 @@ Nexus Paper annotated commands:
 
 | Class | Base | Subcommands |
 |-------|------|-------------|
-| `AdminCommands` | `/em` | limit, import, reload, list, evict, auction *, stall *, rg resync, guild policy, rent resync |
-| `ShopCommands` | `/shop` | list, trust, untrust, edit, delete, breakdelete, search, history, admin * |
+| `AdminCommands` | `/em` | limit, import, reload, list, evict, auction …, stall …, rg resync, guild policy, rent resync |
+| `ShopCommands` | `/shop` | list, trust, untrust, edit, delete, breakdelete, search, history, admin … |
 | `ShopHelpCommands` | `/shophelp` | show |
 | `StoreCommands` | `/store` | show |
 | `VaultCommands` | `/shopvault` | open |

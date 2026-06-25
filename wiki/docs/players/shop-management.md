@@ -14,7 +14,7 @@ Commands for managing your existing shops.
 
 ## List your shops
 
-```
+```text
 /shop list
 ```
 
@@ -22,7 +22,7 @@ Shows every shop you own with its location, item, direction, and price.
 
 ## Edit a shop
 
-```
+```text
 /shop edit
 ```
 
@@ -37,13 +37,13 @@ Opens a GUI listing all your shops. Click one to edit:
 
 Let another player manage your shops:
 
-```
+```text
 /shop trust <player>
 ```
 
 Opens a bulk-trust GUI where you pick which shops to share.
 
-```
+```text
 /shop trust <player> all
 ```
 
@@ -53,7 +53,7 @@ Trusted players can edit shop settings but cannot delete shops.
 
 ## Untrust a player
 
-```
+```text
 /shop untrust <player> [mode]
 ```
 
@@ -61,13 +61,13 @@ Removes a player's access. Mode `all` removes from every shop.
 
 ## Delete shops
 
-```
+```text
 /shop delete
 ```
 
 Opens a GUI where you pick which shop to delete.
 
-```
+```text
 /shop delete all
 ```
 
@@ -75,13 +75,13 @@ Deletes **all** your shops. Requires `enthusiamarket.shop.delete.all`.
 
 ## Break-delete mode
 
-```
+```text
 /shop breakdelete
 ```
 
 Toggles break-delete: while active, breaking a shop's sign also deletes the shop record.
 
-```
+```text
 /shop breakdelete 5m
 /shop breakdelete off
 ```
@@ -90,7 +90,7 @@ Set a duration or turn it off.
 
 ## Transaction history
 
-```
+```text
 /shop history [page]
 ```
 
@@ -98,7 +98,7 @@ View your shop transaction history (paginated, 10 per page).
 
 ## Tutorial
 
-```
+```text
 /shophelp show
 ```
 
