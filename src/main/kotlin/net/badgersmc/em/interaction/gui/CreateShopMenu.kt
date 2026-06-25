@@ -110,8 +110,12 @@ class CreateShopMenu(
                 costAmountOverride = if (direction == SignDirection.TRADE) costItemAmount else null,
                 guildId = guildId,
             )
+            if (!writeSignText(shop)) {
+                player.closeInventory()
+                player.sendMessage(lang.msg("shop.create.sign_failed"))
+                return@GuiItem
+            }
             shopRepository.upsert(shop)
-            writeSignText(shop)
             player.closeInventory()
             player.sendMessage(lang.msg("shop.create.success"))
         }, 7, 3)
@@ -169,11 +173,11 @@ class CreateShopMenu(
         return item
     }
 
-    /** Write the shop's direction/amount/price onto the sign after creation. */
-    private fun writeSignText(shop: Shop) {
-        val world = signLoc.world ?: return
+    /** Write the shop's direction/amount/price onto the sign after creation. Returns true on success. */
+    private fun writeSignText(shop: Shop): Boolean {
+        val world = signLoc.world ?: return false
         val block = world.getBlockAt(signLoc.blockX, signLoc.blockY, signLoc.blockZ)
-        val sign = block.state as? Sign ?: return
+        val sign = block.state as? Sign ?: return false
         val side = sign.getSide(Side.FRONT)
         side.line(0, Component.text("[${shop.direction.name}]"))
         side.line(1, Component.text("${shop.sellAmount}"))
@@ -185,6 +189,6 @@ class CreateShopMenu(
         }
         side.line(2, Component.text(costText))
         side.line(3, Component.text("[Shop]"))
-        sign.update(true, false)
+        return sign.update(true, false)
     }
 }

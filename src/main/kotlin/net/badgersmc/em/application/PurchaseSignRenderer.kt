@@ -84,7 +84,11 @@ class PurchaseSignRenderer(
         val hours = remaining.toHours() % 24
         val minutes = remaining.toMinutes() % 60
         val seconds = remaining.seconds % 60
-        val time = "${days}d:${hours.toString().padStart(2, '0')}h:${minutes.toString().padStart(2, '0')}m:${seconds.toString().padStart(2, '0')}s"
+        val time =
+            "${days.toString().padStart(2, '0')}:" +
+                "${hours.toString().padStart(2, '0')}:" +
+                "${minutes.toString().padStart(2, '0')}:" +
+                "${seconds.toString().padStart(2, '0')}"
         return lang.msg("purchase_sign.owned.line3", "time" to time)
     }
 

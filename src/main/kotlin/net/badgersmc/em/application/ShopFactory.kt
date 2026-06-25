@@ -37,8 +37,18 @@ object ShopFactory {
         containerWorld = containerWorld, containerX = containerX, containerY = containerY, containerZ = containerZ,
         sellItem = sellItemBase64,
         sellAmount = sellAmount,
-        costItem = costItemBase64 ?: ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1)),
-        costAmount = costAmountOverride ?: price.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
+        costItem = when (direction) {
+            SignDirection.TRADE ->
+                requireNotNull(costItemBase64) { "TRADE shops require costItemBase64" }
+            else ->
+                costItemBase64 ?: ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1))
+        },
+        costAmount = when (direction) {
+            SignDirection.TRADE ->
+                requireNotNull(costAmountOverride) { "TRADE shops require costAmountOverride" }
+            else ->
+                price.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
+        },
         creatorId = creator,
         direction = direction,
         searchEnabled = searchEnabled,
