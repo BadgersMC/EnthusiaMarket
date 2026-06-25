@@ -29,8 +29,20 @@ class OwnedShopsMenu(
         shops.forEachIndexed { idx, shop ->
             val base = ItemStackSerializer.deserialize(shop.sellItem) ?: ItemStack(Material.CHEST)
             val meta = base.itemMeta
+            val dirLabel = when (shop.direction) {
+                net.badgersmc.em.domain.shop.SignDirection.SELL -> "Sell"
+                net.badgersmc.em.domain.shop.SignDirection.BUY -> "Buy"
+                net.badgersmc.em.domain.shop.SignDirection.TRADE -> "Trade"
+            }
+            val tradesAvailable = if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
+            val frozenLabel = if (shop.frozen) "FROZEN" else "ACTIVE"
             if (meta != null) {
                 meta.displayName(lang.msg("gui.shop.owned.icon", "sell_amt" to shop.sellAmount, "cost" to shop.costAmount, "world" to shop.signWorld, "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
+                meta.lore(listOf(
+                    lang.msg("gui.shop.owned.dir_lore", "direction" to dirLabel),
+                    lang.msg("gui.shop.owned.stock_lore", "trades" to tradesAvailable),
+                    lang.msg("gui.shop.owned.frozen_lore", "frozen" to frozenLabel),
+                ))
                 base.itemMeta = meta
             }
             pane.addItem(GuiItem(base) {

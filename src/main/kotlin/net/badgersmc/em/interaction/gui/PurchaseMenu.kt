@@ -13,6 +13,7 @@ import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import net.kyori.adventure.text.Component
+import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -46,10 +47,23 @@ class PurchaseMenu(
         )
         val pane = StaticPane(9, 3)
 
+        val ownerName = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
+        val tradesAvailable = if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
+        val dirLabel = when (shop.direction) {
+            SignDirection.SELL -> "Sell"
+            SignDirection.BUY -> "Buy"
+            SignDirection.TRADE -> "Trade"
+        }
+
         pane.addItem(GuiItem(decorated(
             Material.DIAMOND,
             lang.msg("gui.shop.sell_name", "amount" to shop.sellAmount),
-            listOf(lang.msg("gui.shop.sell_lore_price", "cost" to shop.costAmount))
+            listOf(
+                lang.msg("gui.shop.sell_lore_price", "cost" to shop.costAmount),
+                lang.msg("gui.shop.sell_lore_direction", "direction" to dirLabel),
+                lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
+                lang.msg("gui.shop.sell_lore_stock", "stock" to tradesAvailable),
+            )
         )), 2, 1)
 
         pane.addItem(GuiItem(decorated(Material.ARROW, lang.msg("gui.shop.arrow_name"))), 4, 1)

@@ -848,61 +848,59 @@ set only at insert (no relocate path), so create + delete fully cover location c
 
 ### TDD-289 — Unified creation GUI with direction picker
 
-- [ ] TDD: RED — Write failing test: CreateShopMenu opens with direction selector (SELL/BUY/TRADE buttons)
-- [ ] TDD: GREEN — Add direction picker to CreateShopMenu. Replace hardcoded `SignDirection.SELL` in ShopCreateListener
+- [x] TDD: RED — Write failing test: CreateShopMenu opens with direction selector (SELL/BUY/TRADE buttons)
+- [x] TDD: GREEN — Add direction picker to CreateShopMenu. Replace hardcoded `SignDirection.SELL` in ShopCreateListener
   with GUI-chosen direction. Update BedrockCreateShopForm to include direction toggle.
-- [ ] Add cost-type picker: Vault currency (default) vs barter item. For barter, capture item from player hand
+- [x] Add cost-type picker: Vault currency (default) vs barter item. For barter, capture item from player hand
   (mirrors TRADE line-3 parsing in SignPlaceListener) and set costItem + costAmount.
-- [ ] Update `ShopFactory.build` call site in both GUIs to pass the chosen direction + cost values.
+- [x] Update `ShopFactory.build` call site in both GUIs to pass the chosen direction + cost values.
 - **Ref:** REQ-289, REQ-012
-- **Evidence:** CreateShopMenu.kt:80 — hardcoded `direction = SignDirection.SELL`; ShopCreateListener.kt:100 — always `player.uniqueId` as owner, no direction param
+- **Evidence:** ShopFactory.kt:30-31 — `costItemBase64: String? = null, costAmountOverride: Int? = null`; CreateShopMenu.kt:31-65 — direction selector row, cost picker, confirm passes direction+params; CreateShopMenuDirectionTest.kt — GREEN test asserts costItemBase64 + costAmountOverride round-trip
 
 ### TDD-290 — Sign text opens GUI instead of creating directly
 
-- [ ] TDD: RED — Write failing test: SignPlaceListener.onSignPlace with [BUY] opens CreateShopMenu pre-populated
+- [x] TDD: RED — Write failing test: SignPlaceListener.onSignPlace with [BUY] opens CreateShopMenu pre-populated
   with direction=BUY instead of creating shop directly
-- [ ] TDD: GREEN — Change SignPlaceListener to open CreateShopMenu (or BedrockCreateShopForm) with parsed
+- [x] TDD: GREEN — Change SignPlaceListener to open CreateShopMenu (or BedrockCreateShopForm) with parsed
   direction, amount, cost pre-filled. Remove direct Shop construction from SignPlaceListener.
-- [ ] Update ShopSignRenderer to use `"Buy"`/`"Sell"`/`"Trade"` instead of raw `direction.name`.
+- [x] Update ShopSignRenderer to use `"Buy"`/`"Sell"`/`"Trade"` instead of raw `direction.name`.
 - **Ref:** REQ-290, REQ-005 (superseded)
-- **Evidence:** SignPlaceListener.kt:181-208 — constructs Shop inline; SignPlaceListener.kt:64 — already case-insensitive via `.uppercase()`
+- **Evidence:** SignPlaceListener.kt:170-207 — opens CreateShopMenu instead of constructing Shop; SignPlaceListenerTest.kt — verifies event cancelled, upsert never called; ShopSignRenderer.kt — human-readable direction names
 
 ### TDD-291 — PurchaseMenu context (owner, stock, direction)
 
-- [ ] TDD: RED — Write failing test: PurchaseMenu renders owner name, stock count, and direction label
-- [ ] TDD: GREEN — Add owner name (from Bukkit.getOfflinePlayer), trades-available (from shop.stockCount /
+- [x] TDD: RED — Write failing test: PurchaseMenu renders owner name, stock count, and direction label
+- [x] TDD: GREEN — Add owner name (from Bukkit.getOfflinePlayer), trades-available (from shop.stockCount /
   sellAmount), and direction label to PurchaseMenu + BedrockPurchaseForm
 - **Ref:** REQ-291
-- **Evidence:** PurchaseMenu.kt:46 — title shows only "amount"; PurchaseMenu.kt:49-80 — shows sell item, arrow, cost, action button but no owner/stock/direction
+- **Evidence:** PurchaseMenu.kt:50-68 — added ownerName from Bukkit.getOfflinePlayer, tradesAvailable from stockCount/sellAmount, dirLabel from direction; en_US.yml:276-278 — gui.shop.sell_lore_direction/owner/stock keys
 
 ### TDD-292 — OwnedShopsMenu status in lore
 
-- [ ] TDD: RED — Write failing test: OwnedShopsMenu icon lore includes direction, stock, frozen
-- [ ] TDD: GREEN — Add direction string, trades-available, and frozen state to OwnedShopsMenu icon lore
+- [x] TDD: RED — Write failing test: OwnedShopsMenu icon lore includes direction, stock, frozen
+- [x] TDD: GREEN — Add direction string, trades-available, and frozen state to OwnedShopsMenu icon lore
 - **Ref:** REQ-292
-- **Evidence:** OwnedShopsMenu.kt:33 — lore shows only amount, cost, world, coords
+- **Evidence:** OwnedShopsMenu.kt:32-43 — dirLabel, tradesAvailable, frozenLabel added to lore; en_US.yml:316-318 — gui.shop.owned.dir_lore/stock_lore/frozen_lore
 
 ### TDD-293 — ShopEditMenu shows stock + direction
 
-- [ ] TDD: RED — Write failing test: ShopEditMenu displays stock count and direction
-- [ ] TDD: GREEN — Add stock count (shop.stockCount / sellAmount) and direction label to ShopEditMenu
+- [x] TDD: RED — Write failing test: ShopEditMenu displays stock count and direction
+- [x] TDD: GREEN — Add stock count (shop.stockCount / sellAmount) and direction label to ShopEditMenu
 - **Ref:** REQ-293
-- **Evidence:** ShopEditMenu.kt:54-140 — shows sell item, amount, cost, toggles, save/delete; no stock or direction
+- **Evidence:** ShopEditMenu.kt:58-71 — OAK_SIGN info item at (0,1) with direction label + stock count lore; en_US.yml:321-322 — gui.shop.edit.direction/stock keys
 
 ### TDD-294 — SearchResultsMenu direction in lore
 
-- [ ] TDD: RED — Write failing test: search result lore includes direction (BUY/SELL/TRADE)
-- [ ] TDD: GREEN — Add direction to SearchResultsMenu result lore line
+- [x] TDD: RED — Write failing test: search result lore includes direction (BUY/SELL/TRADE)
+- [x] TDD: GREEN — Add direction to SearchResultsMenu result lore line
 - **Ref:** REQ-294
-- **Evidence:** SearchResultsMenu.kt:46-50 — lore shows sell_amt, cost, trades, owner; no direction
+- **Evidence:** SearchResultsMenu.kt:46-52 — dirLabel with MiniMessage color tags added to lang.msg; en_US.yml:291 — gui.shop.search.result now includes <dir> placeholder
 
 ### INFRA-295 — Normalize GUI text (remove bold, standardize colors)
 
-- [ ] Remove all `<bold>` tags from `en_US.yml` GUI entries.
-- [ ] Standardize color scheme per REQ-295: green=action, red=delete, gold=currency, white=info, gray=secondary,
+- [x] Remove all `<bold>` tags from `en_US.yml` GUI entries.
+- [x] Standardize color scheme per REQ-295: green=action, red=delete, gold=currency, white=info, gray=secondary,
   aqua=nav, yellow=warning, light_purple=barter/TRADE.
-- [ ] Verify no `<em>`, `<i>`, `<bold>`, `<b>` tags remain in GUI keys.
+- [x] Verify no `<em>`, `<i>`, `<bold>`, `<b>` tags remain in GUI keys.
 - **REF:** REQ-295
-- **Evidence:** en_US.yml — `<bold>` used in: gui.shop.sell_name, gui.shop.cost_name, gui.shop.buy_name,
-  gui.shop.sell_action_name, gui.shop.trade_name, gui.trust.add_name, gui.vault.redeem_all_name,
-  gui.edit.frozen_name, gui.edit.active_name, bedrock.purchase.button_buy, bedrock.purchase.button_sell
+- **Evidence:** en_US.yml — 11 `<bold>` tags removed; zero `<em>/<i>/<b>/<bold>` tags remaining; colors already aligned per existing convention
