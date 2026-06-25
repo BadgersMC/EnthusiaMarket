@@ -61,6 +61,8 @@ class IndexedShopRepository(
 
     override fun updateStock(id: Long, stockCount: Int) = delegate.updateStock(id, stockCount)
 
+    override fun freezeByStall(stallId: String, frozen: Boolean) = delegate.freezeByStall(stallId, frozen)
+
     override fun findByContainer(world: String, x: Int, y: Int, z: Int): List<Shop> =
         index.shopsAt(world, x, y, z)
 
