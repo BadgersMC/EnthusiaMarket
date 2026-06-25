@@ -316,6 +316,8 @@ gui:
       dir_lore: "<gray>Direction: <white><direction>"
       stock_lore: "<gray>Stock: <aqua><trades> trades</aqua>"
       frozen_lore: "<gray>Status: <frozen>"
+      status_frozen: "<red>Frozen"
+      status_active: "<green>Active"
     edit:
       title: "<dark_gray>Edit shop"
       direction: "<gray>Direction: <white><direction>"

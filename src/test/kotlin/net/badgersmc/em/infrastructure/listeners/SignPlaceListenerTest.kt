@@ -1,7 +1,6 @@
 package net.badgersmc.em.infrastructure.listeners
 
 import io.mockk.*
-import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -114,7 +113,7 @@ class SignPlaceListenerTest {
         return object : SignPlaceListener(
             mockk<StallRepository>(relaxed = true), shopRepo,
             mockk<GuildProvider>(relaxed = true), lenientLang(),
-            EnthusiaMarketConfig(), ShopSignRenderer(),
+            EnthusiaMarketConfig(),
         ) {
             override fun findStallAt(location: Location): Stall? = stall
             override fun canManageStall(stall: Stall, player: Player): Boolean = true
@@ -122,7 +121,8 @@ class SignPlaceListenerTest {
                 stallId: String, owner: UUID, signLoc: Location, containerLoc: Location,
                 sellItemB64: String, direction: net.badgersmc.em.domain.shop.SignDirection,
                 initialAmount: Int, initialPrice: Long,
-                costItemB64: String?, costAmountOverride: Int?, player: Player,
+                costItemB64: String?, costAmountOverride: Int?,
+                guildId: String?, player: Player,
             ) {
                 // No-op: skip IFramework GUI creation in tests
             }

@@ -36,6 +36,7 @@ class CreateShopMenu(
     private val initialPrice: Long = 100,
     private val initialCostItemB64: String? = null,
     private val initialCostAmount: Int? = null,
+    private val guildId: String? = null,
 ) : Menu {
 
     private var direction: SignDirection = initialDirection
@@ -104,6 +105,7 @@ class CreateShopMenu(
                 searchEnabled = true,
                 costItemBase64 = costItemB64,
                 costAmountOverride = if (direction == SignDirection.TRADE) costItemAmount else null,
+                guildId = guildId,
             )
             shopRepository.upsert(shop)
             player.closeInventory()

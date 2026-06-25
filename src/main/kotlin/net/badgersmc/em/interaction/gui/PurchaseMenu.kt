@@ -40,6 +40,7 @@ class PurchaseMenu(
     private val lang: LangService
 ) : Menu {
 
+    @Suppress("LongMethod")
     override fun open(player: Player) {
         val gui = ChestGui(
             3,

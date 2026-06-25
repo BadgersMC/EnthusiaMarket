@@ -31,7 +31,10 @@ class OwnedShopsMenu(
             val meta = base.itemMeta
             val dirLabel = ShopDisplay.directionLabel(shop.direction)
             val tradesAvailable = ShopDisplay.tradesAvailable(shop)
-            val frozenLabel = if (shop.frozen) "FROZEN" else "ACTIVE"
+            val frozenLabel = if (shop.frozen)
+                lang.msg("gui.shop.owned.status_frozen")
+            else
+                lang.msg("gui.shop.owned.status_active")
             if (meta != null) {
                 meta.displayName(lang.msg("gui.shop.owned.icon", "sell_amt" to shop.sellAmount, "cost" to shop.costAmount, "world" to shop.signWorld, "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
                 meta.lore(listOf(

@@ -29,6 +29,7 @@ class SearchResultsMenu(
     private val lang: LangService,
 ) : Menu {
 
+    @Suppress("LongMethod")
     override fun open(player: Player) {
         val totalPages = ((results.size + PER_PAGE - 1) / PER_PAGE).coerceAtLeast(1)
         val current = page.coerceIn(1, totalPages)

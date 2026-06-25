@@ -3,7 +3,6 @@ package net.badgersmc.em.infrastructure.listeners
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldguard.WorldGuard
 import net.badgersmc.em.application.ItemStackSerializer
-import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -52,7 +51,6 @@ open class SignPlaceListener(
     private val guildProvider: GuildProvider,
     private val lang: LangService,
     private val config: net.badgersmc.em.config.EnthusiaMarketConfig,
-    private val signRenderer: ShopSignRenderer,
 ) : Listener {
 
     @EventHandler
@@ -176,6 +174,7 @@ open class SignPlaceListener(
 
         // REQ-290: open the unified creation GUI pre-populated instead of creating directly.
         event.isCancelled = true  // cancel the sign text change — GUI handles it
+        val guildId = if (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.GUILD) stall.owner.id else null
         openCreateGui(
             stallId = stall.id.value,
             owner = player.uniqueId,
@@ -187,6 +186,7 @@ open class SignPlaceListener(
             initialPrice = initialPrice,
             costItemB64 = costItemB64,
             costAmountOverride = costAmountOverride,
+            guildId = guildId,
             player = player,
         )
     }
@@ -198,6 +198,7 @@ open class SignPlaceListener(
         sellItemB64: String, direction: SignDirection,
         initialAmount: Int, initialPrice: Long,
         costItemB64: String?, costAmountOverride: Int?,
+        guildId: String?,
         player: Player,
     ) {
         net.badgersmc.em.interaction.gui.CreateShopMenu(
@@ -206,6 +207,7 @@ open class SignPlaceListener(
             initialDirection = direction, initialAmount = initialAmount, initialPrice = initialPrice,
             initialCostItemB64 = costItemB64,
             initialCostAmount = costAmountOverride,
+            guildId = guildId,
         ).open(player)
     }
 

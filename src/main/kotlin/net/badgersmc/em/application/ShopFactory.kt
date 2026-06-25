@@ -29,6 +29,7 @@ object ShopFactory {
         searchEnabled: Boolean = true,
         costItemBase64: String? = null,
         costAmountOverride: Int? = null,
+        guildId: String? = null,
     ): Shop = Shop(
         stallId = stallId,
         owner = owner,
@@ -41,5 +42,6 @@ object ShopFactory {
         creatorId = creator,
         direction = direction,
         searchEnabled = searchEnabled,
+        guildId = guildId?.let { UUID.fromString(it) },
     )
 }
