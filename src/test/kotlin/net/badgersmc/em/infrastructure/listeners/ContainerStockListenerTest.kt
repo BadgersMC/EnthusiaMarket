@@ -358,4 +358,53 @@ class ContainerStockListenerTest {
         listener.refreshAllSigns()
         verify(exactly = 1) { pm.callEvent(any<ShopStockDepletedEvent>()) }
     }
+
+    // ── Live-inventory path tests ──────────────────────────────────────
+
+    @Test
+    fun `refreshAllSigns reads live Chest blockInventory not snapshot`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
+
+        val contItem = mockk<ItemStack>(relaxed = true)
+        every { contItem.isSimilar(sellStack) } returns true
+        every { contItem.amount } returns 42
+
+        // Set up a Chest block (not just Container) so the code takes
+        // the Chest.getBlockInventory() live-inventory path.
+        mockkStatic(Bukkit::class)
+        val world = mockWorldWithChunksLoaded()
+        every { Bukkit.getWorld("world") } returns world
+
+        val sign = mockSignAt(world)
+
+        // Chest mock: getBlockInventory() returns the live inventory,
+        // getInventory() would return a stale snapshot — we verify the
+        // live one is used.
+        val liveInv = mockk<Inventory>(relaxed = true)
+        every { liveInv.contents } returns arrayOf(contItem)
+        val chest = mockk<org.bukkit.block.Chest>(relaxed = true)
+        every { chest.blockInventory } returns liveInv
+        val chestBlock = mockk<Block>(relaxed = true)
+        every { chestBlock.state } returns chest
+        every { world.getBlockAt(50, 64, 60) } returns chestBlock
+
+        stubPluginManager()
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+
+        // Sign must be updated with correct stock (42)
+        verify { sign.line(3, any<Component>()) }
+        verify { sign.update(true) }
+        verify { repo.updateStock(s.id, 42) }
+
+        // Chest.getBlockInventory() was read (live path, not snapshot)
+        verify { chest.blockInventory }
+    }
 }
