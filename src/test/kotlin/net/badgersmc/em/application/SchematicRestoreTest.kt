@@ -1,7 +1,6 @@
 ﻿package net.badgersmc.em.application
 
 import io.mockk.every
-import io.mockk.match
 import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
