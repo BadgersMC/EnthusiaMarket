@@ -5,6 +5,7 @@ import net.badgersmc.em.domain.shop.SignDirection
 import org.bukkit.Material
 import org.bukkit.inventory.ItemStack
 import java.util.UUID
+import java.util.logging.Logger
 
 /**
  * Pure builder for [Shop] from menu/form inputs (REQ-012). Centralises the
@@ -14,6 +15,8 @@ import java.util.UUID
  * EMERALD UI hint, real price flows through costAmount (Vault).
  */
 object ShopFactory {
+
+    private val log = Logger.getLogger(ShopFactory::class.java.name)
 
     @Suppress("LongParameterList")
     fun build(
@@ -52,6 +55,11 @@ object ShopFactory {
         creatorId = creator,
         direction = direction,
         searchEnabled = searchEnabled,
-        guildId = guildId?.let { UUID.fromString(it) },
+        guildId = guildId?.let { id ->
+            try { UUID.fromString(id) } catch (_: IllegalArgumentException) {
+                log.warning("ShopFactory: guildId '$id' is not a valid UUID; shop will have no guildId")
+                null
+            }
+        },
     )
 }
