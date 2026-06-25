@@ -31,7 +31,7 @@ Attach a wall sign to a **chest, barrel, shulker box, or other container** insid
 The GUI shows three buttons:
 
 - **SELL** — You sell items from the container to other players. They pay you.
-- **BUY** — You buy items from other players. You pay them. Stock is checked against your economy balance.
+- **BUY** — You buy items from other players. You pay them. Your economy balance is checked to ensure you can afford the total stock.
 - **TRADE** — Item-for-item exchange. Players give you a specific item to receive the container's item.
 
 ### 3. Set per-trade amount

@@ -37,7 +37,7 @@ EnthusiaMarket follows a hexagonal (ports-and-adapters) architecture with three 
 Pure Kotlin. No framework imports — no Bukkit, no Paper, no WorldGuard, no Koin, no Hikari. Contains:
 
 - **Entities:** `Stall`, `Shop`, `Auction`, `Bid`, `RentTerms`
-- **Value objects:** `StallId`, `OwnerRef`, `StallState`
+- **Value objects:** `StallId`, `OwnerRef`
 - **Enums:** `StallState`, `SignDirection`, `AuctionState`, `OwnerType`, `PolicyKind`, `GuildPermission`, `RentTerms.Mode`
 - **Repository ports:** `StallRepository`, `ShopRepository`, `AuctionRepository`, `ShopVaultRepository`
 - **Provider ports:** `RegionProvider`, `EconomyProvider`, `GuildProvider`, `RegionProvisioner`, `SchematicService`

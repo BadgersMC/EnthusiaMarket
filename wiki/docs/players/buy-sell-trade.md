@@ -10,7 +10,7 @@ updated: 2026-06-25
 
 # Buying, selling, and trading
 
-You don't need a stall to use the market. Right-click any shop sign to trade.
+You don't need a stall to use the market. Right-click any player shop sign to trade.
 
 ## SELL shops (buy from a shop)
 

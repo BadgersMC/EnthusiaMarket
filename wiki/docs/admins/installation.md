@@ -26,7 +26,7 @@ Install EnthusiaMarket on Paper 1.21.x, drop in dependencies, and walk through t
 | FastAsyncWorldEdit | Plugin | Soft | Async schematic operations |
 | Geyser/Floodgate | Plugin | Soft | Bedrock client support & forms |
 
-> **Note:** LumaGuilds, WorldGuard, and Vault are **hard** dependencies. The plugin refuses to enable without them.
+> **Note:** WorldGuard, Vault, EnthusiaCurrency, and LumaGuilds are **hard** dependencies. The plugin refuses to enable without them.
 
 ## How it works
 
@@ -61,7 +61,7 @@ Drop the EnthusiaMarket JAR into `plugins/`, start the server, and it auto-creat
 
    You should see the plugin version. Check console for errors.
 
-6. **Open `plugins/EnthusiaMarket/enthusiamarket.yaml`** and review each section below. Restart after changes.
+6. **Open `plugins/EnthusiaMarket/enthusiamarket.yaml`** and review each section below. Use `/em reload` after supported config changes; restart only when a change requires it.
 
 ## Database
 

@@ -12,7 +12,7 @@ updated: 2026-06-25
 
 Pick what you want to do:
 
-- **[Get a stall](stalls.md)** — Buy, bid, or sell a market stall.
+- **[Get a stall](stalls.md)** — Buy or sell a market stall.
 - **[Pay rent](rent.md)** — Keep your stall from getting evicted.
 - **[Create a shop](shop-creation.md)** — Place a sign and start trading.
 - **[Buy, sell, or trade](buy-sell-trade.md)** — Use someone else's shop as a customer.

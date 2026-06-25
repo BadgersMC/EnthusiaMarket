@@ -4,8 +4,9 @@ required fields (title, audience, topic, summary, keywords, related, updated).
 
 Exit code 1 on missing/invalid frontmatter; prints all issues before exiting.
 
-NOTE: EnthusiaMarket does not yet have a HelpTopics registry like LumaGuilds.
-When one is added, extend this script to cross-reference wiki topics against it.
+NOTE: This is a frontmatter validator. Topic parity (cross-referencing wiki topics
+against an in-game help registry) is not yet implemented — EnthusiaMarket does not
+have a HelpTopics registry like LumaGuilds. Rename or extend this script when one is added.
 """
 
 from __future__ import annotations

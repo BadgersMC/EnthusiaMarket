@@ -68,4 +68,4 @@ Check `/em limit` to see how many stalls you're allowed to own.
 - **[Manage your shops](../players/shop-management.md)** — trust friends, edit prices, delete shops.
 - **[Search for goods](../players/shop-search.md)** — find what other players are selling.
 - **[Understand rent](../players/rent.md)** — avoid eviction.
-- **[Sell your stall](../players/stalls.md)** — list it for sale or auction.
+- **[Sell your stall](../players/stalls.md)** — list it for sale.

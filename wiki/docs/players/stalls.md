@@ -32,7 +32,7 @@ Stalls move through these states:
 ### From a purchase sign (UNOWNED stall)
 
 1. Find an UNOWNED stall in the market area.
-2. Look for its purchase sign (`[em]` on line 1, stall ID on line 2, price on line 3).
+2. Look for its purchase sign (first-line trigger token, stall ID on line 2, price on line 3).
 3. Right-click the sign to buy it for yourself.
 4. To buy for your **guild**, sneak + right-click instead.
 

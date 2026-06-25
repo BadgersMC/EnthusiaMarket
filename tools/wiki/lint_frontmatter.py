@@ -36,6 +36,8 @@ SLUG_EXEMPT = {
 
 
 def parse_frontmatter(text: str) -> dict | None:
+    # Normalize line endings so CRLF-committed files don't fail
+    text = text.replace('\r\n', '\n')
     if not text.startswith("---\n"):
         return None
     end = text.find("\n---", 4)

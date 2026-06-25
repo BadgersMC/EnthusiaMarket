@@ -18,7 +18,7 @@ Find shops selling what you need — or buying what you have.
 
 ## Basic search
 
-Type any Minecraft item name. Tab-complete is supported — press Tab to cycle through available materials.
+Type any Minecraft item name. Tab-complete is supported — press Tab to see material names matching your typed prefix (case-insensitive).
 
 ```text
 /shop search diamond
@@ -52,7 +52,7 @@ If there are many results, specify a page number:
 
 ## What shops are searchable
 
-New shops are **searchable by default**. Shop owners can toggle this in the edit GUI (`/shop edit`). The server can change the default via the `shop.searchDefault` config key.
+New shops are **searchable by default**. Shop owners can toggle this in the edit GUI (`/shop edit`). The server can change the default via the `shop.search.default` config key.
 
 ## Tips
 

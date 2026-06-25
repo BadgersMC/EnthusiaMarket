@@ -66,7 +66,7 @@ Nexus Paper annotated commands:
 | `ContainerStockListener` | PostShopTransactionEvent, timer | Stock sign updates, depletion tracking |
 | `HopperControlListener` | InventoryMoveItemEvent | Hopper access control per-shop |
 | `PurchaseSignClickListener` | PlayerInteractEvent | Stall buyout, rent extension |
-| `PurchaseSignCreateListener` | SignChangeEvent | `[em]` purchase sign registration |
+| `PurchaseSignCreateListener` | SignChangeEvent | Admin stall rent sign registration via `[em]` trigger token |
 | `PurchaseSignBreakListener` | BlockBreakEvent | Purchase sign destruction tracking |
 | `BlockProtectionListener` | BlockBreakEvent, BlockPlaceEvent | Admin bypass for sign break/place |
 | `ShopCreateListener` | ShopCreatedEvent | Shop creation side effects |

@@ -32,7 +32,7 @@ Items from TRADE transactions go to your **shop vault**. Open it with `/shopvaul
 
 Rent depends on your server's config:
 
-- **Formula mode**: `winningBid × rentPct%` per day (e.g. 1% of purchase price).
+- **Formula mode**: `purchasePrice × rentPct%` per day (e.g. 1% of purchase price).
 - **Flat mode**: A fixed amount per period regardless of stall price.
 
 Check the current rent on your stall by double-clicking the purchase sign.

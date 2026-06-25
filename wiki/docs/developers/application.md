@@ -76,7 +76,7 @@ Services return sealed `Result` classes (not exceptions) for predictable control
 
 ```kotlin
 sealed class Result<out T> {
-    data class Ok<T>(val value: T)
-    data class Rejected(val reason: String)
+    data class Ok<T>(val value: T) : Result<T>()
+    data class Rejected(val reason: String) : Result<Nothing>()
 }
 ```

@@ -93,7 +93,7 @@ data class Auction(
 | Port | Implementation | Purpose |
 |------|---------------|---------|
 | `StallRepository` | `StallRepositorySql` | Stall CRUD, lookup by region |
-| `ShopRepository` | `ShopRepositorySql` → `IndexedShopRepository` | Shop CRUD, lookup by container |
+| `ShopRepository` | `ShopRepositorySql` | Shop CRUD, lookup by container |
 | `AuctionRepository` | `AuctionRepositorySql` | Auction CRUD, bid tracking |
 | `ShopVaultRepository` | `ShopVaultRepositorySql` | Barter payment item storage |
 
