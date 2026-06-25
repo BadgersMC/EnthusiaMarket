@@ -50,7 +50,7 @@ class ShopEditMenu(
         render(player)
     }
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun render(player: Player) {
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.edit.title")))
         val pane = StaticPane(9, 3)
