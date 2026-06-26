@@ -35,6 +35,7 @@ private data class TradeContext(
  * with economy integration for both personal and guild shops.
  */
 @Service
+@Suppress("TooManyFunctions")
 open class ContainerTradeService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,

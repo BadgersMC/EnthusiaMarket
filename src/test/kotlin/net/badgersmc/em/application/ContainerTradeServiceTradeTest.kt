@@ -69,10 +69,8 @@ class ContainerTradeServiceTradeTest {
         stallRepo: StallRepository = mockk(relaxed = true),
         economy: EconomyProvider = mockk(relaxed = true),
         guildProvider: GuildProvider? = null,
-        vaultService: ShopVaultService = mockk(relaxed = true),
         mockCostStack: ItemStack = mockk(relaxed = true),
         mockContainer: Container = mockk(relaxed = true),
-        policyService: GuildTradePolicyService? = null,
     ): ContainerTradeService {
         return object : ContainerTradeService(stallRepo, economy, guildProvider) {
             override fun deserializeStack(base64: String): ItemStack? = mockCostStack
@@ -85,8 +83,6 @@ class ContainerTradeServiceTradeTest {
         val shop = testShop(sellAmount = 2, costAmount = 3)
         val stallRepo = mockk<StallRepository>(relaxed = true)
         every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
-
-        val vaultService = mockk<ShopVaultService>(relaxed = true)
 
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
@@ -169,42 +165,6 @@ class ContainerTradeServiceTradeTest {
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
     }
 
-    // ===== Guild trade policy tests =====
-
-    private val guildId = UUID.fromString("00000000-0000-0000-0000-0000000000aa")
-
-    private fun guildTestShop(
-        stallId: String = "stall_01",
-        frozen: Boolean = false,
-        sellAmount: Int = 1,
-        costAmount: Int = 100,
-        direction: SignDirection = SignDirection.SELL,
-    ): Shop = Shop(
-        stallId = stallId,
-        owner = ownerUuid,
-        direction = direction,
-        signWorld = "world", signX = 100, signY = 64, signZ = 200,
-        containerWorld = "world", containerX = 0, containerY = 0, containerZ = 0,
-        sellItem = "itemBase64", sellAmount = sellAmount,
-        costItem = "costBase64", costAmount = costAmount,
-        frozen = frozen,
-    )
-
-    private fun buildServiceWithPolicy(
-        stallRepo: StallRepository = mockk(relaxed = true),
-        economy: EconomyProvider = mockk(relaxed = true),
-        guildProvider: GuildProvider? = null,
-        vaultService: ShopVaultService = mockk(relaxed = true),
-        policyService: GuildTradePolicyService? = null,
-        mockCostStack: ItemStack = mockk(relaxed = true),
-        mockContainer: Container = mockk(relaxed = true),
-    ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider) {
-            override fun deserializeStack(base64: String): ItemStack? = mockCostStack
-            override fun getContainer(shop: Shop): Container? = mockContainer
-        }
-    }
-
     @Test
     fun `solo shop ignores policy (factor unaffected)`() {
         val shop = testShop(costAmount = 100) // guildId = null
@@ -233,10 +193,9 @@ class ContainerTradeServiceTradeTest {
         val container = mockk<Container>(relaxed = true)
         every { container.inventory } returns containerInv
 
-        val service = buildServiceWithPolicy(
+        val service = buildService(
             stallRepo = stallRepo,
             economy = economy,
-            policyService = policyService,
             mockContainer = container,
         )
 

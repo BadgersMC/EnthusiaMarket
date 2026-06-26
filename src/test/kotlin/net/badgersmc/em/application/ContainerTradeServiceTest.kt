@@ -85,7 +85,6 @@ class ContainerTradeServiceTest {
         guildProvider: GuildProvider? = null,
         mockItemStack: ItemStack = mockk(relaxed = true),
         mockContainer: Container = mockk(relaxed = true),
-        policyService: GuildTradePolicyService? = null,
     ): ContainerTradeService {
         return object : ContainerTradeService(stallRepo, economy, guildProvider) {
             override fun deserializeStack(base64: String): ItemStack? = mockItemStack

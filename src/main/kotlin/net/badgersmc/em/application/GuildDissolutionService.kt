@@ -30,7 +30,7 @@ import java.util.logging.Logger
 class GuildDissolutionService(
     private val stalls: StallRepository,
     private val eviction: StallEvictionService,
-    private val shops: ShopRepository,
+    @Suppress("unused") private val shops: ShopRepository,
     private val policies: GuildTradePolicyRepository,
 ) {
     private val log = Logger.getLogger(GuildDissolutionService::class.java.name)

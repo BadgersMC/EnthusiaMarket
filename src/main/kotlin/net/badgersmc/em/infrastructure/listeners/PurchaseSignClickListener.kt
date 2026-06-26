@@ -82,7 +82,7 @@ open class PurchaseSignClickListener(
                     player.sendMessage(lang.msg("purchase_sign.msg.buy_no_permission"))
                     return
                 }
-                handleBuy(player.uniqueId, sign.stallId, sign.price, player)
+                handleBuy(sign.stallId, sign.price, player)
             }
             StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING ->
                 player.sendMessage(
@@ -93,7 +93,7 @@ open class PurchaseSignClickListener(
         }
     }
 
-    private fun handleBuy(actor: UUID, stallId: net.badgersmc.em.domain.stall.StallId, price: Long, player: org.bukkit.entity.Player) {
+    private fun handleBuy(stallId: net.badgersmc.em.domain.stall.StallId, price: Long, player: org.bukkit.entity.Player) {
         // Open the purchase method menu — player chooses personal or guild buyout.
         // Guild option only appears if the player is in a guild with MANAGE_SHOPS.
         openPurchaseMethodMenu(stallId, price, player)
