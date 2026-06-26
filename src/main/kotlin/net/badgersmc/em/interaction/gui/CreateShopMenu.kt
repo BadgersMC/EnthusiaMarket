@@ -108,7 +108,6 @@ class CreateShopMenu(
                 searchEnabled = true,
                 costItemBase64 = costItemB64,
                 costAmountOverride = if (direction == SignDirection.TRADE) costItemAmount else null,
-                guildId = guildId,
             )
             if (!writeSignText(shop)) {
                 player.closeInventory()

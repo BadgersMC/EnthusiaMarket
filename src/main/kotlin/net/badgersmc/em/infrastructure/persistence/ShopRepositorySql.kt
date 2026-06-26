@@ -48,6 +48,10 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
     override fun all(): List<Shop> = queryMany("SELECT * FROM shop_items") {}
 
+    override fun countAll(): Int = queryCount("SELECT COUNT(*) FROM shop_items") {}
+    override fun countByOwner(owner: UUID): Int =
+        queryCount("SELECT COUNT(*) FROM shop_items WHERE owner = ?") { setString(1, owner.toString()) }
+
     override fun delete(id: Long) {
         ds.connection.use { conn ->
             conn.prepareStatement("DELETE FROM shop_items WHERE id = ?").use { ps ->
@@ -67,6 +71,43 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             }
         }
     }
+
+    override fun deleteByOwner(owner: UUID): Int {
+        return ds.connection.use { conn ->
+            conn.prepareStatement("DELETE FROM shop_items WHERE owner = ?").use { ps ->
+                ps.setString(1, owner.toString())
+                ps.executeUpdate()
+            }
+        }
+    }
+
+    override fun updateStock(id: Long, stockCount: Int) {
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE shop_items SET stock_count = ? WHERE id = ?").use { ps ->
+                ps.setInt(1, stockCount)
+                ps.setLong(2, id)
+                ps.executeUpdate()
+            }
+        }
+    }
+
+    override fun freezeByStall(stallId: String, frozen: Boolean) {
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE shop_items SET frozen = ? WHERE stall_id = ?").use { ps ->
+                ps.setBoolean(1, frozen)
+                ps.setString(2, stallId)
+                ps.executeUpdate()
+            }
+        }
+    }
+
+    override fun findBySellMaterial(material: String): List<Shop> =
+        queryMany("SELECT * FROM shop_items WHERE sell_material = ? AND search_enabled = 1") {
+            setString(1, material)
+        }
+
+    override fun backfillSellMaterials(): Int = 0
+    // Cannot backfill from base64 in SQL alone; handled at application layer
 
     private fun insert(shop: Shop): Shop {
         ds.connection.use { conn ->
@@ -132,6 +173,17 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ps.setBoolean(18, shop.frozen)
         ps.setBoolean(19, shop.adminShop)
         ps.setString(20, shop.direction.name)
+    }
+
+    private fun queryCount(sql: String, prep: PreparedStatement.() -> Unit): Int {
+        ds.connection.use { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.prep()
+                ps.executeQuery().use { rs ->
+                    return if (rs.next()) rs.getInt(1) else 0
+                }
+            }
+        }
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Shop? {

@@ -74,7 +74,7 @@ class ContainerTradeServiceTradeTest {
         mockContainer: Container = mockk(relaxed = true),
         policyService: GuildTradePolicyService? = null,
     ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider, vaultService, policyService) {
+        return object : ContainerTradeService(stallRepo, economy, guildProvider) {
             override fun deserializeStack(base64: String): ItemStack? = mockCostStack
             override fun getContainer(shop: Shop): Container? = mockContainer
         }
@@ -109,7 +109,7 @@ class ContainerTradeServiceTradeTest {
 
         val costStack = mockk<ItemStack>(relaxed = true)
 
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, vaultService, null) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null) {
             override fun deserializeStack(base64: String): ItemStack? = costStack
             override fun getContainer(shop: Shop): Container? = container
         }
@@ -189,7 +189,6 @@ class ContainerTradeServiceTradeTest {
         sellItem = "itemBase64", sellAmount = sellAmount,
         costItem = "costBase64", costAmount = costAmount,
         frozen = frozen,
-        guildId = guildId,
     )
 
     private fun buildServiceWithPolicy(
@@ -201,7 +200,7 @@ class ContainerTradeServiceTradeTest {
         mockCostStack: ItemStack = mockk(relaxed = true),
         mockContainer: Container = mockk(relaxed = true),
     ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider, vaultService, policyService) {
+        return object : ContainerTradeService(stallRepo, economy, guildProvider) {
             override fun deserializeStack(base64: String): ItemStack? = mockCostStack
             override fun getContainer(shop: Shop): Container? = mockContainer
         }

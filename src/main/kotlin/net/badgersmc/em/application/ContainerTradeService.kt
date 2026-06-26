@@ -109,6 +109,20 @@ open class ContainerTradeService(
         return executeSellTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!)
     }
 
+    /**
+     * Executes a barter trade (TRADE direction). Item-for-item exchange between
+     * player inventory and container, with economy-based cost bypassed. REQ-298.
+     */
+    fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
+        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
+        // Barter trades exchange items without economy transactions.
+        // Player gives costItem, receives sellItem from the container.
+        val preconditions = barterPreconditions(shop, playerUuid)
+        if (preconditions.result != null) return preconditions.result!!
+        return executeBarterTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, preconditions.costStack!!)
+    }
+
     private data class SellPreconditions(
         val ctx: TradeContext? = null,
         val sellStack: ItemStack? = null,
@@ -220,6 +234,58 @@ open class ContainerTradeService(
         return if (stall.owner.type == OwnerType.GUILD) {
             runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
         } else null
+    }
+
+    // --- Barter trade (TRADE direction) ---
+
+    private data class BarterPreconditions(
+        val ctx: TradeContext? = null,
+        val sellStack: ItemStack? = null,
+        val costStack: ItemStack? = null,
+        val result: ContainerTradeResult.Failure? = null
+    )
+
+    private fun barterPreconditions(shop: Shop, playerUuid: UUID): BarterPreconditions {
+        val stall = stallRepository.findById(StallId(shop.stallId))
+            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
+        val ownerUuid = resolveOwnerUuid(stall)
+            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid owner"))
+        val player = getPlayer(playerUuid)
+            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Player not online"))
+        val sellStack = buildSellStack(shop)
+            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
+        val costStack = deserializeStack(shop.costItem) ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid cost item"))
+        costStack.amount = shop.costAmount
+        if (!player.inventory.containsAtLeast(costStack, shop.costAmount))
+            return BarterPreconditions(result = ContainerTradeResult.Failure("You don't have the required trade items"))
+        val container = getContainer(shop)
+            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Container missing"))
+        if (!container.inventory.containsAtLeast(sellStack, shop.sellAmount))
+            return BarterPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
+        return BarterPreconditions(
+            TradeContext(ownerUuid, resolveGuildUuid(stall), player, container.inventory),
+            sellStack, costStack
+        )
+    }
+
+    private fun executeBarterTransaction(
+        shop: Shop, ctx: TradeContext, sellStack: ItemStack, costStack: ItemStack
+    ): ContainerTradeResult {
+        // Remove cost items from player
+        ctx.player.inventory.removeItem(costStack.clone())
+        // Remove sell items from container
+        ctx.containerInv.removeItem(sellStack.clone())
+        // Give sell items to player
+        val remainder = ctx.player.inventory.addItem(sellStack.clone())
+        if (remainder.isNotEmpty()) {
+            ctx.player.inventory.addItem(costStack.clone())
+            ctx.containerInv.addItem(sellStack.clone())
+            return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
+        }
+        // Give cost items to container
+        ctx.containerInv.addItem(costStack.clone())
+        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0)
+        return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
 
     protected open fun getContainer(shop: Shop): Container? {
