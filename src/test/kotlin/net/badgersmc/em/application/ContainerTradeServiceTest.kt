@@ -651,7 +651,7 @@ class ContainerTradeServiceTest {
 
         val result = service.executeBuy(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for invalid owner")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Invalid owner", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Stall not found", ignoreCase = true))
     }
 
     // ===== Guild-owned stalls =====

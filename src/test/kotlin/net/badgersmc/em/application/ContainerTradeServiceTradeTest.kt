@@ -7,6 +7,7 @@ import io.mockk.unmockkAll
 import io.mockk.verify
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -69,10 +70,11 @@ class ContainerTradeServiceTradeTest {
         stallRepo: StallRepository = mockk(relaxed = true),
         economy: EconomyProvider = mockk(relaxed = true),
         guildProvider: GuildProvider? = null,
+        shopVault: ShopVaultService? = mockk(relaxed = true),
         mockCostStack: ItemStack = mockk(relaxed = true),
         mockContainer: Container = mockk(relaxed = true),
     ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider) {
+        return object : ContainerTradeService(stallRepo, economy, guildProvider, shopVault) {
             override fun deserializeStack(base64: String): ItemStack? = mockCostStack
             override fun getContainer(shop: Shop): Container? = mockContainer
         }
@@ -105,7 +107,7 @@ class ContainerTradeServiceTradeTest {
 
         val costStack = mockk<ItemStack>(relaxed = true)
 
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, mockk(relaxed = true)) {
             override fun deserializeStack(base64: String): ItemStack? = costStack
             override fun getContainer(shop: Shop): Container? = container
         }

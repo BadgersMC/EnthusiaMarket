@@ -21,6 +21,16 @@ sealed class ContainerTradeResult {
     data class CompensationFailed(val error: String, val compensation: String) : ContainerTradeResult()
 }
 
+private data class TransactionEventData(
+    val player: Player,
+    val ownerUuid: UUID,
+    val item: ItemStack,
+    val quantity: Int,
+    val cost: Long,
+    val shopId: Long,
+    val direction: net.badgersmc.em.domain.shop.SignDirection
+)
+
 private data class TradeContext(
     val ownerUuid: UUID,
     val guildId: UUID?,
@@ -59,10 +69,8 @@ open class ContainerTradeService(
     )
 
     private fun buyPreconditions(shop: Shop, playerUuid: UUID): BuyPreconditions {
-        val stall = stallRepository.findById(StallId(shop.stallId))
+        val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
-        val ownerUuid = resolveOwnerUuid(stall)
-            ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Invalid owner"))
         val player = getPlayer(playerUuid)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Player not online"))
         val sellStack = buildSellStack(shop)
@@ -80,19 +88,27 @@ open class ContainerTradeService(
 
         val remainder = ctx.containerInv.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
-            // Undo only what was actually inserted before returning items to player
-            val inserted = sellStack.amount - remainder.values.sumOf { it.amount }
-            val toRemove = sellStack.clone().apply { amount = inserted }
-            ctx.containerInv.removeItem(toRemove)
-            ctx.player.inventory.addItem(sellStack)
+            undoPartialInsert(ctx.containerInv, ctx.player.inventory, sellStack, remainder)
             return ContainerTradeResult.Failure("Container is full")
         }
 
+        return processBuyPayment(shop, ctx, sellStack, playerUuid)
+    }
+
+    /** Reverses a partial container insertion — removes what was added, returns original items. */
+    private fun undoPartialInsert(containerInv: Inventory, playerInv: Inventory, sellStack: ItemStack, remainder: Map<Int, ItemStack>) {
+        val inserted = sellStack.amount - remainder.values.sumOf { it.amount }
+        val toRemove = sellStack.clone().apply { amount = inserted }
+        containerInv.removeItem(toRemove)
+        playerInv.addItem(sellStack)
+    }
+
+    /** Handles payment flow: withdraw from shop owner → deposit to player. */
+    private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, playerUuid: UUID): ContainerTradeResult {
         val cost = shop.costAmount.toLong()
         val guildId = ctx.guildId
 
-        val withdrawSuccess = withdrawFromShop(guildId, ctx.ownerUuid, cost)
-        if (!withdrawSuccess) {
+        if (!withdrawFromShop(guildId, ctx.ownerUuid, cost)) {
             rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
             return ContainerTradeResult.CompensationFailed(error = "Owner payment failed", compensation = "Item returned")
         }
@@ -106,7 +122,7 @@ open class ContainerTradeService(
             )
         }
 
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction)
+        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction))
         return ContainerTradeResult.Success("Sold ${shop.sellAmount}x for $cost")
     }
 
@@ -139,20 +155,17 @@ open class ContainerTradeService(
     )
 
     private fun sellPreconditions(shop: Shop, playerUuid: UUID): SellPreconditions {
-        val stall = stallRepository.findById(StallId(shop.stallId))
+        val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
-        val ownerUuid = resolveOwnerUuid(stall)
-            ?: return SellPreconditions(result = ContainerTradeResult.Failure("Invalid owner"))
         val player = getPlayer(playerUuid)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Player not online"))
         val sellStack = buildSellStack(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
         val container = getContainer(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Container missing"))
-        val containerInv = container.inventory
-        if (!containerInv.containsAtLeast(sellStack, shop.sellAmount))
+        if (!container.inventory.containsAtLeast(sellStack, shop.sellAmount))
             return SellPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
-        return SellPreconditions(TradeContext(ownerUuid, resolveGuildUuid(stall), player, containerInv), sellStack)
+        return SellPreconditions(TradeContext(ownerUuid, resolveGuildUuid(stall), player, container.inventory), sellStack)
     }
 
     private fun executeSellTransaction(
@@ -180,7 +193,7 @@ open class ContainerTradeService(
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
 
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction)
+        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction))
         return ContainerTradeResult.Success("Bought ${shop.sellAmount}x for $cost")
     }
 
@@ -221,12 +234,12 @@ open class ContainerTradeService(
         else economy.deposit(ownerUuid, cost)
     }
 
-    private fun fireTransactionEvent(player: Player, ownerUuid: UUID, item: ItemStack, quantity: Int, cost: Long, shopId: Long, direction: net.badgersmc.em.domain.shop.SignDirection) {
+    private fun fireTransactionEvent(data: TransactionEventData) {
         Bukkit.getPluginManager().callEvent(
             net.badgersmc.em.events.PostShopTransactionEvent(
-                buyer = player, landlordId = ownerUuid,
-                item = item, quantity = quantity, pricePaid = cost.toDouble(),
-                shopId = shopId, direction = direction
+                buyer = data.player, landlordId = data.ownerUuid,
+                item = data.item, quantity = data.quantity, pricePaid = data.cost.toDouble(),
+                shopId = data.shopId, direction = data.direction
             )
         )
     }
@@ -262,15 +275,14 @@ open class ContainerTradeService(
     )
 
     private fun barterPreconditions(shop: Shop, playerUuid: UUID): BarterPreconditions {
-        val stall = stallRepository.findById(StallId(shop.stallId))
+        val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
-        val ownerUuid = resolveOwnerUuid(stall)
-            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid owner"))
+        // Validate vault BEFORE any inventory mutation can occur (REQ — V016 shop vault contract)
+        if (shopVault == null) return BarterPreconditions(result = ContainerTradeResult.Failure("Vault unavailable"))
         val player = getPlayer(playerUuid)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Player not online"))
-        val sellStack = buildSellStack(shop)
+        val (sellStack, costStack) = buildBarterStacks(shop)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
-        val costStack = deserializeStack(shop.costItem) ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid cost item"))
         costStack.amount = shop.costAmount
         if (!player.inventory.containsAtLeast(costStack, shop.costAmount))
             return BarterPreconditions(result = ContainerTradeResult.Failure("You don't have the required trade items"))
@@ -282,6 +294,20 @@ open class ContainerTradeService(
             TradeContext(ownerUuid, resolveGuildUuid(stall), player, container.inventory),
             sellStack, costStack
         )
+    }
+
+    /** Returns owner UUID + stall, or null if stall/owner resolution fails. */
+    private fun resolveStallOwner(shop: Shop): Pair<UUID, net.badgersmc.em.domain.stall.Stall>? {
+        val stall = stallRepository.findById(StallId(shop.stallId)) ?: return null
+        val ownerUuid = resolveOwnerUuid(stall) ?: return null
+        return Pair(ownerUuid, stall)
+    }
+
+    /** Deserializes both sell and cost stacks, or null if either fails. */
+    private fun buildBarterStacks(shop: Shop): Pair<ItemStack, ItemStack>? {
+        val sellStack = buildSellStack(shop) ?: return null
+        val costStack = deserializeStack(shop.costItem) ?: return null
+        return Pair(sellStack, costStack)
     }
 
     private fun executeBarterTransaction(
@@ -300,7 +326,7 @@ open class ContainerTradeService(
         }
         // Give cost items to owner's vault (REQ — V016 shop vault contract)
         shopVault?.deposit(ctx.ownerUuid, costStack, costStack.amount)
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction)
+        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction))
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
 
