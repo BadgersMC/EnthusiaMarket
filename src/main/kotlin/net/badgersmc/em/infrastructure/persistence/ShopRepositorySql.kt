@@ -152,8 +152,43 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             setString(1, material)
         }
 
-    override fun backfillSellMaterials(): Int = 0
-    // Cannot backfill from base64 in SQL alone; handled at application layer
+    @Suppress("NestedBlockDepth")
+    override fun backfillSellMaterials(): Int {
+        var updated = 0
+        ds.connection.use { conn ->
+            conn.prepareStatement(
+                "SELECT id, sell_item FROM shop_items WHERE sell_material IS NULL OR sell_material = ''"
+            ).use { selectPs ->
+                selectPs.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        val material = extractMaterial(rs.getString("sell_item"))
+                        if (material != null) {
+                            updateSellMaterial(conn, rs.getLong("id"), material)
+                            updated++
+                        }
+                    }
+                }
+            }
+        }
+        return updated
+    }
+
+    private fun extractMaterial(base64: String): String? {
+        return try {
+            val bytes = java.util.Base64.getDecoder().decode(base64)
+            val stream = java.io.ByteArrayInputStream(bytes)
+            val item = org.bukkit.util.io.BukkitObjectInputStream(stream).readObject() as org.bukkit.inventory.ItemStack
+            item.type.name
+        } catch (_: Exception) { null }
+    }
+
+    private fun updateSellMaterial(conn: java.sql.Connection, id: Long, material: String) {
+        conn.prepareStatement("UPDATE shop_items SET sell_material = ? WHERE id = ?").use { ps ->
+            ps.setString(1, material)
+            ps.setLong(2, id)
+            ps.executeUpdate()
+        }
+    }
 
     private fun insert(shop: Shop): Shop {
         ds.connection.use { conn ->

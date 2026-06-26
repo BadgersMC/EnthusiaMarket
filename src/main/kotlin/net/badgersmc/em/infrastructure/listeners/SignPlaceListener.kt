@@ -64,6 +64,7 @@ open class SignPlaceListener(
         val direction = when (firstLine) {
             "[BUY]", "BUY" -> SignDirection.BUY
             "[SELL]", "SELL" -> SignDirection.SELL
+            "[TRADE]", "TRADE" -> SignDirection.TRADE
             else -> return
         }
 

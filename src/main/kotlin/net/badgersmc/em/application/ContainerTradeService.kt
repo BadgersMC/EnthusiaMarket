@@ -40,6 +40,7 @@ open class ContainerTradeService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider?,
+    private val shopVault: ShopVaultService? = null,
 ) {
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
@@ -297,8 +298,8 @@ open class ContainerTradeService(
             ctx.containerInv.addItem(sellStack.clone())
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
-        // Give cost items to container
-        ctx.containerInv.addItem(costStack.clone())
+        // Give cost items to owner's vault (REQ — V016 shop vault contract)
+        shopVault?.deposit(ctx.ownerUuid, costStack, costStack.amount)
         fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction)
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
