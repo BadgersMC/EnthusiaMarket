@@ -98,7 +98,7 @@ class CreateShopMenu(
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.create.confirm"))) { event ->
             event.isCancelled = true
             val shop = ShopFactory.build(
-                stallId = stallId, owner = stallOwner, creator = player.uniqueId,
+                stallId = stallId, owner = stallOwner,
                 signWorld = signLoc.world?.name ?: "world",
                 signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
                 containerWorld = containerLoc.world?.name ?: "world",
