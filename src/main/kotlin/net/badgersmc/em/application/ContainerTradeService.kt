@@ -78,6 +78,10 @@ open class ContainerTradeService(
 
         val remainder = ctx.containerInv.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
+            // Undo only what was actually inserted before returning items to player
+            val inserted = sellStack.amount - remainder.values.sumOf { it.amount }
+            val toRemove = sellStack.clone().apply { amount = inserted }
+            ctx.containerInv.removeItem(toRemove)
             ctx.player.inventory.addItem(sellStack)
             return ContainerTradeResult.Failure("Container is full")
         }
@@ -92,12 +96,15 @@ open class ContainerTradeService(
         }
 
         if (!economy.deposit(playerUuid, cost)) {
-            refundShop(guildId, ctx.ownerUuid, cost)
+            val refunded = refundShop(guildId, ctx.ownerUuid, cost)
             rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
-            return ContainerTradeResult.CompensationFailed(error = "Player deposit failed", compensation = "Full rollback")
+            return ContainerTradeResult.CompensationFailed(
+                error = "Player deposit failed",
+                compensation = if (refunded) "Full rollback" else "Partial rollback — shop refund failed"
+            )
         }
 
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost)
+        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction)
         return ContainerTradeResult.Success("Sold ${shop.sellAmount}x for $cost")
     }
 
@@ -163,11 +170,15 @@ open class ContainerTradeService(
         ctx.containerInv.removeItem(sellStack.clone())
         val remainder = ctx.player.inventory.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
+            // Pull back only what was actually accepted before rolling back the full transaction
+            val received = sellStack.amount - remainder.values.sumOf { it.amount }
+            val toRemove = sellStack.clone().apply { amount = received }
+            ctx.player.inventory.removeItem(toRemove)
             rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
 
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost)
+        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction)
         return ContainerTradeResult.Success("Bought ${shop.sellAmount}x for $cost")
     }
 
@@ -203,15 +214,17 @@ open class ContainerTradeService(
         else economy.deposit(ownerUuid, cost)
     }
 
-    private fun refundShop(guildId: UUID?, ownerUuid: UUID, cost: Long) {
-        if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) else economy.deposit(ownerUuid, cost)
+    private fun refundShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
+        return if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
+        else economy.deposit(ownerUuid, cost)
     }
 
-    private fun fireTransactionEvent(player: Player, ownerUuid: UUID, item: ItemStack, quantity: Int, cost: Long) {
+    private fun fireTransactionEvent(player: Player, ownerUuid: UUID, item: ItemStack, quantity: Int, cost: Long, shopId: Long, direction: net.badgersmc.em.domain.shop.SignDirection) {
         Bukkit.getPluginManager().callEvent(
             net.badgersmc.em.events.PostShopTransactionEvent(
                 buyer = player, landlordId = ownerUuid,
-                item = item, quantity = quantity, pricePaid = cost.toDouble()
+                item = item, quantity = quantity, pricePaid = cost.toDouble(),
+                shopId = shopId, direction = direction
             )
         )
     }
@@ -225,7 +238,8 @@ open class ContainerTradeService(
     private fun resolveOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
         return when (stall.owner.type) {
             OwnerType.SOLO -> try { UUID.fromString(stall.owner.id) } catch (_: IllegalArgumentException) { null }
-            OwnerType.GUILD, OwnerType.NONE -> null
+            OwnerType.GUILD -> try { UUID.fromString(stall.owner.id) } catch (_: IllegalArgumentException) { null }
+            OwnerType.NONE -> null
         }
     }
 
@@ -284,7 +298,7 @@ open class ContainerTradeService(
         }
         // Give cost items to container
         ctx.containerInv.addItem(costStack.clone())
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0)
+        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction)
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
 
