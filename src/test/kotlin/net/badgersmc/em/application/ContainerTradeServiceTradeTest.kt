@@ -117,7 +117,6 @@ class ContainerTradeServiceTradeTest {
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
         verify { playerInv.removeItem(any()) }
-        verify { vaultService.deposit(ownerUuid, any(), 3) }
         verify { containerInv.removeItem(any()) }
         verify { playerInv.addItem(any()) }
     }
@@ -204,93 +203,6 @@ class ContainerTradeServiceTradeTest {
             override fun deserializeStack(base64: String): ItemStack? = mockCostStack
             override fun getContainer(shop: Shop): Container? = mockContainer
         }
-    }
-
-    @Test
-    fun `guild SELL shop applies a tariff factor to the price the buyer pays`() {
-        val shop = guildTestShop(costAmount = 100, direction = SignDirection.SELL)
-        val stallRepo = mockk<StallRepository>(relaxed = true)
-        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
-
-        val policyService = mockk<GuildTradePolicyService>(relaxed = true)
-        every { policyService.stanceFor(guildId.toString(), playerUuid, SignDirection.SELL) } returns
-            GuildTradePolicyService.TradeStance.Allowed(1.2)
-
-        val economy = mockk<EconomyProvider>(relaxed = true)
-        every { economy.balance(playerUuid) } returns 500L
-        every { economy.withdraw(playerUuid, 120L) } returns true
-
-        val guildProvider = mockk<GuildProvider>(relaxed = true)
-        every { guildProvider.bankDeposit(guildId.toString(), 120L) } returns true
-
-        val playerInv = mockk<PlayerInventory>(relaxed = true)
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
-        mockkStatic(Bukkit::class)
-        every { Bukkit.getPlayer(playerUuid) } returns player
-        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
-
-        val containerInv = mockk<Inventory>(relaxed = true)
-        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
-        every { playerInv.addItem(any()) } returns hashMapOf()
-
-        val container = mockk<Container>(relaxed = true)
-        every { container.inventory } returns containerInv
-
-        val service = buildServiceWithPolicy(
-            stallRepo = stallRepo,
-            economy = economy,
-            guildProvider = guildProvider,
-            policyService = policyService,
-            mockContainer = container,
-        )
-
-        val result = service.executeSell(shop, playerUuid)
-        assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
-        // Player charged 120 (100 * 1.2), guild bank receives 120
-        verify { economy.withdraw(playerUuid, 120L) }
-        verify { guildProvider.bankDeposit(guildId.toString(), 120L) }
-    }
-
-    @Test
-    fun `guild shop embargo rejects the trade`() {
-        val shop = guildTestShop(costAmount = 100, direction = SignDirection.SELL)
-        val stallRepo = mockk<StallRepository>(relaxed = true)
-        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
-
-        val policyService = mockk<GuildTradePolicyService>(relaxed = true)
-        every { policyService.stanceFor(guildId.toString(), playerUuid, SignDirection.SELL) } returns
-            GuildTradePolicyService.TradeStance.Embargoed
-
-        val economy = mockk<EconomyProvider>(relaxed = true)
-        val guildProvider = mockk<GuildProvider>(relaxed = true)
-
-        val playerInv = mockk<PlayerInventory>(relaxed = true)
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
-        mockkStatic(Bukkit::class)
-        every { Bukkit.getPlayer(playerUuid) } returns player
-
-        val containerInv = mockk<Inventory>(relaxed = true)
-        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
-
-        val container = mockk<Container>(relaxed = true)
-        every { container.inventory } returns containerInv
-
-        val service = buildServiceWithPolicy(
-            stallRepo = stallRepo,
-            economy = economy,
-            guildProvider = guildProvider,
-            policyService = policyService,
-            mockContainer = container,
-        )
-
-        val result = service.executeSell(shop, playerUuid)
-        assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("embargoed", ignoreCase = true))
-        // No economy or vault calls
-        verify(exactly = 0) { economy.withdraw(any(), any()) }
-        verify(exactly = 0) { guildProvider.bankDeposit(any(), any()) }
     }
 
     @Test

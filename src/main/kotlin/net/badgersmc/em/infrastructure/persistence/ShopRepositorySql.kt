@@ -163,8 +163,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                  container_world, container_x, container_y, container_z,
                  sell_item, sell_amount, cost_item, cost_amount,
                  trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
-                 direction)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 direction, search_enabled, stock_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
             conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { ps ->
                 bind(ps, shop)
@@ -188,11 +188,11 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                      container_world = ?, container_x = ?, container_y = ?, container_z = ?,
                      sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
                      trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
-                     direction = ?
+                     direction = ?, search_enabled = ?, stock_count = ?
                    WHERE id = ?"""
             ).use { ps ->
                 bind(ps, shop)
-                ps.setLong(21, shop.id)
+                ps.setLong(23, shop.id)
                 ps.executeUpdate()
             }
         }
@@ -219,6 +219,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ps.setBoolean(18, shop.frozen)
         ps.setBoolean(19, shop.adminShop)
         ps.setString(20, shop.direction.name)
+        ps.setBoolean(21, shop.searchEnabled)
+        ps.setInt(22, shop.stockCount)
     }
 
     private fun queryCount(sql: String, prep: PreparedStatement.() -> Unit): Int {
@@ -289,6 +291,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                     rs.getString("direction") ?: "SELL"
                 )
             }.getOrDefault(net.badgersmc.em.domain.shop.SignDirection.SELL),
+            searchEnabled = rs.getBoolean("search_enabled"),
+            stockCount = rs.getInt("stock_count"),
         )
     }
 }
