@@ -153,25 +153,16 @@ class RentCollectionService(
      *  is the one-period rent due. Does NOT delete shops or clear WG —
      *  the auction winner inherits the stall with all bound shops. */
     private fun emergencyAuction(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
-        val auctionDuration = try {
-            Duration.parse(config.auction.defaultDuration)
-                .takeIf { !it.isZero && !it.isNegative }
-                ?: Duration.ofDays(1)
-        } catch (_: Exception) {
-            Duration.ofDays(1)
-        }
-        val antiSnipe = Duration.ofSeconds(config.auction.antiSnipeSec.toLong())
         val startingBid = maxOf(rentDue, 1L)
-
         val auction = Auction(
             id = AuctionId(UUID.randomUUID().toString()),
             stallId = stall.id,
             state = AuctionState.OPEN,
             startAt = now,
-            endAt = now.plus(auctionDuration),
+            endAt = now.plus(auctionDuration()),
             startingBid = startingBid,
             highBid = null,
-            antiSnipeWindow = antiSnipe,
+            antiSnipeWindow = Duration.ofSeconds(config.auction.antiSnipeSec.toLong()),
         )
         // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
         // (admin must manually create one). This prevents duplicate auctions on retry — the stall
@@ -179,6 +170,14 @@ class RentCollectionService(
         stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING, ownerSince = now))
         auctionRepository.create(auction)
         return ProcessResult.Evicted  // reuse Evicted for counting
+    }
+
+    private fun auctionDuration(): Duration = try {
+        Duration.parse(config.auction.defaultDuration)
+            .takeIf { !it.isZero && !it.isNegative }
+            ?: Duration.ofDays(1)
+    } catch (_: Exception) {
+        Duration.ofDays(1)
     }
 
     private fun collectionInterval(): Duration = try {
