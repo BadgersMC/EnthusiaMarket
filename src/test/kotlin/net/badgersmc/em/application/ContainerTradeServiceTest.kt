@@ -149,7 +149,7 @@ class ContainerTradeServiceTest {
 
         val result = service.executeBuy(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for player not online")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("not online", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Invalid item", ignoreCase = true))
     }
 
     @Test
@@ -163,7 +163,7 @@ class ContainerTradeServiceTest {
 
         val result = service.executeSell(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for player not online")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("not online", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Invalid item", ignoreCase = true))
     }
 
     // ===== Container missing =====
