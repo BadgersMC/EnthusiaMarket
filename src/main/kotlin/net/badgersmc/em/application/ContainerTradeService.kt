@@ -71,9 +71,7 @@ open class ContainerTradeService(
     private fun buyPreconditions(shop: Shop, playerUuid: UUID): BuyPreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
-        val player = getPlayer(playerUuid)
-            ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Player not online"))
-        val sellStack = buildSellStack(shop)
+        val (player, sellStack) = resolvePlayerAndSellStack(shop, playerUuid)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
         if (!player.inventory.containsAtLeast(sellStack, shop.sellAmount))
             return BuyPreconditions(result = ContainerTradeResult.Failure("You don't have the items to sell"))
@@ -157,9 +155,7 @@ open class ContainerTradeService(
     private fun sellPreconditions(shop: Shop, playerUuid: UUID): SellPreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
-        val player = getPlayer(playerUuid)
-            ?: return SellPreconditions(result = ContainerTradeResult.Failure("Player not online"))
-        val sellStack = buildSellStack(shop)
+        val (player, sellStack) = resolvePlayerAndSellStack(shop, playerUuid)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
         val container = getContainer(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Container missing"))
@@ -309,6 +305,13 @@ open class ContainerTradeService(
         val stall = stallRepository.findById(StallId(shop.stallId)) ?: return null
         val ownerUuid = resolveOwnerUuid(stall) ?: return null
         return Pair(ownerUuid, stall)
+    }
+
+    /** Returns online player + deserialized sell stack, or null if either fails. */
+    private fun resolvePlayerAndSellStack(shop: Shop, playerUuid: UUID): Pair<Player, ItemStack>? {
+        val player = getPlayer(playerUuid) ?: return null
+        val sellStack = buildSellStack(shop) ?: return null
+        return Pair(player, sellStack)
     }
 
     /** Deserializes both sell and cost stacks, or null if either fails. */
