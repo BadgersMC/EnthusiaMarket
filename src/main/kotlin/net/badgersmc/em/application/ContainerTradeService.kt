@@ -281,23 +281,31 @@ open class ContainerTradeService(
     private fun barterPreconditions(shop: Shop, playerUuid: UUID): BarterPreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
-        // Validate vault BEFORE any inventory mutation can occur (REQ — V016 shop vault contract)
         if (shopVault == null) return BarterPreconditions(result = ContainerTradeResult.Failure("Vault unavailable"))
-        val player = getPlayer(playerUuid)
-            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Player not online"))
-        val (sellStack, costStack) = buildBarterStacks(shop)
+        val (player, stacks) = resolveBarterPlayer(playerUuid, shop)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
-        costStack.amount = shop.costAmount
-        if (!player.inventory.containsAtLeast(costStack, shop.costAmount))
-            return BarterPreconditions(result = ContainerTradeResult.Failure("You don't have the required trade items"))
-        val container = getContainer(shop)
-            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Container missing"))
-        if (!container.inventory.containsAtLeast(sellStack, shop.sellAmount))
-            return BarterPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
+        val container = validateBarterStock(shop, player, stacks.first, stacks.second)
+            ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
         return BarterPreconditions(
             TradeContext(ownerUuid, resolveGuildUuid(stall), player, container.inventory),
-            sellStack, costStack
+            stacks.first, stacks.second
         )
+    }
+
+    /** Gets online player + deserialized barter stacks, or null. Sets costStack.amount. */
+    private fun resolveBarterPlayer(playerUuid: UUID, shop: Shop): Pair<Player, Pair<ItemStack, ItemStack>>? {
+        val player = getPlayer(playerUuid) ?: return null
+        val stacks = buildBarterStacks(shop) ?: return null
+        stacks.second.amount = shop.costAmount
+        return Pair(player, stacks)
+    }
+
+    /** Validates player has cost items and container has sell stock. Returns container or null. */
+    private fun validateBarterStock(shop: Shop, player: Player, sellStack: ItemStack, costStack: ItemStack): Container? {
+        if (!player.inventory.containsAtLeast(costStack, shop.costAmount)) return null
+        val container = getContainer(shop) ?: return null
+        if (!container.inventory.containsAtLeast(sellStack, shop.sellAmount)) return null
+        return container
     }
 
     /** Returns owner UUID + stall, or null if stall/owner resolution fails. */
