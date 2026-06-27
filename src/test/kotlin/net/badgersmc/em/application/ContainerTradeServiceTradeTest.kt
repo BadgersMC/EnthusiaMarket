@@ -140,7 +140,7 @@ class ContainerTradeServiceTradeTest {
         val service = buildService(stallRepo = stallRepo, mockContainer = mockk(relaxed = true))
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure)
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("don't have", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
     }
 
     @Test
