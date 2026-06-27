@@ -190,7 +190,10 @@ open class ContainerTradeService(
             val toRemove = sellStack.clone().apply { amount = received }
             ctx.player.inventory.removeItem(toRemove)
             rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
-            return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
+            return ContainerTradeResult.CompensationFailed(
+                error = "Inventory full",
+                compensation = "Trade reversed — check your inventory"
+            )
         }
 
         fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction))
@@ -205,10 +208,15 @@ open class ContainerTradeService(
     private fun rollbackFullTransaction(
         guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, cost: Long,
         containerInv: Inventory, sellStack: ItemStack
-    ) {
-        containerInv.addItem(sellStack)
-        if (guildId != null) guildProvider?.bankWithdraw(guildId.toString(), cost) else economy.withdraw(ownerUuid, cost)
-        economy.deposit(playerUuid, cost)
+    ): Boolean {
+        val itemsRestored = containerInv.addItem(sellStack).isEmpty()
+        val fundsReversed = if (guildId != null) {
+            guildProvider?.bankWithdraw(guildId.toString(), cost) == true
+        } else {
+            economy.withdraw(ownerUuid, cost)
+        }
+        val playerRefunded = economy.deposit(playerUuid, cost)
+        return itemsRestored && fundsReversed && playerRefunded
     }
 
     private fun canAffordShopCost(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
@@ -320,8 +328,13 @@ open class ContainerTradeService(
         // Give sell items to player
         val remainder = ctx.player.inventory.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
+            // Undo only what was actually inserted before rolling back
+            val received = sellStack.amount - remainder.values.sumOf { it.amount }
+            val toRemove = sellStack.clone().apply { amount = received }
+            ctx.player.inventory.removeItem(toRemove)
+            // Return to container only what was removed (not duplicated)
+            ctx.containerInv.addItem(toRemove)
             ctx.player.inventory.addItem(costStack.clone())
-            ctx.containerInv.addItem(sellStack.clone())
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
         // Give cost items to owner's vault (REQ — V016 shop vault contract)

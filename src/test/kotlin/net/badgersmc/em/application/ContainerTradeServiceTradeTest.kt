@@ -106,8 +106,10 @@ class ContainerTradeServiceTradeTest {
         every { container.inventory } returns containerInv
 
         val costStack = mockk<ItemStack>(relaxed = true)
+        every { costStack.amount } returns 3
 
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, mockk(relaxed = true)) {
+        val vaultService = mockk<ShopVaultService>(relaxed = true)
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, vaultService) {
             override fun deserializeStack(base64: String): ItemStack? = costStack
             override fun getContainer(shop: Shop): Container? = container
         }
@@ -117,6 +119,7 @@ class ContainerTradeServiceTradeTest {
         verify { playerInv.removeItem(any()) }
         verify { containerInv.removeItem(any()) }
         verify { playerInv.addItem(any()) }
+        verify { vaultService.deposit(ownerUuid, costStack, 3) }
     }
 
     @Test

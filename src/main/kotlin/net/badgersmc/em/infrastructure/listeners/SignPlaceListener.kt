@@ -161,7 +161,7 @@ open class SignPlaceListener(
                     return
                 }
                 val costText = plain.serialize(lines.getOrElse(2) { AdventureComponent.empty() }).trim()
-                val parts = costText.split(" ", limit = 2)
+                val parts = costText.split("\\s+".toRegex(), limit = 2)
                 val parsedAmount = parts.getOrNull(0)?.toIntOrNull()
                 val materialName = parts.getOrNull(1)?.uppercase()
                 val material = runCatching { Material.valueOf(materialName ?: "") }.getOrNull()
@@ -172,7 +172,7 @@ open class SignPlaceListener(
                 }
                 costItem = ItemStackSerializer.serialize(ItemStack(material, 1))
                 costAmount = parsedAmount
-                costDisplay = "$parsedAmount ${materialName.lowercase()}"
+                costDisplay = "$parsedAmount ${material.name.lowercase()}"
             }
         }
 
