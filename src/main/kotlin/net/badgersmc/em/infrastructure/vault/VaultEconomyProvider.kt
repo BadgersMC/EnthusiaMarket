@@ -5,7 +5,6 @@ import net.milkbowl.vault.economy.Economy
 import net.milkbowl.vault.economy.EconomyResponse
 import org.bukkit.Server
 import java.util.UUID
-import kotlin.math.roundToLong
 
 class VaultEconomyProvider(
     private val server: Server,
@@ -13,7 +12,7 @@ class VaultEconomyProvider(
 ) : EconomyProvider {
 
     override fun balance(player: UUID): Long =
-        economy.getBalance(server.getOfflinePlayer(player)).roundToLong()
+        economy.getBalance(server.getOfflinePlayer(player)).toLong()
 
     override fun withdraw(player: UUID, amount: Long): Boolean {
         val r = economy.withdrawPlayer(server.getOfflinePlayer(player), amount.toDouble())

@@ -25,12 +25,16 @@ open class ContainerTradeServiceHarness(
     guildProvider: GuildProvider? = null,
     tradePolicy: GuildTradePolicyService? = null,
     shopVault: ShopVaultService? = null,
+    /** Default stack returned when no keyed override matches. */
     private val mockItemStack: ItemStack = mockk(relaxed = true),
+    /** Per-Base64-key overrides — e.g. map shop.sellItem/costItem to distinct mocks. */
+    private val stacks: Map<String, ItemStack> = emptyMap(),
     private val mockContainer: Container? = mockk(relaxed = true),
     private val hasAtLeast: InventoryPredicate = inventoryAlwaysHas,
     private val canFit: InventoryPredicate = inventoryFitsWhenPositive,
 ) : ContainerTradeService(stallRepo, economy, guildProvider, tradePolicy, shopVault) {
-    override fun deserializeStack(base64: String): ItemStack? = mockItemStack
+    override fun deserializeStack(base64: String): ItemStack? =
+        stacks[base64] ?: mockItemStack
     override fun getContainer(shop: Shop): Container? = mockContainer
     override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
         hasAtLeast(inventory, template, amount)

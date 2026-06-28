@@ -18,6 +18,7 @@ import org.bukkit.event.Event
 import org.bukkit.Material
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.ItemMeta
 import org.bukkit.plugin.PluginManager
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -42,7 +43,15 @@ class ContainerStockListenerTest {
 
     private fun matchingStock(amount: Int): ItemStack = ItemStack(Material.DIAMOND, amount)
 
-    private fun nonMatchingStock(amount: Int): ItemStack = ItemStack(Material.IRON_INGOT, amount)
+    /** Same material as sellTemplate, but different display name — isSimilar would match,
+     *  but the byte-exact [net.badgersmc.em.application.ItemStackMatch] must reject it. */
+    private fun nonMatchingStock(amount: Int): ItemStack {
+        val stack = ItemStack(Material.DIAMOND, amount)
+        val meta = stack.itemMeta
+        meta.displayName(net.kyori.adventure.text.Component.text("Non-matching Diamond"))
+        stack.itemMeta = meta
+        return stack
+    }
 
     /** Creates a shop with the given coordinates. */
     private fun shop(
