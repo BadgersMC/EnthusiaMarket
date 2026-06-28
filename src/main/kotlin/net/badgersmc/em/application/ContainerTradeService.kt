@@ -196,17 +196,17 @@ open class ContainerTradeService(
             return ContainerTradeResult.Failure("Inventory full")
         }
         if (economy.balance(playerUuid) < cost) return ContainerTradeResult.Failure("Insufficient funds")
-        if (cost > 0L && !economy.withdraw(playerUuid, cost)) return ContainerTradeResult.Failure("Withdraw failed")
 
-        // Remove stock from container *before* crediting owner — the pre-check
+        // Remove stock from container *before* charging player — the pre-check
         // is a snapshot; the container could change in the meantime.
         val removalResult = ctx.containerInv.removeItem(sellStack.clone())
         if (removalResult.isNotEmpty()) {
-            economy.deposit(playerUuid, cost)
-            return ContainerTradeResult.CompensationFailed(
-                error = "Stock mismatch — container changed",
-                compensation = "Player refunded"
-            )
+            return ContainerTradeResult.Failure("Stock mismatch — container changed")
+        }
+
+        if (cost > 0L && !economy.withdraw(playerUuid, cost)) {
+            ctx.containerInv.addItem(sellStack.clone())
+            return ContainerTradeResult.Failure("Withdraw failed")
         }
 
         val guildId = ctx.guildId
