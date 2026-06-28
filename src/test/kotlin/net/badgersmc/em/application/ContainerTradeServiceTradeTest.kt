@@ -215,21 +215,12 @@ class ContainerTradeServiceTradeTest {
         val guildId = UUID.fromString("00000000-0000-0000-0000-000000000042")
         val shop = testShop(sellAmount = 2, costAmount = 3)
         val stallRepo = mockk<StallRepository>(relaxed = true)
-        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall().copy(
-            owner = OwnerRef.guild(guildId.toString())
-        )
-
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall().copy(owner = OwnerRef.guild(guildId.toString()))
         val policyService = mockk<GuildTradePolicyService>(relaxed = true)
-        every {
-            policyService.stanceFor(guildId.toString(), playerUuid, SignDirection.TRADE)
-        } returns GuildTradePolicyService.TradeStance.Embargoed
-
+        every { policyService.stanceFor(guildId.toString(), playerUuid, SignDirection.TRADE) } returns GuildTradePolicyService.TradeStance.Embargoed
         val (_, playerInv) = mockOnlinePlayer()
         val (container, containerInv) = mockContainerPair()
-
-        val service = buildService(stallRepo, tradePolicy = policyService, mockContainer = container)
-        val result = service.executeTrade(shop, playerUuid)
-
+        val result = buildService(stallRepo, tradePolicy = policyService, mockContainer = container).executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("embargoed", ignoreCase = true))
         verify(exactly = 0) { playerInv.removeItem(any()) }
