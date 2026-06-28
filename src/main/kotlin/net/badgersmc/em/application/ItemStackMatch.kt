@@ -26,15 +26,14 @@ object ItemStackMatch {
         val maxStack = template.maxStackSize
         for (slot in inventory.storageContents) {
             if (remaining <= 0) break
-            if (slot == null || slot.type.isAir) {
-                remaining -= maxStack
-                continue
-            }
-            if (bytesMatch(slot, templateBytes)) {
-                remaining -= (maxStack - slot.amount).coerceAtLeast(0)
-            }
+            remaining -= freeSpaceInSlot(slot, templateBytes, maxStack)
         }
         return remaining <= 0
+    }
+
+    private fun freeSpaceInSlot(slot: ItemStack?, templateBytes: ByteArray, maxStack: Int): Int {
+        if (slot == null || slot.type.isAir) return maxStack
+        return if (bytesMatch(slot, templateBytes)) (maxStack - slot.amount).coerceAtLeast(0) else 0
     }
 
     private fun bytesMatch(stack: ItemStack, templateBytes: ByteArray): Boolean =

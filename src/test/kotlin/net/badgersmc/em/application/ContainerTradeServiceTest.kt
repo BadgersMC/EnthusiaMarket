@@ -75,26 +75,35 @@ class ContainerTradeServiceTest {
         rentTerms = RentTerms.formula(0.01)
     )
 
-    /**
-     * Build a [ContainerTradeService] with overridden [getContainer] and [deserializeStack]
-     * so tests don't need a real Bukkit runtime or base64 ItemStack serialization.
-     */
     private fun buildService(
         stallRepo: StallRepository = mockk(relaxed = true),
         economy: EconomyProvider = mockk(relaxed = true),
         guildProvider: GuildProvider? = null,
         mockItemStack: ItemStack = mockk(relaxed = true),
-        mockContainer: Container = mockk(relaxed = true),
-        hasAtLeast: (Inventory, ItemStack, Int) -> Boolean = { _, _, _ -> true },
-        canFit: (Inventory, ItemStack, Int) -> Boolean = { _, _, amount -> amount > 0 },
-    ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider) {
-            override fun deserializeStack(base64: String): ItemStack? = mockItemStack
-            override fun getContainer(shop: Shop): Container? = mockContainer
-            override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
-                hasAtLeast(inventory, template, amount)
-            override fun inventoryCanFit(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
-                canFit(inventory, template, amount)
+        mockContainer: Container? = mockk(relaxed = true),
+        hasAtLeast: InventoryPredicate = inventoryAlwaysHas,
+        canFit: InventoryPredicate = inventoryFitsWhenPositive,
+    ): ContainerTradeService = ContainerTradeServiceHarness(
+        stallRepo, economy, guildProvider,
+        mockItemStack = mockItemStack,
+        mockContainer = mockContainer,
+        hasAtLeast = hasAtLeast,
+        canFit = canFit,
+    )
+
+    private fun mockPlayer(playerInv: PlayerInventory = mockk(relaxed = true)): Player =
+        mockk<Player>(relaxed = true).also {
+            every { it.inventory } returns playerInv
+            every { it.uniqueId } returns playerUuid
+        }
+
+    private fun assertBuyTransactionEvent(server: org.mockbukkit.mockbukkit.ServerMock, player: Player, mockItem: ItemStack) {
+        server.pluginManager.assertEventFired(PostShopTransactionEvent::class.java) { event ->
+            event.buyer == player &&
+                event.landlordId == ownerUuid &&
+                event.item == mockItem &&
+                event.quantity == 1 &&
+                event.pricePaid == 50.0
         }
     }
 
@@ -185,15 +194,10 @@ class ContainerTradeServiceTest {
         mockkStatic(Bukkit::class)
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
         every { Bukkit.getPlayer(playerUuid) } returns player
 
-        val service = object : ContainerTradeService(stallRepo, economy, null) {
-            override fun deserializeStack(base64: String): ItemStack? = mockk(relaxed = true)
-            override fun getContainer(shop: Shop): Container? = null
-            override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int) = true
-        }
+        val service = buildService(stallRepo = stallRepo, economy = economy, mockContainer = null)
 
         val result = service.executeBuy(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for missing container")
@@ -208,11 +212,7 @@ class ContainerTradeServiceTest {
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns mockk(relaxed = true)
 
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null) {
-            override fun deserializeStack(base64: String): ItemStack? = mockk(relaxed = true)
-            override fun getContainer(shop: Shop): Container? = null
-            override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int) = true
-        }
+        val service = buildService(stallRepo = stallRepo, mockContainer = null)
 
         val result = service.executeSell(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for missing container")
@@ -236,8 +236,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -282,9 +281,7 @@ class ContainerTradeServiceTest {
 
             val playerInv = mockk<PlayerInventory>(relaxed = true)
             every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
-
-            val player = mockk<Player>(relaxed = true)
-            every { player.inventory } returns playerInv
+            val player = mockPlayer(playerInv)
 
             mockkStatic(Bukkit::class)
             every { Bukkit.getPlayer(playerUuid) } returns player
@@ -307,14 +304,7 @@ class ContainerTradeServiceTest {
             val result = service.executeBuy(shop, playerUuid)
             assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
 
-            // Verify PostShopTransactionEvent was fired with correct fields
-            server.pluginManager.assertEventFired(PostShopTransactionEvent::class.java) { event ->
-                event.buyer == player &&
-                        event.landlordId == ownerUuid &&
-                        event.item == mockItem &&
-                        event.quantity == 1 &&
-                        event.pricePaid == 50.0
-            }
+            assertBuyTransactionEvent(server, player, mockItem)
         } finally {
             MockBukkit.unmock()
         }
@@ -330,13 +320,12 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns false
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
 
-        val service = buildService(stallRepo = stallRepo, hasAtLeast = { _, _, _ -> false })
+        val service = buildService(stallRepo = stallRepo, hasAtLeast = inventoryNeverHas)
 
         val result = service.executeBuy(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for lacking items")
@@ -358,8 +347,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -384,8 +372,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -436,8 +423,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.addItem(any()) } returns hashMapOf(0 to leftover)
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -476,8 +462,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -516,8 +501,7 @@ class ContainerTradeServiceTest {
         every { economy.deposit(ownerUuid, 75L) } returns true
 
         val playerInv = mockk<PlayerInventory>(relaxed = true)
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -561,7 +545,7 @@ class ContainerTradeServiceTest {
         val service = buildService(
             stallRepo = stallRepo,
             mockContainer = container,
-            hasAtLeast = { _, _, _ -> false },
+            hasAtLeast = inventoryNeverHas,
         )
 
         val result = service.executeSell(testShop(), playerUuid)
@@ -614,8 +598,7 @@ class ContainerTradeServiceTest {
         every { economy.balance(playerUuid) } returns 200L
 
         val playerInv = mockk<PlayerInventory>(relaxed = true)
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -628,7 +611,7 @@ class ContainerTradeServiceTest {
             stallRepo = stallRepo,
             economy = economy,
             mockContainer = container,
-            canFit = { _, _, _ -> false },
+            canFit = inventoryNeverFits,
         )
 
         val result = service.executeSell(shop, playerUuid)
@@ -692,8 +675,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -735,8 +717,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -770,8 +751,7 @@ class ContainerTradeServiceTest {
         every { guildProvider.bankDeposit(guildId.toString(), 75L) } returns true
 
         val playerInv = mockk<PlayerInventory>(relaxed = true)
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -818,8 +798,7 @@ class ContainerTradeServiceTest {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
@@ -865,8 +844,7 @@ class ContainerTradeServiceTest {
         val guildProvider = mockk<GuildProvider>(relaxed = true)
 
         val playerInv = mockk<PlayerInventory>(relaxed = true)
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
+        val player = mockPlayer(playerInv)
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player

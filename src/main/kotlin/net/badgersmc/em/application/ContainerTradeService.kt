@@ -63,7 +63,7 @@ open class ContainerTradeService(
         if (!canAffordShopCost(preconditions.ctx!!.guildId, preconditions.ownerUuid!!, effectiveCost)) {
             return guildPaymentFailure(preconditions.ctx!!.guildId, "Shop can't afford this")
         }
-        return executeBuyTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!, effectiveCost)
+        return executeBuyTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, effectiveCost)
     }
 
     private data class BuyPreconditions(
@@ -87,7 +87,6 @@ open class ContainerTradeService(
 
     private fun executeBuyTransaction(
         shop: Shop,
-        playerUuid: UUID,
         ctx: TradeContext,
         sellStack: ItemStack,
         effectiveCost: Long,
@@ -101,7 +100,7 @@ open class ContainerTradeService(
             return ContainerTradeResult.Failure("Container is full")
         }
 
-        return processBuyPayment(shop, ctx, sellStack, playerUuid, effectiveCost)
+        return processBuyPayment(shop, ctx, sellStack, effectiveCost)
     }
 
     /** Reverses a partial container insertion — removes what was added, returns original items. */
@@ -113,34 +112,33 @@ open class ContainerTradeService(
     }
 
     /** Handles payment flow: withdraw from shop owner → deposit to player. */
-    private fun processBuyPayment(
-        shop: Shop,
-        ctx: TradeContext,
-        sellStack: ItemStack,
-        playerUuid: UUID,
-        cost: Long,
-    ): ContainerTradeResult {
+    private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, cost: Long): ContainerTradeResult {
         val guildId = ctx.guildId
-
         if (!withdrawFromShop(guildId, ctx.ownerUuid, cost)) {
-            rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
-            return ContainerTradeResult.CompensationFailed(
-                error = guildPaymentFailure(guildId, "Owner payment failed").reason,
-                compensation = "Item returned"
-            )
+            return buyPaymentWithdrawFailed(ctx, sellStack, guildId)
         }
-
-        if (!economy.deposit(playerUuid, cost)) {
-            val refunded = refundShop(guildId, ctx.ownerUuid, cost)
-            rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
-            return ContainerTradeResult.CompensationFailed(
-                error = "Player deposit failed",
-                compensation = if (refunded) "Full rollback" else "Partial rollback — shop refund failed"
-            )
+        if (!economy.deposit(ctx.player.uniqueId, cost)) {
+            return buyPaymentDepositFailed(ctx, sellStack, guildId, cost)
         }
-
         fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction))
         return ContainerTradeResult.Success("Sold ${shop.sellAmount}x for $cost")
+    }
+
+    private fun buyPaymentWithdrawFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?): ContainerTradeResult {
+        rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
+        return ContainerTradeResult.CompensationFailed(
+            error = guildPaymentFailure(guildId, "Owner payment failed").reason,
+            compensation = "Item returned"
+        )
+    }
+
+    private fun buyPaymentDepositFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?, cost: Long): ContainerTradeResult {
+        val refunded = refundShop(guildId, ctx.ownerUuid, cost)
+        rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
+        return ContainerTradeResult.CompensationFailed(
+            error = "Player deposit failed",
+            compensation = if (refunded) "Full rollback" else "Partial rollback — shop refund failed"
+        )
     }
 
     fun executeSell(shop: Shop, playerUuid: UUID): ContainerTradeResult {
@@ -415,6 +413,10 @@ open class ContainerTradeService(
         }
     }
 
-    private fun guildPaymentFailure(_guildId: UUID?, defaultMessage: String): ContainerTradeResult.Failure =
-        ContainerTradeResult.Failure(defaultMessage)
+    private fun guildPaymentFailure(guildId: UUID?, defaultMessage: String): ContainerTradeResult.Failure {
+        if (guildId != null && guildProvider == null) {
+            return ContainerTradeResult.Failure("Guild bank is unavailable")
+        }
+        return ContainerTradeResult.Failure(defaultMessage)
+    }
 }
