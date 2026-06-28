@@ -58,7 +58,7 @@ open class ContainerTradeService(
         if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
         val preconditions = buyPreconditions(shop, playerUuid)
         if (preconditions.result != null) return preconditions.result!!
-        val (effectiveCost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong())
+        val (effectiveCost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong(), preconditions.ctx!!.guildId)
         if (policyFailure != null) return policyFailure
         if (!canAffordShopCost(preconditions.ctx!!.guildId, preconditions.ownerUuid!!, effectiveCost)) {
             return guildPaymentFailure(preconditions.ctx!!.guildId, "Shop can't afford this")
@@ -162,6 +162,8 @@ open class ContainerTradeService(
         // Player gives costItem, receives sellItem from the container.
         val preconditions = barterPreconditions(shop, playerUuid)
         if (preconditions.result != null) return preconditions.result!!
+        val (_, policyFailure) = resolveEffectiveCost(shop, playerUuid, 0L, preconditions.ctx!!.guildId)
+        if (policyFailure != null) return policyFailure
         return executeBarterTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, preconditions.costStack!!)
     }
 
@@ -186,7 +188,7 @@ open class ContainerTradeService(
     private fun executeSellTransaction(
         shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack
     ): ContainerTradeResult {
-        val (cost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong())
+        val (cost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong(), ctx.guildId)
         if (policyFailure != null) return policyFailure
 
         if (!inventoryCanFit(ctx.player.inventory, sellStack, shop.sellAmount)) {
@@ -198,10 +200,10 @@ open class ContainerTradeService(
         val guildId = ctx.guildId
         val depositSuccess = depositToShop(guildId, ctx.ownerUuid, cost)
         if (!depositSuccess) {
-            economy.deposit(playerUuid, cost)
+            val playerRefunded = economy.deposit(playerUuid, cost)
             return ContainerTradeResult.CompensationFailed(
                 error = guildPaymentFailure(guildId, "Owner deposit failed").reason,
-                compensation = "Player refunded"
+                compensation = if (playerRefunded) "Player refunded" else "Partial compensation — player refund failed"
             )
         }
 
@@ -399,8 +401,9 @@ open class ContainerTradeService(
         shop: Shop,
         playerUuid: UUID,
         baseCost: Long,
+        guildId: UUID?,
     ): Pair<Long, ContainerTradeResult.Failure?> {
-        val ownerGuildId = resolveOwnerGuildId(shop) ?: return baseCost to null
+        val ownerGuildId = guildId?.toString() ?: return baseCost to null
         val policy = tradePolicy ?: return baseCost to null
         return when (val stance = policy.stanceFor(ownerGuildId, playerUuid, shop.direction)) {
             is GuildTradePolicyService.TradeStance.Embargoed ->
@@ -412,18 +415,6 @@ open class ContainerTradeService(
         }
     }
 
-    private fun resolveOwnerGuildId(shop: Shop): String? {
-        val stall = stallRepository.findById(StallId(shop.stallId)) ?: return null
-        return if (stall.owner.type == OwnerType.GUILD) stall.owner.id else null
-    }
-
-    private fun guildPaymentFailure(guildId: UUID?, defaultMessage: String): ContainerTradeResult.Failure {
-        if (guildId == null) return ContainerTradeResult.Failure(defaultMessage)
-        val balance = guildProvider?.bankBalance(guildId.toString()) ?: 0L
-        return if (balance <= 0L) {
-            ContainerTradeResult.Failure("Guild bank is frozen or unavailable")
-        } else {
-            ContainerTradeResult.Failure(defaultMessage)
-        }
-    }
+    private fun guildPaymentFailure(_guildId: UUID?, defaultMessage: String): ContainerTradeResult.Failure =
+        ContainerTradeResult.Failure(defaultMessage)
 }

@@ -9,16 +9,19 @@ object ItemStackMatch {
     fun matches(a: ItemStack, b: ItemStack): Boolean =
         normalizedBytes(a).contentEquals(normalizedBytes(b))
 
-    fun countIn(inventory: Inventory, template: ItemStack): Int =
-        inventory.contents.filterNotNull()
-            .filter { matches(it, template) }
+    fun countIn(inventory: Inventory, template: ItemStack): Int {
+        val templateBytes = normalizedBytes(template)
+        return inventory.contents.filterNotNull()
+            .filter { bytesMatch(it, templateBytes) }
             .sumOf { it.amount }
+    }
 
     fun containsAtLeast(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
         countIn(inventory, template) >= amount
 
     fun canFit(inventory: Inventory, template: ItemStack, amount: Int): Boolean {
         if (amount <= 0) return false
+        val templateBytes = normalizedBytes(template)
         var remaining = amount
         val maxStack = template.maxStackSize
         for (slot in inventory.storageContents) {
@@ -27,12 +30,15 @@ object ItemStackMatch {
                 remaining -= maxStack
                 continue
             }
-            if (matches(slot, template)) {
+            if (bytesMatch(slot, templateBytes)) {
                 remaining -= (maxStack - slot.amount).coerceAtLeast(0)
             }
         }
         return remaining <= 0
     }
+
+    private fun bytesMatch(stack: ItemStack, templateBytes: ByteArray): Boolean =
+        normalizedBytes(stack).contentEquals(templateBytes)
 
     private fun normalizedBytes(stack: ItemStack): ByteArray {
         val single = stack.clone()

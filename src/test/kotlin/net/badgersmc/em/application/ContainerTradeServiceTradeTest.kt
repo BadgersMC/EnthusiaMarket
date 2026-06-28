@@ -229,4 +229,43 @@ class ContainerTradeServiceTradeTest {
         // policyService.stanceFor was never called
         io.mockk.verify(exactly = 0) { policyService.stanceFor(any(), any(), any()) }
     }
+
+    @Test
+    fun `executeTrade fails when guild stall is embargoed`() {
+        val guildId = UUID.fromString("00000000-0000-0000-0000-000000000042")
+        val shop = testShop(sellAmount = 2, costAmount = 3)
+
+        val stallRepo = mockk<StallRepository>(relaxed = true)
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall().copy(
+            owner = OwnerRef.guild(guildId.toString())
+        )
+
+        val policyService = mockk<GuildTradePolicyService>(relaxed = true)
+        every {
+            policyService.stanceFor(guildId.toString(), playerUuid, SignDirection.TRADE)
+        } returns GuildTradePolicyService.TradeStance.Embargoed
+
+        val playerInv = mockk<PlayerInventory>(relaxed = true)
+        val player = mockk<Player>(relaxed = true)
+        every { player.inventory } returns playerInv
+
+        mockkStatic(Bukkit::class)
+        every { Bukkit.getPlayer(playerUuid) } returns player
+
+        val containerInv = mockk<Inventory>(relaxed = true)
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns containerInv
+
+        val service = buildService(
+            stallRepo = stallRepo,
+            tradePolicy = policyService,
+            mockContainer = container,
+        )
+
+        val result = service.executeTrade(shop, playerUuid)
+        assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("embargoed", ignoreCase = true))
+        verify(exactly = 0) { playerInv.removeItem(any()) }
+        verify(exactly = 0) { containerInv.removeItem(any()) }
+    }
 }

@@ -634,6 +634,9 @@ class ContainerTradeServiceTest {
         val result = service.executeSell(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Inventory full", ignoreCase = true))
+        verify(exactly = 0) { containerInv.removeItem(any()) }
+        verify(exactly = 0) { economy.withdraw(any(), any()) }
+        verify(exactly = 0) { economy.deposit(ownerUuid, any()) }
     }
 
     // ===== Invalid owner UUID =====
