@@ -70,13 +70,20 @@ class ContainerTradeServiceTradeTest {
         stallRepo: StallRepository = mockk(relaxed = true),
         economy: EconomyProvider = mockk(relaxed = true),
         guildProvider: GuildProvider? = null,
+        tradePolicy: GuildTradePolicyService? = null,
         shopVault: ShopVaultService? = mockk(relaxed = true),
         mockCostStack: ItemStack = mockk(relaxed = true),
         mockContainer: Container = mockk(relaxed = true),
+        hasAtLeast: (Inventory, ItemStack, Int) -> Boolean = { _, _, _ -> true },
+        canFit: (Inventory, ItemStack, Int) -> Boolean = { _, _, amount -> amount > 0 },
     ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider, shopVault) {
+        return object : ContainerTradeService(stallRepo, economy, guildProvider, tradePolicy, shopVault) {
             override fun deserializeStack(base64: String): ItemStack? = mockCostStack
             override fun getContainer(shop: Shop): Container? = mockContainer
+            override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int) =
+                hasAtLeast(inventory, template, amount)
+            override fun inventoryCanFit(inventory: Inventory, template: ItemStack, amount: Int) =
+                canFit(inventory, template, amount)
         }
     }
 
@@ -109,9 +116,10 @@ class ContainerTradeServiceTradeTest {
         every { costStack.amount } returns 3
 
         val vaultService = mockk<ShopVaultService>(relaxed = true)
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, vaultService) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, shopVault = vaultService) {
             override fun deserializeStack(base64: String): ItemStack? = costStack
             override fun getContainer(shop: Shop): Container? = container
+            override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int) = true
         }
 
         val result = service.executeTrade(shop, playerUuid)
@@ -137,7 +145,11 @@ class ContainerTradeServiceTradeTest {
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
 
-        val service = buildService(stallRepo = stallRepo, mockContainer = mockk(relaxed = true))
+        val service = buildService(
+            stallRepo = stallRepo,
+            mockContainer = mockk(relaxed = true),
+            hasAtLeast = { _, _, _ -> false },
+        )
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure)
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
@@ -164,7 +176,11 @@ class ContainerTradeServiceTradeTest {
         val container = mockk<Container>(relaxed = true)
         every { container.inventory } returns containerInv
 
-        val service = buildService(stallRepo = stallRepo, mockContainer = container)
+        val service = buildService(
+            stallRepo = stallRepo,
+            mockContainer = container,
+            hasAtLeast = { inv, _, _ -> inv != containerInv },
+        )
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure)
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
@@ -201,6 +217,7 @@ class ContainerTradeServiceTradeTest {
         val service = buildService(
             stallRepo = stallRepo,
             economy = economy,
+            tradePolicy = policyService,
             mockContainer = container,
         )
 

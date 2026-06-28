@@ -24,9 +24,9 @@ class VaultEconomyProviderTest {
         return VaultEconomyProvider(server, economy)
     }
 
-    @Test fun `balance reads from vault as truncated long`() {
+    @Test fun `balance reads from vault rounded to nearest long`() {
         every { economy.getBalance(offline) } returns 1234.99
-        assertEquals(1234L, provider().balance(uuid))
+        assertEquals(1235L, provider().balance(uuid))
     }
 
     @Test fun `withdraw returns true when vault reports success`() {
