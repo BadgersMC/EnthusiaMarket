@@ -289,13 +289,17 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: return AuctionResult.Failure("Stall not found for auction")
 
-        // Gate: SOLO-owned stalls require the caller to be the owner.
-        // System auctions (OwnerType.NONE) are allowed through — the
-        // command layer already enforces enthUsiamarket.admin.
-        if (stall.owner.type == OwnerType.SOLO &&
-            stall.owner.id != playerUuid.toString()
-        ) {
-            return AuctionResult.Failure("Only the stall owner can cancel this auction")
+        // Gate: only the stall owner (SOLO) or an admin cancelling a
+        // system auction (NONE) may cancel. GUILD auctions are not
+        // cancellable via this path — the caller must be the owner.
+        when (stall.owner.type) {
+            OwnerType.SOLO -> if (stall.owner.id != playerUuid.toString()) {
+                return AuctionResult.Failure("Only the stall owner can cancel this auction")
+            }
+            OwnerType.GUILD -> return AuctionResult.Failure(
+                "Guild-owned auctions cannot be cancelled this way"
+            )
+            OwnerType.NONE -> { /* system auction — command layer enforces admin */ }
         }
 
         val closed = auction.close()
@@ -341,7 +345,7 @@ class AuctionLifecycleService(
                     val stall = stallRepository.findById(auction.stallId)
                     if (stall != null
                         && stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
-                        && stall.state == StallState.AUCTIONING
+                        && stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
                     ) {
                         stallRepository.save(stall.copy(state = StallState.UNOWNED))
                         // M3 — drop any lingering sell offer on the
