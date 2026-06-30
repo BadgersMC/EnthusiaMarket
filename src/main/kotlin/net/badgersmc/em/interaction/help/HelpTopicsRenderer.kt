@@ -83,7 +83,7 @@ object HelpTopicsRenderer {
         return out.build()
     }
 
-    private fun renderCommandEntry(entry: HelpTopic.CommandEntry): Component {
+    private fun renderCommandEntry(entry: HelpCommandEntry): Component {
         val line = Component.text()
             .append(Component.text("  ", NamedTextColor.DARK_GRAY))
             .append(Component.text(entry.syntax, NamedTextColor.WHITE))
