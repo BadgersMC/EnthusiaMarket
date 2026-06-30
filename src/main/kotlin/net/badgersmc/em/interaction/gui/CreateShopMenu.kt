@@ -81,10 +81,10 @@ class CreateShopMenu(
         val preview = ItemStackSerializer.deserialize(sellItemBase64) ?: ItemStack(Material.BARRIER)
         pane.addItem(GuiItem(preview), 0, 1)
         addStepButtons(pane, 1, 1,
-            get = { amount },
-            set = { amount = it },
+            get = { amount.toLong() },
+            set = { amount = it.toInt() },
             rerender = { render(player) },
-            coerce = { coerceAtLeast(1) },
+            coerce = { coerceAtLeast(1L) },
             displayLabel = { lang.msg("gui.shop.create.amount", "amount" to amount) },
         )
 
@@ -137,10 +137,10 @@ class CreateShopMenu(
         pane: StaticPane,
         col: Int,
         row: Int,
-        get: () -> Int,
-        set: (Int) -> Unit,
+        get: () -> Long,
+        set: (Long) -> Unit,
         rerender: () -> Unit,
-        coerce: Int.() -> Int,
+        coerce: Long.() -> Long,
         displayLabel: () -> Component,
     ) {
         data class Step(val delta: Int, val mat: Material, val langKey: String)
@@ -181,10 +181,10 @@ class CreateShopMenu(
 
     private fun renderCurrencyCost(pane: StaticPane, player: Player) {
         addStepButtons(pane, 1, 2,
-            get = { price.coerceIn(1, Int.MAX_VALUE.toLong()).toInt() },
-            set = { price = it.toLong() },
+            get = { price.coerceIn(1, Long.MAX_VALUE) },
+            set = { price = it },
             rerender = { render(player) },
-            coerce = { coerceIn(1, Int.MAX_VALUE) },
+            coerce = { coerceIn(1, Long.MAX_VALUE) },
             displayLabel = { lang.msg("gui.shop.create.price", "price" to price) },
         )
     }
@@ -207,10 +207,10 @@ class CreateShopMenu(
 
         // Cost amount controls with step buttons
         addStepButtons(pane, 2, 2,
-            get = { costItemAmount },
-            set = { costItemAmount = it },
+            get = { costItemAmount.toLong() },
+            set = { costItemAmount = it.toInt() },
             rerender = { render(player) },
-            coerce = { coerceAtLeast(1) },
+            coerce = { coerceAtLeast(1L) },
             displayLabel = { lang.msg("gui.shop.create.cost_amount", "amount" to costItemAmount) },
         )
     }

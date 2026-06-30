@@ -111,9 +111,9 @@ class PurchaseMenu(
             }
         }
 
-        pane.addItem(GuiItem(decorated(receiveItem.type, receiveName, receiveLore)), 2, 1)
+        pane.addItem(GuiItem(decorated(receiveItem, receiveName, receiveLore)), 2, 1)
         pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 1)
-        pane.addItem(GuiItem(decorated(giveItem.type, giveName, giveLore)), 6, 1)
+        pane.addItem(GuiItem(decorated(giveItem, giveName, giveLore)), 6, 1)
 
         // --- Row 2: action button ---
         val buttonKey = when (shop.direction) {
@@ -165,6 +165,15 @@ class PurchaseMenu(
         return item
     }
 
+    private fun decorated(base: ItemStack, name: Component, lore: List<Component> = emptyList()): ItemStack {
+        val item = base.clone()
+        val meta = item.itemMeta ?: return item
+        meta.displayName(name)
+        if (lore.isNotEmpty()) meta.lore(lore)
+        item.itemMeta = meta
+        return item
+    }
+
     /** IS2-12, REQ-298: add a shulker preview button when the shop sells a shulker box. */
     private fun addShulkerPreview(pane: StaticPane, player: Player) {
         val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return
@@ -176,6 +185,6 @@ class PurchaseMenu(
         )) { event ->
             event.isCancelled = true
             ShulkerPreviewMenu(sellStack.clone(), lang).open(player)
-        }, 4, 0)
+        }, 8, 0)
     }
 }
