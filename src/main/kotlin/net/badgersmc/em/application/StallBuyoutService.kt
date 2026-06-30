@@ -138,7 +138,7 @@ class StallBuyoutService(
         stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) ||
             auctions.findOpenByStall(stallId) != null
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
 
