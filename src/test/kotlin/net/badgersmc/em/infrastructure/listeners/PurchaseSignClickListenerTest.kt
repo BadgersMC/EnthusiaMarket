@@ -6,6 +6,7 @@ import io.mockk.verify
 import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.application.StallRentExtensionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.sign.PurchaseSign
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.Stall
@@ -83,6 +84,7 @@ class PurchaseSignClickListenerTest {
         val listener = object : PurchaseSignClickListener(
             signs,
             stalls,
+            mockk<AuctionRepository>(relaxed = true),
             buyout,
             mockk<StallRentExtensionService>(relaxed = true),
             mockk<EnthusiaMarketConfig>(relaxed = true),

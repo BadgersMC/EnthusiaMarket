@@ -10,6 +10,7 @@ import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
@@ -288,7 +289,12 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: return AuctionResult.Failure("Stall not found for auction")
 
-        if (stall.owner != OwnerRef.solo(playerUuid)) {
+        // Gate: SOLO-owned stalls require the caller to be the owner.
+        // System auctions (OwnerType.NONE) are allowed through — the
+        // command layer already enforces enthUsiamarket.admin.
+        if (stall.owner.type == OwnerType.SOLO &&
+            stall.owner.id != playerUuid.toString()
+        ) {
             return AuctionResult.Failure("Only the stall owner can cancel this auction")
         }
 
@@ -474,7 +480,8 @@ class AuctionLifecycleService(
                 )
             }
             try {
-                if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)) {
+                if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
+                    stall.owner.type == OwnerType.NONE) {
                     stallRepository.save(stall.copy(state = StallState.UNOWNED))
                     fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                 }

@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.application.StallRentExtensionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallRepository
@@ -45,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap
 open class PurchaseSignClickListener(
     private val signs: PurchaseSignRepository,
     private val stalls: StallRepository,
+    private val auctions: AuctionRepository,
     private val buyout: StallBuyoutService,
     private val rentExtension: StallRentExtensionService,
     private val config: EnthusiaMarketConfig,
@@ -91,11 +93,16 @@ open class PurchaseSignClickListener(
                 player.sendMessage(
                     lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value)
                 )
-                player.sendMessage(
-                    AdventureComponent.text("  Click to bid: ", NamedTextColor.GRAY)
-                        .append(AdventureComponent.text("/em bid " + sign.stallId.value + " ", NamedTextColor.YELLOW)
-                            .clickEvent(ClickEvent.suggestCommand("/em bid " + sign.stallId.value + " ")))
-                )
+                val auction = auctions.findOpenByStall(sign.stallId)
+                if (auction != null) {
+                    val cmd = "/em bid ${auction.id} "
+                    player.sendMessage(
+                        AdventureComponent.text("  /em bid ", NamedTextColor.GRAY)
+                            .append(AdventureComponent.text(auction.id.value, NamedTextColor.YELLOW)
+                                .clickEvent(ClickEvent.suggestCommand(cmd)))
+                            .append(AdventureComponent.text(" <amount>", NamedTextColor.GRAY))
+                    )
+                }
             }
             StallState.OWNED, StallState.GRACE ->
                 handleExtension(player.uniqueId, sign.stallId, sign.locationKey, player)
