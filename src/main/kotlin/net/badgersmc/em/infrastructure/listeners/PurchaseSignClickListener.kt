@@ -10,6 +10,9 @@ import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.interaction.gui.PurchaseMethodMenu
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.event.ClickEvent
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
 import org.bukkit.Tag
 import org.bukkit.event.EventHandler
@@ -84,10 +87,16 @@ open class PurchaseSignClickListener(
                 }
                 handleBuy(sign.stallId, sign.price, player)
             }
-            StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING ->
+            StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING -> {
                 player.sendMessage(
                     lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value)
                 )
+                player.sendMessage(
+                    Component.text("  Click to bid: ", NamedTextColor.GRAY)
+                        .append(Component.text("/em bid " + sign.stallId.value + " ", NamedTextColor.YELLOW)
+                            .clickEvent(ClickEvent.suggestCommand("/em bid " + sign.stallId.value + " ")))
+                )
+            }
             StallState.OWNED, StallState.GRACE ->
                 handleExtension(player.uniqueId, sign.stallId, sign.locationKey, player)
         }

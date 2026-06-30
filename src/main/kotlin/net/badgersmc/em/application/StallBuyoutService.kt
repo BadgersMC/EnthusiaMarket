@@ -14,6 +14,7 @@ import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -46,6 +47,9 @@ class StallBuyoutService(
 ) {
 
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
+
+    /** Injectable clock for deterministic time-travel in tests. */
+    internal var clock: Clock = Clock.systemUTC()
 
     sealed interface Result {
         data class Purchased(val stall: Stall, val price: Long, val owner: OwnerRef) : Result
@@ -144,6 +148,19 @@ class StallBuyoutService(
         // stall right now; click-to-buy is for the post-auction lifecycle.
         if (isAuctionLive(stall, stallId)) return Result.AuctionLive
 
+        // REQ-XXX: direct-buy delay gate. If a recent closed auction exists
+        // and its end time + config delay has not yet passed, block direct
+        // purchase so the release plan's "auction-only window" is enforced.
+        if (config.auction.directBuyDelaySeconds > 0) {
+            val recentClosed = auctions.findMostRecentClosedByStall(stallId)
+            if (recentClosed != null) {
+                val allowedAt = recentClosed.endAt.plusSeconds(config.auction.directBuyDelaySeconds)
+                if (clock.instant() < allowedAt) {
+                    return Result.Rejected("Direct purchase opens after the auction window ends")
+                }
+            }
+        }
+
         if (stall.state != StallState.UNOWNED) {
             return Result.AlreadyOwned
         }
@@ -156,7 +173,7 @@ class StallBuyoutService(
 
         val previousState = stall.state
         val updated = try {
-            val now = Instant.now()
+            val now = clock.instant()
             val awarded = stall.awardTo(owner, price, now)
                 .copy(nextRentAt = now.plus(collectionInterval()))
             stalls.save(awarded)
