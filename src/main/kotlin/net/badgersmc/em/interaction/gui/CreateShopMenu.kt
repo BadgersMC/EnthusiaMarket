@@ -132,6 +132,7 @@ class CreateShopMenu(
      * Add 6 step buttons + center display in a row:
      *   [+1][+5][+10]  [VALUE]  [-10][-5][-1]
      */
+    @Suppress("LongParameterList")
     private fun addStepButtons(
         pane: StaticPane,
         col: Int,
