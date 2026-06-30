@@ -80,7 +80,7 @@ class CreateShopMenu(
         // Layout: [preview] [+1][+5][+10][AMOUNT][-10][-5][-1]
         val preview = ItemStackSerializer.deserialize(sellItemBase64) ?: ItemStack(Material.BARRIER)
         pane.addItem(GuiItem(preview), 0, 1)
-        addStepButtons(pane, 1, 1, amount,
+        addStepButtons(pane, 1, 1,
             get = { amount },
             set = { amount = it },
             rerender = { render(player) },
@@ -136,7 +136,6 @@ class CreateShopMenu(
         pane: StaticPane,
         col: Int,
         row: Int,
-        defaultValue: Int,
         get: () -> Int,
         set: (Int) -> Unit,
         rerender: () -> Unit,
@@ -180,8 +179,7 @@ class CreateShopMenu(
     }
 
     private fun renderCurrencyCost(pane: StaticPane, player: Player) {
-        val priceInt = price.coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
-        addStepButtons(pane, 1, 2, priceInt,
+        addStepButtons(pane, 1, 2,
             get = { price.coerceIn(1, Int.MAX_VALUE.toLong()).toInt() },
             set = { price = it.toLong() },
             rerender = { render(player) },
@@ -207,7 +205,7 @@ class CreateShopMenu(
         pane.addItem(GuiItem(costPreview), 1, 2)
 
         // Cost amount controls with step buttons
-        addStepButtons(pane, 2, 2, costItemAmount,
+        addStepButtons(pane, 2, 2,
             get = { costItemAmount },
             set = { costItemAmount = it },
             rerender = { render(player) },

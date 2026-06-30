@@ -34,7 +34,7 @@ class PurchaseMenu(
     private val lang: LangService,
 ) : Menu {
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     override fun open(player: Player) {
         val sellStack = ItemStackSerializer.deserialize(shop.sellItem)
         val sellName = sellStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "?"

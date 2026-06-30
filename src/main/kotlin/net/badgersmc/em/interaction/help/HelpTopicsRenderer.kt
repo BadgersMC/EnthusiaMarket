@@ -22,16 +22,7 @@ object HelpTopicsRenderer {
         val header = Component.text("─── EnthusiaMarket Help ───", NamedTextColor.GOLD, TextDecoration.BOLD)
         val intro = Component.text("Pick a topic (click or type /em help <topic>):", NamedTextColor.GRAY)
 
-        val entries = HelpTopics.all.map { topic ->
-            Component.text()
-                .append(Component.text("  [", NamedTextColor.DARK_GRAY))
-                .append(Component.text(topic.displayName, NamedTextColor.YELLOW))
-                .append(Component.text("] ", NamedTextColor.DARK_GRAY))
-                .append(Component.text(topic.summary, NamedTextColor.GRAY))
-                .clickEvent(ClickEvent.runCommand("/em help ${topic.slug}"))
-                .hoverEvent(HoverEvent.showText(Component.text("Open ${topic.displayName} help", NamedTextColor.GOLD)))
-                .build()
-        }
+        val entries = HelpTopics.all.map { topic -> renderTopicEntry(topic) }
 
         val wikiLink = Component.text()
             .append(Component.text("Full wiki: ", NamedTextColor.GRAY))
@@ -50,30 +41,22 @@ object HelpTopicsRenderer {
         return out.build()
     }
 
+    private fun renderTopicEntry(topic: HelpTopic): Component {
+        return Component.text()
+            .append(Component.text("  [", NamedTextColor.DARK_GRAY))
+            .append(Component.text(topic.displayName, NamedTextColor.YELLOW))
+            .append(Component.text("] ", NamedTextColor.DARK_GRAY))
+            .append(Component.text(topic.summary, NamedTextColor.GRAY))
+            .clickEvent(ClickEvent.runCommand("/em help ${topic.slug}"))
+            .hoverEvent(HoverEvent.showText(Component.text("Open ${topic.displayName} help", NamedTextColor.GOLD)))
+            .build()
+    }
+
     fun renderTopicPage(topic: HelpTopic): Component {
         val header = Component.text("─── Help · ${topic.displayName} ───", NamedTextColor.GOLD, TextDecoration.BOLD)
         val summary = Component.text(topic.summary, NamedTextColor.GRAY)
 
-        val commandLines = topic.commands.map { entry ->
-            val line = Component.text()
-                .append(Component.text("  ", NamedTextColor.DARK_GRAY))
-                .append(Component.text(entry.syntax, NamedTextColor.WHITE))
-            if (entry.prefill.isNotEmpty()) {
-                line.clickEvent(ClickEvent.suggestCommand(entry.prefill))
-                    .hoverEvent(
-                        HoverEvent.showText(
-                            Component.text()
-                                .append(Component.text(entry.blurb, NamedTextColor.GOLD))
-                                .append(Component.newline())
-                                .append(Component.text("Click to prefill in chat", NamedTextColor.GRAY))
-                                .build(),
-                        ),
-                    )
-            } else {
-                line.hoverEvent(HoverEvent.showText(Component.text(entry.blurb, NamedTextColor.GOLD)))
-            }
-            line.build()
-        }
+        val commandLines = topic.commands.map { entry -> renderCommandEntry(entry) }
 
         val wikiUrl = "${HelpTopics.WIKI_BASE_URL}/${topic.slug}/"
         val wikiLine = Component.text()
@@ -98,5 +81,26 @@ object HelpTopicsRenderer {
             .append(wikiLine).append(Component.newline())
             .append(back)
         return out.build()
+    }
+
+    private fun renderCommandEntry(entry: HelpTopic.CommandEntry): Component {
+        val line = Component.text()
+            .append(Component.text("  ", NamedTextColor.DARK_GRAY))
+            .append(Component.text(entry.syntax, NamedTextColor.WHITE))
+        if (entry.prefill.isNotEmpty()) {
+            line.clickEvent(ClickEvent.suggestCommand(entry.prefill))
+                .hoverEvent(
+                    HoverEvent.showText(
+                        Component.text()
+                            .append(Component.text(entry.blurb, NamedTextColor.GOLD))
+                            .append(Component.newline())
+                            .append(Component.text("Click to prefill in chat", NamedTextColor.GRAY))
+                            .build(),
+                    ),
+                )
+        } else {
+            line.hoverEvent(HoverEvent.showText(Component.text(entry.blurb, NamedTextColor.GOLD)))
+        }
+        return line.build()
     }
 }
