@@ -148,9 +148,15 @@ class StallBuyoutService(
         // stall right now; click-to-buy is for the post-auction lifecycle.
         if (isAuctionLive(stall, stallId)) return Result.AuctionLive
 
+        if (stall.state != StallState.UNOWNED) {
+            return Result.AlreadyOwned
+        }
+
         // REQ-XXX: direct-buy delay gate. If a recent closed auction exists
         // and its end time + config delay has not yet passed, block direct
         // purchase so the release plan's "auction-only window" is enforced.
+        // This runs AFTER the ownership check so owned stalls short-circuit
+        // correctly with AlreadyOwned.
         if (config.auction.directBuyDelaySeconds > 0) {
             val recentClosed = auctions.findMostRecentClosedByStall(stallId)
             if (recentClosed != null) {
@@ -159,10 +165,6 @@ class StallBuyoutService(
                     return Result.Rejected("Direct purchase opens after the auction window ends")
                 }
             }
-        }
-
-        if (stall.state != StallState.UNOWNED) {
-            return Result.AlreadyOwned
         }
 
         enforceLimit(owner, payer, stall)?.let { return it }
