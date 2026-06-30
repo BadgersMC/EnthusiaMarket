@@ -86,7 +86,6 @@ class PurchaseSignClickListenerTest {
             highBid = null,
             antiSnipeWindow = Duration.ofMinutes(10),
         )
-    }
 
     private fun purchaseSign(stallId: String = "stall_01", price: Long = 500): PurchaseSign {
         val sign = mockk<PurchaseSign>(relaxed = true)
