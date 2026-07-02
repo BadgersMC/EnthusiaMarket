@@ -89,7 +89,6 @@ class PurchaseMenu(
         gui.show(player)
     }
 
-    @Suppress("LongMethod")
     private fun buildMultiplierControls(pane: StaticPane, player: Player) {
         pane.addItem(GuiItem(decorated(Material.RED_DYE,
             lang.msg("gui.shop.create.btn_minus1", "delta" to -1, "val" to (multiplier - 1)))) { event ->
@@ -108,6 +107,7 @@ class PurchaseMenu(
         }, 3, 2)
     }
 
+    @Suppress("LongMethod")
     private fun buildConfirmButton(pane: StaticPane, player: Player) {
         val buttonKey = when (shop.direction) {
             SignDirection.SELL -> "gui.shop.confirm_buy"
@@ -123,14 +123,14 @@ class PurchaseMenu(
         )) { event ->
             event.isCancelled = true
             var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
-            repeat(multiplier) {
+            for (i in 1..multiplier) {
                 val result = when (shop.direction) {
                     SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
                     SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
                     SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
                 }
                 lastResult = result
-                if (result !is ContainerTradeResult.Success) return@repeat
+                if (result !is ContainerTradeResult.Success) break
             }
             when (lastResult) {
                 is ContainerTradeResult.Success -> player.sendMessage(
@@ -173,8 +173,8 @@ class PurchaseMenu(
         if ((sell.itemMeta as? BlockStateMeta)?.blockState !is org.bukkit.block.ShulkerBox) return
         pane.addItem(GuiItem(decorated(
             Material.SHULKER_BOX,
-            lang.msg("gui.shop.shulker_preview_name"),
-            listOf(lang.msg("gui.shop.shulker_preview_lore")),
+            lang.msg("gui.shulker_preview.name"),
+            listOf(lang.msg("gui.shulker_preview.lore")),
         )) { event ->
             event.isCancelled = true
             ShulkerPreviewMenu(sell.clone(), lang).open(player)

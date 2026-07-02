@@ -13,11 +13,12 @@ jobs:
       LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds.jar
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12  # v4.7.1
         with:
           distribution: temurin
           java-version: 21
@@ -42,19 +43,31 @@ jobs:
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
       - name: Download latest LumaGuilds release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p libs
-          LG_RELEASE=$(curl -s https://api.github.com/repos/BadgersMC/LumaGuilds/releases/latest)
-          LG_ASSET_URL=$(echo "$LG_RELEASE" | python3 -c "import sys,json; r=json.load(sys.stdin); print(next(a['browser_download_url'] for a in r['assets'] if a['name'].endswith('.jar')))")
+          LG_RELEASE=$(curl -sS -H "Authorization: token $GH_TOKEN" \
+            https://api.github.com/repos/BadgersMC/LumaGuilds/releases/latest)
+          LG_ASSET_URL=$(echo "$LG_RELEASE" | python3 -c "
+          import sys, json
+          r = json.load(sys.stdin)
+          if 'assets' not in r:
+              print(f'ERROR: bad API response: {json.dumps(r)[:200]}', file=sys.stderr)
+              sys.exit(1)
+          print(next(a['browser_download_url'] for a in r['assets'] if a['name'].endswith('.jar')))
+          ")
           echo "Downloading LumaGuilds from $LG_ASSET_URL"
-          curl -sL -o libs/LumaGuilds.jar "$LG_ASSET_URL"
+          curl -sSL -o libs/LumaGuilds.jar "$LG_ASSET_URL"
           ls -lh libs/LumaGuilds.jar
 
       - name: Build shadowJar
-        run: ./gradlew shadowJar --no-daemon -PreleaseVersion=${{ steps.bump.outputs.version }}
+        env:
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: ./gradlew shadowJar --no-daemon -PreleaseVersion="$RELEASE_VERSION"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c062c56c59f2f0e1e71e0b01860c94f45d72c030  # v2.2.2
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: EnthusiaMarket v${{ steps.bump.outputs.version }}

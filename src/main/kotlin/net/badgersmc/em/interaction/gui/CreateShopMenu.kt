@@ -197,9 +197,9 @@ class CreateShopMenu(
         costMeta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
         costPreview.itemMeta = costMeta
         pane.addItem(GuiItem(costPreview) { event ->
-            event.isCancelled = false // let player place items naturally
-            val cursor = event.view.cursor ?: event.cursor
-            if (cursor.type != Material.AIR && cursor.amount > 0) {
+            event.isCancelled = true
+            val cursor = event.cursor
+            if (cursor != null && cursor.type != Material.AIR && cursor.amount > 0) {
                 costItemB64 = ItemStackSerializer.serialize(cursor.clone().apply { amount = 1 })
                 costItemAmount = cursor.amount.coerceAtLeast(1)
                 render(player)
