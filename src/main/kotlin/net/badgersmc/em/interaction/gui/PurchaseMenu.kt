@@ -107,7 +107,6 @@ class PurchaseMenu(
         }, 3, 2)
     }
 
-    @Suppress("LongMethod")
     private fun buildConfirmButton(pane: StaticPane, player: Player) {
         val buttonKey = when (shop.direction) {
             SignDirection.SELL -> "gui.shop.confirm_buy"
@@ -122,31 +121,35 @@ class PurchaseMenu(
             Material.LIME_STAINED_GLASS_PANE, lang.msg(buttonKey), buttonLore,
         )) { event ->
             event.isCancelled = true
-            var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
-            for (i in 1..multiplier) {
-                val result = when (shop.direction) {
-                    SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
-                    SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
-                    SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
-                }
-                lastResult = result
-                if (result !is ContainerTradeResult.Success) break
-            }
-            when (lastResult) {
-                is ContainerTradeResult.Success -> player.sendMessage(
-                    lang.msg("shop.trade.success", "message" to lastResult.message),
-                )
-                is ContainerTradeResult.Failure -> player.sendMessage(
-                    lang.msg("shop.trade.failure", "reason" to lastResult.reason),
-                )
-                is ContainerTradeResult.CompensationFailed -> {
-                    player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to lastResult.error))
-                    player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to lastResult.compensation))
-                }
-            }
+            executeTrade(player)
             multiplier = 1
             render(player)
         }, 5, 2)
+    }
+
+    private fun executeTrade(player: Player) {
+        var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
+        for (_ in 1..multiplier) {
+            val result = when (shop.direction) {
+                SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
+                SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
+                SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
+            }
+            lastResult = result
+            if (result !is ContainerTradeResult.Success) break
+        }
+        when (lastResult) {
+            is ContainerTradeResult.Success -> player.sendMessage(
+                lang.msg("shop.trade.success", "message" to lastResult.message),
+            )
+            is ContainerTradeResult.Failure -> player.sendMessage(
+                lang.msg("shop.trade.failure", "reason" to lastResult.reason),
+            )
+            is ContainerTradeResult.CompensationFailed -> {
+                player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to lastResult.error))
+                player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to lastResult.compensation))
+            }
+        }
     }
 
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
