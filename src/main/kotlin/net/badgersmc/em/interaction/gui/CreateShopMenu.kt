@@ -209,10 +209,10 @@ class CreateShopMenu(
                 costItemAmount = cursor.amount.coerceAtLeast(1)
                 render(player)
             }
-        }, 1, 2)
+        }, 0, 2)
 
         // Cost amount controls with step buttons
-        addStepButtons(pane, 2, 2,
+        addStepButtons(pane, 1, 2,
             get = { costItemAmount.toLong() },
             set = { costItemAmount = it.toInt() },
             rerender = { render(player) },
