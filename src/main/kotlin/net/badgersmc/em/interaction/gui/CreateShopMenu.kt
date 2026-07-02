@@ -13,6 +13,7 @@ import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -191,11 +192,15 @@ class CreateShopMenu(
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
         // Cost item slot — unrestricted, player can drag items from inventory
-        val costPreview = costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)
-        val costMeta = costPreview.itemMeta ?: costPreview.itemMeta
-        costMeta.displayName(lang.msg("gui.shop.create.cost_item_set"))
-        costMeta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
-        costPreview.itemMeta = costMeta
+        val costPreview = (costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)).let { item ->
+            val meta = item.itemMeta
+            if (meta != null) {
+                meta.displayName(lang.msg("gui.shop.create.cost_item_set"))
+                meta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
+                item.itemMeta = meta
+            }
+            item
+        }
         pane.addItem(GuiItem(costPreview) { event ->
             event.isCancelled = true
             val cursor = event.cursor
@@ -225,7 +230,7 @@ class CreateShopMenu(
         return item
     }
 
-    /** Write the shop's direction/amount/price onto the sign after creation. Returns true on success. */
+    /** Write the shop's direction/amount/price onto the sign after creation (matches ShopSignRenderer formatting). */
     private fun writeSignText(shop: Shop): Boolean {
         val world = signLoc.world ?: return false
         val block = world.getBlockAt(signLoc.blockX, signLoc.blockY, signLoc.blockZ)
@@ -233,16 +238,21 @@ class CreateShopMenu(
         val side = sign.getSide(Side.FRONT)
         val sellMatName = try { ItemStackSerializer.deserialize(sellItemBase64)?.type?.name?.lowercase()
             ?: "?" } catch (_: Exception) { "?" }
-        side.line(0, Component.text("[${shop.direction.name}]"))
-        side.line(1, Component.text("${shop.sellAmount}x $sellMatName"))
+        val headerColor = when (shop.direction) {
+            SignDirection.BUY -> NamedTextColor.GOLD
+            SignDirection.TRADE -> NamedTextColor.LIGHT_PURPLE
+            else -> NamedTextColor.AQUA
+        }
+        side.line(0, Component.text("[${shop.direction.name}]", headerColor))
+        side.line(1, Component.text("${shop.sellAmount}x $sellMatName", NamedTextColor.WHITE))
         val costText = if (shop.direction == SignDirection.TRADE) {
             val costItem = try { ItemStackSerializer.deserialize(shop.costItem) } catch (_: Exception) { null }
             "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "?"}"
         } else {
             "${shop.costAmount}"
         }
-        side.line(2, Component.text(costText))
-        side.line(3, Component.text("[Shop]"))
+        side.line(2, Component.text(costText, NamedTextColor.GOLD))
+        side.line(3, Component.text("[Shop]", NamedTextColor.GOLD))
         return sign.update(true, false)
     }
 }

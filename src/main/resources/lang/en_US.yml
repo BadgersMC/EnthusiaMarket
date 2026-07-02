@@ -169,6 +169,8 @@ shop:
   trade:
     success: "<gray>[<gold>Shop</gold>] <green><message>"
     failure: "<gray>[<gold>Shop</gold>] <red><reason>"
+    partial_failure: "<gray>[<gold>Shop</gold>] <gold><completed> of <total> trades completed. <red>Last: <reason>"
+    partial_compensation: "<gray>[<gold>Shop</gold>] <gold><completed> of <total> trades completed. <red>Last failed: <error>"
     compensation_failed: "<gray>[<gold>Shop</gold>] <red>Trade failed: <error>"
     compensation_note: "<gray>  Compensation: <compensation>"
   create:

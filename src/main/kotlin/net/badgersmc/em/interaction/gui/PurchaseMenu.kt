@@ -129,23 +129,37 @@ class PurchaseMenu(
 
     private fun executeTrade(player: Player) {
         var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
-        for (_ in 1..multiplier) {
+        var completed = 0
+        for (iter in 0 until multiplier) {
             val result = when (shop.direction) {
                 SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
                 SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
                 SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
             }
             lastResult = result
-            if (result !is ContainerTradeResult.Success) break
+            if (result is ContainerTradeResult.Success) {
+                completed++
+            } else {
+                break
+            }
         }
-        when (lastResult) {
-            is ContainerTradeResult.Success -> player.sendMessage(
-                lang.msg("shop.trade.success", "message" to lastResult.message),
+        when {
+            completed == multiplier -> player.sendMessage(
+                lang.msg("shop.trade.success", "message" to (lastResult as ContainerTradeResult.Success).message),
             )
-            is ContainerTradeResult.Failure -> player.sendMessage(
+            completed > 0 && lastResult is ContainerTradeResult.Failure -> {
+                player.sendMessage(lang.msg("shop.trade.partial_failure",
+                    "completed" to completed, "total" to multiplier, "reason" to lastResult.reason))
+            }
+            completed > 0 && lastResult is ContainerTradeResult.CompensationFailed -> {
+                player.sendMessage(lang.msg("shop.trade.partial_compensation",
+                    "completed" to completed, "total" to multiplier, "error" to lastResult.error))
+                player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to lastResult.compensation))
+            }
+            completed == 0 && lastResult is ContainerTradeResult.Failure -> player.sendMessage(
                 lang.msg("shop.trade.failure", "reason" to lastResult.reason),
             )
-            is ContainerTradeResult.CompensationFailed -> {
+            completed == 0 && lastResult is ContainerTradeResult.CompensationFailed -> {
                 player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to lastResult.error))
                 player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to lastResult.compensation))
             }
