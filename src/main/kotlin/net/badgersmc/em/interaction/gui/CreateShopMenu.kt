@@ -190,20 +190,21 @@ class CreateShopMenu(
     }
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
-        // Cost item from hand button
-        pane.addItem(GuiItem(decorated(Material.CHEST, lang.msg("gui.shop.create.cost_item_set"))) { event ->
-            event.isCancelled = true
-            val hand = player.inventory.itemInMainHand
-            if (hand.type != Material.AIR && hand.amount > 0) {
-                costItemB64 = ItemStackSerializer.serialize(hand.clone().apply { amount = 1 })
-                costItemAmount = hand.amount.coerceAtLeast(1)
+        // Cost item slot — unrestricted, player can drag items from inventory
+        val costPreview = costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)
+        val costMeta = costPreview.itemMeta ?: costPreview.itemMeta
+        costMeta.displayName(lang.msg("gui.shop.create.cost_item_set"))
+        costMeta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
+        costPreview.itemMeta = costMeta
+        pane.addItem(GuiItem(costPreview) { event ->
+            event.isCancelled = false // let player place items naturally
+            val cursor = event.view.cursor ?: event.cursor
+            if (cursor.type != Material.AIR && cursor.amount > 0) {
+                costItemB64 = ItemStackSerializer.serialize(cursor.clone().apply { amount = 1 })
+                costItemAmount = cursor.amount.coerceAtLeast(1)
                 render(player)
             }
-        }, 0, 2)
-
-        // Show current cost item
-        val costPreview = costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)
-        pane.addItem(GuiItem(costPreview), 1, 2)
+        }, 1, 2)
 
         // Cost amount controls with step buttons
         addStepButtons(pane, 2, 2,
@@ -230,8 +231,10 @@ class CreateShopMenu(
         val block = world.getBlockAt(signLoc.blockX, signLoc.blockY, signLoc.blockZ)
         val sign = block.state as? Sign ?: return false
         val side = sign.getSide(Side.FRONT)
+        val sellMatName = try { ItemStackSerializer.deserialize(sellItemBase64)?.type?.name?.lowercase()
+            ?: "?" } catch (_: Exception) { "?" }
         side.line(0, Component.text("[${shop.direction.name}]"))
-        side.line(1, Component.text("${shop.sellAmount}"))
+        side.line(1, Component.text("${shop.sellAmount}x $sellMatName"))
         val costText = if (shop.direction == SignDirection.TRADE) {
             val costItem = try { ItemStackSerializer.deserialize(shop.costItem) } catch (_: Exception) { null }
             "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "?"}"

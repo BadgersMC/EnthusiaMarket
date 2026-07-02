@@ -301,7 +301,8 @@ gui:
       btn_minus10: "<red><val> ← -10"
       btn_minus5: "<red><val> ← -5"
       btn_minus1: "<red><val> ← -1"
-      cost_item_set: "<light_purple>Set cost item (from hand)"
+      cost_item_set: "<light_purple>Cost item (click or drag here)"
+      cost_item_lore: "<gray>Drag an item from your inventory onto this slot"
       cost_amount: "<green>Cost: <gold><amount>"
       confirm: "<green>Confirm & create shop"
       cancel: "<red>Cancel"
@@ -384,6 +385,8 @@ gui:
     title: "<dark_gray>Shop container contents"
   shulker_preview:
     title: "<dark_gray>Shulker Box Preview"
+    name: "<gold>Preview contents"
+    lore: "<gray>Click to view what's inside this shulker box"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red>SHOP FROZEN"

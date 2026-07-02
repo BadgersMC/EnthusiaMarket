@@ -13,6 +13,7 @@ import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
@@ -44,7 +45,7 @@ class PurchaseMenu(
         val costName = costStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "currency"
 
         val ownerName = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
-        val dirLabel = ShopDisplay.directionLabel(shop.direction)
+        dirLabel = ShopDisplay.directionLabel(shop.direction)
 
         // Chat direction reminder
         val chatHintKey = when (shop.direction) {
@@ -52,9 +53,24 @@ class PurchaseMenu(
             SignDirection.BUY -> "gui.shop.chat_reminder_sell"
             SignDirection.TRADE -> "gui.shop.chat_reminder_trade"
         }
-        player.sendMessage(lang.msg(chatHintKey, "owner" to ownerName, "item" to sellName))
+        player.sendMessage(lang.msg(chatHintKey, "owner" to ownerName, "item" to sellName, "amount" to shop.sellAmount))
 
-        val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.title", "amount" to shop.sellAmount)))
+        render(player, sellStack, costStack, sellName, costName, ownerName)
+    }
+
+    private var multiplier = 1
+    private lateinit var dirLabel: String
+
+    @Suppress("LongMethod")
+    private fun render(
+        player: Player,
+        sellStack: ItemStack?,
+        costStack: ItemStack?,
+        sellName: String,
+        costName: String,
+        ownerName: String,
+    ) {
+        val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.title", "amount" to (shop.sellAmount * multiplier))))
         val pane = StaticPane(9, 3)
 
         // --- Row 0: YOU RECEIVE / arrow / YOU GIVE labels ---
@@ -65,7 +81,6 @@ class PurchaseMenu(
         pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
 
         // --- Row 1: the actual items ---
-        // Left: what the player RECEIVES
         val receiveItem: ItemStack
         val receiveName: Component
         val receiveLore: List<Component>
@@ -75,39 +90,42 @@ class PurchaseMenu(
 
         when (shop.direction) {
             SignDirection.SELL -> {
-                // Player is BUYER: receives sell item, gives currency
+                val totalAmount = shop.sellAmount * multiplier
+                val totalCost = shop.costAmount * multiplier
                 receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER)
-                receiveName = lang.msg("gui.shop.receive_sell", "amount" to shop.sellAmount, "item" to sellName)
+                receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName)
                 receiveLore = listOf(
                     lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                     lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
                 )
                 giveItem = ItemStack(Material.EMERALD)
-                giveName = lang.msg("gui.shop.give_currency", "cost" to shop.costAmount)
-                giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to shop.costAmount))
+                giveName = lang.msg("gui.shop.give_currency", "cost" to totalCost)
+                giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to totalCost))
             }
             SignDirection.BUY -> {
-                // Player is SELLER: receives currency, gives sell item
+                val totalAmount = shop.sellAmount * multiplier
+                val totalCost = shop.costAmount * multiplier
                 receiveItem = ItemStack(Material.EMERALD)
-                receiveName = lang.msg("gui.shop.receive_currency", "cost" to shop.costAmount)
-                receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to shop.costAmount))
+                receiveName = lang.msg("gui.shop.receive_currency", "cost" to totalCost)
+                receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to totalCost))
                 giveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER)
-                giveName = lang.msg("gui.shop.give_item", "amount" to shop.sellAmount, "item" to sellName)
+                giveName = lang.msg("gui.shop.give_item", "amount" to totalAmount, "item" to sellName)
                 giveLore = listOf(
                     lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                     lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
                 )
             }
             SignDirection.TRADE -> {
-                // Player is TRADER: receives sell item, gives cost item
+                val totalAmount = shop.sellAmount * multiplier
+                val totalCost = shop.costAmount * multiplier
                 receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER)
-                receiveName = lang.msg("gui.shop.receive_sell", "amount" to shop.sellAmount, "item" to sellName)
+                receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName)
                 receiveLore = listOf(
                     lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                 )
                 giveItem = costStack?.clone() ?: ItemStack(Material.BARRIER)
-                giveName = lang.msg("gui.shop.give_trade_item", "amount" to shop.costAmount, "item" to costName)
-                giveLore = listOf(lang.msg("gui.shop.give_trade_item_lore", "amount" to shop.costAmount))
+                giveName = lang.msg("gui.shop.give_trade_item", "amount" to totalCost, "item" to costName)
+                giveLore = listOf(lang.msg("gui.shop.give_trade_item_lore", "amount" to totalCost))
             }
         }
 
@@ -115,38 +133,62 @@ class PurchaseMenu(
         pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 1)
         pane.addItem(GuiItem(decorated(giveItem, giveName, giveLore)), 6, 1)
 
-        // --- Row 2: action button ---
+        // --- Row 2: multiplier controls + confirm ---
+        // [-1] [xN] [+1] ... [Confirm]
+        pane.addItem(GuiItem(decorated(Material.RED_DYE,
+            lang.msg("gui.shop.create.btn_minus1", "delta" to -1, "val" to (multiplier - 1)))) { event ->
+            event.isCancelled = true
+            if (multiplier > 1) { multiplier--; render(player, sellStack, costStack, sellName, costName, ownerName) }
+        }, 1, 2)
+
+        pane.addItem(GuiItem(decorated(Material.PAPER,
+            Component.text("x$multiplier", NamedTextColor.WHITE))), 2, 2)
+
+        pane.addItem(GuiItem(decorated(Material.LIME_DYE,
+            lang.msg("gui.shop.create.btn_plus1", "delta" to 1, "val" to (multiplier + 1)))) { event ->
+            event.isCancelled = true
+            val maxTrades = ShopDisplay.tradesAvailable(shop)
+            if (multiplier < maxTrades.coerceAtMost(64)) { multiplier++; render(player, sellStack, costStack, sellName, costName, ownerName) }
+        }, 3, 2)
+
         val buttonKey = when (shop.direction) {
             SignDirection.SELL -> "gui.shop.confirm_buy"
             SignDirection.BUY -> "gui.shop.confirm_sell"
             SignDirection.TRADE -> "gui.shop.confirm_trade"
         }
         val buttonLore = listOf(
-            lang.msg("gui.shop.confirm_lore", "dir" to dirLabel),
+            lang.msg("gui.shop.confirm_lore", "dir" to dirLabel, "direction" to dirLabel),
         )
 
         pane.addItem(GuiItem(decorated(
             Material.LIME_STAINED_GLASS_PANE, lang.msg(buttonKey), buttonLore,
         )) { event ->
             event.isCancelled = true
-            val result = when (shop.direction) {
-                SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
-                SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
-                SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
+            var lastResult: net.badgersmc.em.application.ContainerTradeResult = net.badgersmc.em.application.ContainerTradeResult.Success("")
+            for (i in 1..multiplier) {
+                val result = when (shop.direction) {
+                    SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
+                    SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
+                    SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
+                }
+                lastResult = result
+                if (result !is ContainerTradeResult.Success) break
             }
-            when (result) {
+            when (lastResult) {
                 is ContainerTradeResult.Success -> player.sendMessage(
-                    lang.msg("shop.trade.success", "message" to result.message),
+                    lang.msg("shop.trade.success", "message" to lastResult.message),
                 )
                 is ContainerTradeResult.Failure -> player.sendMessage(
-                    lang.msg("shop.trade.failure", "reason" to result.reason),
+                    lang.msg("shop.trade.failure", "reason" to lastResult.reason),
                 )
                 is ContainerTradeResult.CompensationFailed -> {
-                    player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to result.error))
-                    player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to result.compensation))
+                    player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to lastResult.error))
+                    player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to lastResult.compensation))
                 }
             }
-        }, 4, 2)
+            multiplier = 1
+            render(player, sellStack, costStack, sellName, costName, ownerName)
+        }, 5, 2)
 
         // Shulker box preview button (IS2-12, REQ-298)
         addShulkerPreview(pane, player)
