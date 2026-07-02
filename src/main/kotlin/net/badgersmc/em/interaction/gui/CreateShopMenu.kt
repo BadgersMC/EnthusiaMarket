@@ -191,15 +191,23 @@ class CreateShopMenu(
     }
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
-        // Cost item slot — unrestricted, player can drag items from inventory
-        val costPreview = (costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)).let { item ->
-            val meta = item.itemMeta
-            if (meta != null) {
-                meta.displayName(lang.msg("gui.shop.create.cost_item_set"))
-                meta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
-                item.itemMeta = meta
-            }
-            item
+        // Cost item slot — indicator when empty, set item when player clicks with cursor item
+        val costPreview = if (costItemB64 != null) {
+            ItemStackSerializer.deserialize(costItemB64)?.let { item ->
+                val meta = item.itemMeta
+                if (meta != null) {
+                    meta.displayName(lang.msg("gui.shop.create.cost_item_set"))
+                    meta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
+                    item.itemMeta = meta
+                }
+                item
+            } ?: ItemStack(Material.BARRIER)
+        } else {
+            // Empty indicator — gray glass pane hinting "drop item here"
+            decorated(Material.GRAY_STAINED_GLASS_PANE,
+                lang.msg("gui.shop.create.cost_item_empty"),
+                listOf(lang.msg("gui.shop.create.cost_item_empty_lore")),
+            )
         }
         pane.addItem(GuiItem(costPreview) { event ->
             event.isCancelled = true
