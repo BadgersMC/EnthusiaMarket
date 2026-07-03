@@ -45,12 +45,12 @@ enthusiamarket.admin.evict        — /em evict
 Grant these to default rank. Nodes default to OP in plugin.yml, but grant explicitly if OP is disabled:
 
 ```text
-enthusiamarket.shop.help          — /em help, /shophelp
+enthusiamarket.shop.help          — /shophelp
 enthusiamarket.shop.use           — /shop list, trust, untrust, edit, delete, search, history
 enthusiamarket.shop.create        — place shop signs ([BUY]/[SELL]/[TRADE])
 enthusiamarket.shop.delete.all    — /shop delete all (bulk delete)
 enthusiamarket.shop.store         — /store
-enthusiamarket.shop.vault         — /shopvault
+enthusiamarket.shop.vault         — /shopvault open
 enthusiamarket.stall.info         — /em limit, /em stall info
 enthusiamarket.stall.members      — /em stall members add/remove/list
 enthusiamarket.stall.offer        — /em stall offer, /em stall offer cancel
@@ -92,7 +92,7 @@ For hot-deploy: drop JAR, then `/em reload`.
 /version EnthusiaMarket
 ```
 
-Check console for startup errors. All 4 hard dependencies must be present.
+Check console for startup errors. All 5 hard dependencies (Paper + 4 plugins) must be present.
 
 ### Step 3 — Configure market world and region prefix
 
@@ -138,7 +138,7 @@ rent:
   maxPrepaidPeriods: 0       # max pre-paid periods (0 = unlimited)
 ```
 
-> **⚠️ `rent.formulaPct` uses "human percent" scale.** `1.0` = 1%, NOT 0.01. Setting `100.0` drains the entire stall price per period.
+> **⚠️ `rent.formulaPct` uses "human percent" scale.** `1.0` = 1% of the winning bid per period, NOT 0.01. Setting `100.0` = 100% of the winning bid per period.
 
 Push terms to existing stalls:
 
@@ -162,7 +162,7 @@ Use your permission plugin (LuckPerms, etc.) to grant the player permission set 
 
 - `bedrock.forceForms: false` (default — auto-detect Floodgate)
 - `shop.allowBedrockEdit: true` (default)
-- Test: Bedrock player places a shop sign → should get Cumulus form
+- Test: Bedrock player edits a shop sign → should get Cumulus form
 
 ### Step 10 — Final verification
 
@@ -200,7 +200,7 @@ Player-side:
 | `/em evict <stall>` | Force-evict stall owner |
 | `/shop` | Player shop management |
 | `/shophelp` | Shop tutorial |
-| `/shopvault` | Withdraw barter payments |
+| `/shopvault open` | Withdraw barter payments |
 | `/store` | Server store link |
 
 ## 5. Common Pitfalls
@@ -211,4 +211,4 @@ Player-side:
 - **Bedrock forms not opening**: Floodgate must be loaded. Check console for `[floodgate]` on plugin list.
 - **Shops not working**: Player must own the stall (or be a member). For guild stalls, player needs `MANAGE_SHOPS` guild permission.
 - **Economy disabled**: EnthusiaCurrency must be loaded. Check `/plugins` output.
-- **Plugin won't enable**: All 4 hard dependencies (WorldGuard, Vault, EnthusiaCurrency, LumaGuilds) must load BEFORE EnthusiaMarket. Paper 1.21.11 minimum.
+- **Plugin won't enable**: All 5 hard dependencies (Paper 1.21.11+, WorldGuard, Vault, EnthusiaCurrency, LumaGuilds) must load BEFORE EnthusiaMarket.
