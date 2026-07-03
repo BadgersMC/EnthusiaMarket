@@ -35,6 +35,8 @@ admin:
     startall:
       result: "<prefix><green>mass auction:</green> created=<green><created></green> skipped=<yellow><skipped></yellow> errors=<red><errors></red>"
       failure: "<prefix><red>mass auction failed: <reason>"
+    cancelall:
+      done: "<prefix><green><count> auction(s) cancelled.</green> Stalls reverted to buyable."
   bid:
     success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on auction</gray> <id>"
     failure: "<prefix><red>Bid rejected: <reason>"

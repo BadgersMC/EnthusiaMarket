@@ -257,7 +257,9 @@ class AuctionLifecycleService(
      *         or [AuctionResult.NotFound]
      */
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long): AuctionResult {
+        // Accept either auction UUID or stall ID (e.g. "stall11")
         val auction = auctionRepository.findById(auctionId)
+            ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
             ?: return AuctionResult.NotFound
 
         if (auction.state != AuctionState.OPEN) {
@@ -323,6 +325,33 @@ class AuctionLifecycleService(
             fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
         }
         return AuctionResult.Success(closed)
+    }
+
+    /**
+     * Emergency mass-cancel all open auctions (REQ-adhoc).
+     *
+     * Iterates every OPEN auction, sets it to CANCELLED, and reverts any
+     * AUCTIONING stalls back to UNOWNED so purchase signs become buyable
+     * again. No refunds needed — money is only withdrawn at settlement time.
+     *
+     * @return a summary string with count of cancelled auctions
+     */
+    fun cancelAllAuctions(): String {
+        val open = auctionRepository.allOpen()
+        var count = 0
+        for (auction in open) {
+            val cancelled = auction.copy(state = AuctionState.CANCELLED)
+            auctionRepository.save(cancelled)
+            val stall = stallRepository.findById(auction.stallId)
+            if (stall != null && stall.state == StallState.AUCTIONING &&
+                stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            ) {
+                stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+            }
+            count++
+        }
+        return "Cancelled $count open auction(s)."
     }
 
     /**
