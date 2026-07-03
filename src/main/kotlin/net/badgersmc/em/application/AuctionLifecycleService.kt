@@ -264,6 +264,16 @@ class AuctionLifecycleService(
             return AuctionResult.Failure("Auction is not open")
         }
 
+        // Balance check: reject the bid immediately if the player can't afford it.
+        val currentHigh = auction.highBid?.amount ?: (auction.startingBid - 1)
+        val required = if (amount < currentHigh + 1) currentHigh + 1 else amount
+        val balance = economy.balance(playerUuid)
+        if (balance < required) {
+            return AuctionResult.Failure(
+                "Insufficient balance. You have $balance but need at least $required."
+            )
+        }
+
         return try {
             val updated = auction.placeBid(playerUuid, amount, clock.instant())
             auctionRepository.save(updated)

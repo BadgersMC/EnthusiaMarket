@@ -136,7 +136,18 @@ class AuctionBrowserMenu(
             val pagePane = OutlinePane(0, 0, 9, 5, Pane.Priority.LOWEST)
             val slice = sorted.drop(pageIdx * ITEMS_PER_PAGE).take(ITEMS_PER_PAGE)
             for (entry in slice) {
-                pagePane.addItem(GuiItem(entryIcon(entry, now)) { it.isCancelled = true })
+                pagePane.addItem(GuiItem(entryIcon(entry, now)) { event ->
+                    event.isCancelled = true
+                    val player = event.whoClicked as? Player ?: return@GuiItem
+                    player.closeInventory()
+                    val cmd = "/em bid ${entry.auction.id.value} "
+                    player.sendMessage(
+                        lang.msg("gui.auctions.click_to_bid", "command" to cmd)
+                    )
+                    // Also place the command in chat box for convenience
+                    @Suppress("DEPRECATION")
+                    player.chat(cmd)
+                })
             }
             itemsPane.addPane(pageIdx, pagePane)
         }
