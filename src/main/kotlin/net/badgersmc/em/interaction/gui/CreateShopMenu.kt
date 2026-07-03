@@ -192,8 +192,9 @@ class CreateShopMenu(
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
         // Cost item slot — indicator when empty, set item when player clicks with cursor item
-        val costPreview = if (costItemB64 != null) {
-            ItemStackSerializer.deserialize(costItemB64)?.let { item ->
+        val costB64 = costItemB64
+        val costPreview = if (costB64 != null) {
+            ItemStackSerializer.deserialize(costB64)?.let { item ->
                 val meta = item.itemMeta
                 if (meta != null) {
                     meta.displayName(lang.msg("gui.shop.create.cost_item_set"))
