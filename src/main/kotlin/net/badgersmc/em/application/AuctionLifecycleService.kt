@@ -266,21 +266,31 @@ class AuctionLifecycleService(
             return AuctionResult.Failure("Auction is not open")
         }
 
-        // Balance check: reject the bid immediately if the player can't afford it.
-        val balance = economy.balance(playerUuid)
-        if (balance < amount) {
-            return AuctionResult.Failure(
-                "Insufficient balance. You have $balance but need at least $amount."
-            )
+        // Pay upfront: withdraw the full bid amount immediately.
+        // On success, refund the previous high bidder (if any).
+        if (!economy.withdraw(playerUuid, amount)) {
+            return AuctionResult.Failure("Could not withdraw $amount. Check your balance.")
         }
+
+        val previousBidder = auction.highBid?.bidder
+        val previousAmount = auction.highBid?.amount
 
         return try {
             val updated = auction.placeBid(playerUuid, amount, clock.instant())
             auctionRepository.save(updated)
+
+            // Refund the outbid player AFTER the new bid is persisted.
+            if (previousBidder != null && previousAmount != null && previousBidder != playerUuid) {
+                economy.deposit(previousBidder, previousAmount)
+            }
+
             AuctionResult.Success(updated)
         } catch (e: IllegalArgumentException) {
+            // Rollback: refund the new bidder on validation failure.
+            economy.deposit(playerUuid, amount)
             AuctionResult.Failure(e.message ?: "Bid rejected")
         } catch (e: IllegalStateException) {
+            economy.deposit(playerUuid, amount)
             AuctionResult.Failure(e.message ?: "Bid rejected")
         }
     }
@@ -442,32 +452,18 @@ class AuctionLifecycleService(
             currentForKind = counts.byKind[stall.kind] ?: 0,
         )
         if (decision is LimitResolutionService.ClaimDecision.Rejected) {
-            // Treat as no-bid: revert system-mass-auctioned stall to
-            // UNOWNED, close the auction so it stops appearing in
-            // findExpired(). Winner is never charged. A future event
-            // hook can notify the winner; for now, log + drop.
+            // Winner already paid at bid time — refund before closing.
             logger.info(
                 "Auction ${auction.id} winner ${bid.bidder} over limit " +
-                    "($decision); reverting without payment."
+                    "($decision); refunding and reverting."
             )
+            economy.deposit(bid.bidder, bid.amount)
             closeWithoutAward(auction, stall)
             return
         }
 
-        // 0. Withdraw from winner FIRST (before any state changes).
-        // M-2 (audit 2026-06-09): a failed withdraw must NOT throw — that left
-        // the auction OPEN-and-expired, so the scheduler re-attempted (and
-        // logged an error) every tick forever while the stall sat wedged in
-        // AUCTIONING. An insolvent winner forfeits: same outcome as the
-        // limit-reject path above.
-        if (!economy.withdraw(bid.bidder, bid.amount)) {
-            logger.warning(
-                "Auction ${auction.id} winner ${bid.bidder} could not pay ${bid.amount}; " +
-                    "closing without award."
-            )
-            closeWithoutAward(auction, stall)
-            return
-        }
+        // Winner already paid at bid time — no withdraw needed here.
+        // Proceed directly to state changes (award stall + close auction).
 
         // 0.5 REQ-270/273/274 — snapshot the stall geometry BEFORE finalising
         // ownership. On failure: log, refund the winner, abort the transition,
