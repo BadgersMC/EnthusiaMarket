@@ -237,8 +237,8 @@ class AdminCommands(
     @Subcommand("auction cancelall")
     @Permission("enthusiamarket.admin")
     fun auctionCancelAll(@Context sender: CommandSender) {
-        val summary = auctionService.cancelAllAuctions()
-        sender.sendMessage(lang.msg("admin.auction.cancelall.done", "count" to summary.substringBefore(" ")))
+        val count = auctionService.cancelAllAuctions()
+        sender.sendMessage(lang.msg("admin.auction.cancelall.done", "count" to count))
     }
 
     @Subcommand("stall members add")

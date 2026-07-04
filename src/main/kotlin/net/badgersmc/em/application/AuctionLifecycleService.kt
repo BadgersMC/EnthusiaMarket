@@ -267,12 +267,10 @@ class AuctionLifecycleService(
         }
 
         // Balance check: reject the bid immediately if the player can't afford it.
-        val currentHigh = auction.highBid?.amount ?: (auction.startingBid - 1)
-        val required = if (amount < currentHigh + 1) currentHigh + 1 else amount
         val balance = economy.balance(playerUuid)
-        if (balance < required) {
+        if (balance < amount) {
             return AuctionResult.Failure(
-                "Insufficient balance. You have $balance but need at least $required."
+                "Insufficient balance. You have $balance but need at least $amount."
             )
         }
 
@@ -331,27 +329,39 @@ class AuctionLifecycleService(
      * Emergency mass-cancel all open auctions (REQ-adhoc).
      *
      * Iterates every OPEN auction, sets it to CANCELLED, and reverts any
-     * AUCTIONING stalls back to UNOWNED so purchase signs become buyable
-     * again. No refunds needed — money is only withdrawn at settlement time.
+     * AUCTIONING/RE_AUCTIONING/EMERGENCY_AUCTIONING stalls back to UNOWNED
+     * so purchase signs become buyable again. No refunds needed — money is
+     * only withdrawn at settlement time.
      *
-     * @return a summary string with count of cancelled auctions
+     * Errors for individual auctions are logged and counted but do not
+     * abort the batch — one bad record won't leave the rest uncancelled.
+     *
+     * @return number of auctions cancelled
      */
-    fun cancelAllAuctions(): String {
+    fun cancelAllAuctions(): Int {
         val open = auctionRepository.allOpen()
         var count = 0
+        var errors = 0
+        val auctioningStates = setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
         for (auction in open) {
-            val cancelled = auction.copy(state = AuctionState.CANCELLED)
-            auctionRepository.save(cancelled)
-            val stall = stallRepository.findById(auction.stallId)
-            if (stall != null && stall.state == StallState.AUCTIONING &&
-                stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
-            ) {
-                stallRepository.save(stall.copy(state = StallState.UNOWNED))
-                fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+            try {
+                val cancelled = auction.copy(state = AuctionState.CANCELLED)
+                auctionRepository.save(cancelled)
+                val stall = stallRepository.findById(auction.stallId)
+                if (stall != null && stall.state in auctioningStates &&
+                    stall.owner.type == OwnerType.NONE
+                ) {
+                    stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                    fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+                }
+                count++
+            } catch (e: Exception) {
+                logger.warning("cancelAllAuctions: failed to cancel auction ${auction.id}: ${e.message}")
+                errors++
             }
-            count++
         }
-        return "Cancelled $count open auction(s)."
+        if (errors > 0) logger.warning("cancelAllAuctions: $errors error(s) during batch cancel")
+        return count
     }
 
     /**

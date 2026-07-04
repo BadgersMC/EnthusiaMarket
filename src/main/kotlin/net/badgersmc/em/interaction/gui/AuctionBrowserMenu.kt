@@ -16,6 +16,8 @@ import net.badgersmc.nexus.paper.gui.LivePollingMenu
 import net.badgersmc.nexus.paper.gui.itemStack
 import net.badgersmc.nexus.scheduler.NexusScheduler
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.event.ClickEvent
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -137,16 +139,7 @@ class AuctionBrowserMenu(
             val slice = sorted.drop(pageIdx * ITEMS_PER_PAGE).take(ITEMS_PER_PAGE)
             for (entry in slice) {
                 pagePane.addItem(GuiItem(entryIcon(entry, now)) { event ->
-                    event.isCancelled = true
-                    val player = event.whoClicked as? Player ?: return@GuiItem
-                    player.closeInventory()
-                    val cmd = "/em bid ${entry.auction.id.value} "
-                    player.sendMessage(
-                        lang.msg("gui.auctions.click_to_bid", "command" to cmd)
-                    )
-                    // Also place the command in chat box for convenience
-                    @Suppress("DEPRECATION")
-                    player.chat(cmd)
+                    onAuctionEntryClick(event, entry)
                 })
             }
             itemsPane.addPane(pageIdx, pagePane)
@@ -207,6 +200,19 @@ class AuctionBrowserMenu(
         }, 8, 0)
 
         return pane
+    }
+
+    private fun onAuctionEntryClick(event: org.bukkit.event.inventory.InventoryClickEvent, entry: EntryView) {
+        event.isCancelled = true
+        val player = event.whoClicked as? Player ?: return
+        player.closeInventory()
+        val cmd = "/em bid ${entry.auction.id.value} "
+        player.sendMessage(
+            Component.text("  /em bid ", NamedTextColor.GRAY)
+                .append(Component.text(entry.auction.id.value, NamedTextColor.YELLOW)
+                    .clickEvent(ClickEvent.suggestCommand(cmd)))
+                .append(Component.text(" <amount>", NamedTextColor.GRAY))
+        )
     }
 
     private fun entryComparator(mode: SortMode): Comparator<EntryView> = when (mode) {
