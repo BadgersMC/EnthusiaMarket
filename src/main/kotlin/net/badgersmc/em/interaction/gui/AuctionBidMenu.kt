@@ -35,7 +35,10 @@ class AuctionBidMenu(
                     Material.EMERALD,
                     lang.msg("gui.auction_bid.summary", "stall" to auction.stallId.value),
                     listOf(
-                        lang.msg("gui.auction_bid.current", "amount" to (auction.highBid?.amount ?: auction.startingBid)),
+                        lang.msg(
+                            "gui.auction_bid.current",
+                            "amount" to (auction.highBid?.amount ?: auction.startingBid),
+                        ),
                         lang.msg("gui.auction_bid.auction_id", "id" to auction.id.value),
                     ),
                 )
@@ -71,6 +74,12 @@ class AuctionBidMenu(
     }
 
     private fun place(player: Player, amount: Long) {
+        if (!player.hasPermission(BID_PERMISSION)) {
+            player.sendMessage(lang.msg("gui.auction_bid.no_permission"))
+            player.closeInventory()
+            return
+        }
+
         val message = when (val result = auctionService.placeBid(auction.id, player.uniqueId, amount)) {
             is AuctionResult.Success -> lang.msg(
                 "admin.bid.success",
@@ -91,5 +100,9 @@ class AuctionBidMenu(
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item
+    }
+
+    private companion object {
+        const val BID_PERMISSION = "enthusiamarket.auction.bid"
     }
 }

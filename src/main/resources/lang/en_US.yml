@@ -452,6 +452,7 @@ gui:
     auction_id: "<dark_gray><id>"
     amount: "<gold>Bid <amount>"
     close: "<red>Close"
+    no_permission: "<red>You do not have permission to bid in auctions."
 
 bedrock:
   unavailable: "<red>Bedrock forms are not available on this server"

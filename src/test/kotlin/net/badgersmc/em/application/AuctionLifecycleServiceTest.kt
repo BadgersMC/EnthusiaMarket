@@ -88,6 +88,7 @@ class AuctionLifecycleServiceTest {
         stall: Stall = sampleStall,
         auction: Auction? = sampleAuction,
         openAuctionByStall: Auction? = null,
+        openAuctions: List<Auction> = emptyList(),
         expiredAuctions: List<Auction> = emptyList(),
         economyWithdrawOk: Boolean = true,
         economyDepositOk: Boolean = true,
@@ -97,6 +98,7 @@ class AuctionLifecycleServiceTest {
         val auctionRepo = mockk<AuctionRepository>(relaxUnitFun = true)
         every { auctionRepo.findById(auctionId) } returns auction
         every { auctionRepo.findOpenByStall(stallId) } returns openAuctionByStall
+        every { auctionRepo.allOpen() } returns openAuctions
         every { auctionRepo.findExpired() } returns expiredAuctions
 
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
@@ -265,6 +267,20 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val success = assertIs<AuctionResult.Success>(result)
         assertEquals(200L, success.auction.highBid?.amount)
         assertEquals(otherPlayer, success.auction.highBid?.bidder)
+        verify { svc.economy.withdraw(otherPlayer, 200L) }
+        verify { svc.auctionRepo.save(success.auction) }
+    }
+
+    @Test
+    fun `placeBid accepts stall id and withdraws upfront`() {
+        val svc = buildService(auction = null, openAuctionByStall = sampleAuction)
+        every { svc.auctionRepo.findById(AuctionId(stallId.value)) } returns null
+
+        val result = svc.service.placeBid(AuctionId(stallId.value), otherPlayer, 200L)
+
+        val success = assertIs<AuctionResult.Success>(result)
+        assertEquals(200L, success.auction.highBid?.amount)
+        verify { svc.economy.withdraw(otherPlayer, 200L) }
         verify { svc.auctionRepo.save(success.auction) }
     }
 
@@ -302,6 +318,53 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         val failure = assertIs<AuctionResult.Failure>(result)
         assertTrue { failure.reason.contains("starting bid", ignoreCase = true) }
+        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify(exactly = 0) { svc.auctionRepo.save(any()) }
+    }
+
+    @Test
+    fun `placeBid self-outbid withdraws only the difference`() {
+        val existing = sampleAuction.copy(highBid = Bid(otherPlayer, 150L, now))
+        val svc = buildService(auction = existing)
+
+        val result = svc.service.placeBid(auctionId, otherPlayer, 225L)
+
+        val success = assertIs<AuctionResult.Success>(result)
+        assertEquals(225L, success.auction.highBid?.amount)
+        verify { svc.economy.withdraw(otherPlayer, 75L) }
+        verify(exactly = 0) { svc.economy.withdraw(otherPlayer, 225L) }
+        verify(exactly = 0) { svc.economy.deposit(otherPlayer, 150L) }
+        verify { svc.auctionRepo.save(success.auction) }
+    }
+
+    @Test
+    fun `placeBid refunds previous high bidder on outbid`() {
+        val existing = sampleAuction.copy(highBid = Bid(playerUuid, 150L, now))
+        val svc = buildService(auction = existing)
+
+        val result = svc.service.placeBid(auctionId, otherPlayer, 225L)
+
+        val success = assertIs<AuctionResult.Success>(result)
+        assertEquals(otherPlayer, success.auction.highBid?.bidder)
+        verify { svc.economy.withdraw(otherPlayer, 225L) }
+        verify { svc.auctionRepo.save(success.auction) }
+        verify { svc.economy.deposit(playerUuid, 150L) }
+    }
+
+    @Test
+    fun `placeBid keeps paid new high bidder when previous refund fails`() {
+        val existing = sampleAuction.copy(highBid = Bid(playerUuid, 150L, now))
+        val svc = buildService(auction = existing)
+        every { svc.economy.deposit(playerUuid, 150L) } returns false
+
+        val result = svc.service.placeBid(auctionId, otherPlayer, 225L)
+
+        val success = assertIs<AuctionResult.Success>(result)
+        assertEquals(otherPlayer, success.auction.highBid?.bidder)
+        verify { svc.economy.withdraw(otherPlayer, 225L) }
+        verify { svc.auctionRepo.save(success.auction) }
+        verify { svc.economy.deposit(playerUuid, 150L) }
+        verify(exactly = 0) { svc.economy.deposit(otherPlayer, 225L) }
     }
 
     // ===== cancelAuction =====
@@ -315,6 +378,31 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val success = assertIs<AuctionResult.Success>(result)
         assertEquals(AuctionState.CLOSED, success.auction.state)
         verify { svc.auctionRepo.save(success.auction) }
+    }
+
+    @Test
+    fun `cancelAuction refunds active high bid`() {
+        val auctionWithBid = sampleAuction.copy(highBid = Bid(otherPlayer, 250L, now))
+        val svc = buildService(auction = auctionWithBid)
+
+        val result = svc.service.cancelAuction(auctionId, playerUuid)
+
+        val success = assertIs<AuctionResult.Success>(result)
+        assertEquals(AuctionState.CLOSED, success.auction.state)
+        verify { svc.auctionRepo.save(success.auction) }
+        verify { svc.economy.deposit(otherPlayer, 250L) }
+    }
+
+    @Test
+    fun `cancelAllAuctions refunds active high bids`() {
+        val auctionWithBid = sampleAuction.copy(highBid = Bid(otherPlayer, 250L, now))
+        val svc = buildService(openAuctions = listOf(auctionWithBid))
+
+        val count = svc.service.cancelAllAuctions()
+
+        assertEquals(1, count)
+        verify { svc.auctionRepo.save(match { it.state == AuctionState.CANCELLED }) }
+        verify { svc.economy.deposit(otherPlayer, 250L) }
     }
 
     @Test
