@@ -1,5 +1,7 @@
 .gradle/
 build/
+build-local/
+.jdk/
 .idea/
 *.iml
 out/
@@ -14,3 +16,5 @@ libs/
 .kotlin/
 .wiki-venv/
 site/
+stubs/lumaguilds-api-classes/
+stubs/lumaguilds-api.jar

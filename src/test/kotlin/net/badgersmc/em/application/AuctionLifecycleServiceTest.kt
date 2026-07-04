@@ -272,6 +272,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
     fun `placeBid returns Failure when auction not found`() {
         val auctionRepo = mockk<AuctionRepository>()
         every { auctionRepo.findById(auctionId) } returns null
+        every { auctionRepo.findOpenByStall(any()) } returns null
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
@@ -405,8 +406,8 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         // Deposit failure is non-fatal: state is already persisted, seller funds held for manual resolution
         assertEquals(1, report.settled)
         assertEquals(0, report.errors)
-        // Winner was still charged
-        verify { svc.economy.withdraw(winner, bidAmount) }
+        // Winner was already charged when the bid was placed; settlement does not charge again.
+        verify(exactly = 0) { svc.economy.withdraw(winner, bidAmount) }
         // Stall was still awarded
         verify { svc.stallRepo.save(match { stall ->
             stall.owner == OwnerRef.solo(winner) && stall.state == StallState.OWNED
@@ -420,7 +421,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
     // ===== REQ-212 — limit enforcement on stall claim =====
 
     @Test
-    fun `settleExpired rejects winner over their total cap, closes auction, never charges`() {
+    fun `settleExpired rejects winner over their total cap, closes auction, and refunds held bid`() {
         val winner = otherPlayer
         val winningBid = Bid(amount = 500L, bidder = winner, placedAt = now)
         val expired = sampleAuction.copy(
@@ -443,10 +444,11 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         // Limit was consulted before any economy or persistence calls.
         verify { svc.limits.canClaim(winner, any(), any(), any()) }
-        // Winner was NOT charged.
+        // Winner was NOT charged again at settlement and their held bid was refunded.
         verify(exactly = 0) { svc.economy.withdraw(winner, any()) }
+        verify { svc.economy.deposit(winner, winningBid.amount) }
         // Seller was NOT paid.
-        verify(exactly = 0) { svc.economy.deposit(any(), any()) }
+        verify(exactly = 0) { svc.economy.deposit(playerUuid, any()) }
         // Stall ownership NOT mutated to the winner — it reverts to UNOWNED
         // (system-mass-auction with no real owner).
         verify(exactly = 0) {
@@ -463,10 +465,10 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         }
     }
 
-    // ===== M-2 (audit 2026-06-09) — insolvent winner must not wedge settlement =====
+    // ===== Pay-upfront bidding: settlement must not charge the winner again =====
 
     @Test
-    fun `settleExpired with insolvent winner closes auction and reverts system stall instead of retrying forever`() {
+    fun `settleExpired with held bid awards system stall without charging again`() {
         val winner = otherPlayer
         val expired = sampleAuction.copy(
             highBid = Bid(winner, 500L, now),
@@ -484,25 +486,19 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         val report = svc.service.settleExpired()
 
-        // Treated like the limit-reject path: settled, NOT an error that
-        // leaves the auction OPEN and re-charges every scheduler tick.
         assertEquals(0, report.errors)
         assertEquals(1, report.settled)
-        // Nobody is paid and the winner never receives the stall.
-        verify(exactly = 0) { svc.economy.deposit(any(), any()) }
-        verify(exactly = 0) { svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) }) }
-        // System-auctioned stall returns to the buyable pool.
+        verify(exactly = 0) { svc.economy.withdraw(winner, 500L) }
         verify {
             svc.stallRepo.save(match {
-                it.state == StallState.UNOWNED && it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+                it.state == StallState.OWNED && it.owner == OwnerRef.solo(winner)
             })
         }
-        // Auction is closed so it stops appearing in findExpired().
         verify { svc.auctionRepo.save(match { it.state == AuctionState.CLOSED }) }
     }
 
     @Test
-    fun `settleExpired with insolvent winner still closes the auction when the stall revert throws`() {
+    fun `settleExpired closes auction and refunds held bid when award save throws`() {
         // CodeRabbit on #57: if the stall revert ran BEFORE the auction close
         // and threw, the auction stayed OPEN-and-expired — re-settling every
         // scheduler tick, the exact wedge M-2 fixes. Close must happen first;
@@ -525,13 +521,14 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         val report = svc.service.settleExpired()
 
-        assertEquals(0, report.errors)
-        assertEquals(1, report.settled)
+        assertEquals(1, report.errors)
+        assertEquals(0, report.settled)
         verify { svc.auctionRepo.save(match { it.state == AuctionState.CLOSED }) }
+        verify { svc.economy.deposit(winner, 500L) }
     }
 
     @Test
-    fun `settleExpired with insolvent winner on owner-created auction closes auction without touching the stall`() {
+    fun `settleExpired with held bid on owner-created auction awards without charging again`() {
         val winner = otherPlayer
         val expired = sampleAuction.copy(
             highBid = Bid(winner, 500L, now),
@@ -548,7 +545,10 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         assertEquals(0, report.errors)
         assertEquals(1, report.settled)
-        verify(exactly = 0) { svc.stallRepo.save(any()) }
+        verify(exactly = 0) { svc.economy.withdraw(winner, 500L) }
+        verify {
+            svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) && it.state == StallState.OWNED })
+        }
         verify { svc.auctionRepo.save(match { it.state == AuctionState.CLOSED }) }
     }
 
@@ -573,7 +573,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         svc.service.settleExpired()
 
         verify { svc.limits.canClaim(winner, any(), any(), any()) }
-        verify { svc.economy.withdraw(winner, 500L) }
+        verify(exactly = 0) { svc.economy.withdraw(winner, 500L) }
         verify {
             svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) && it.state == StallState.OWNED })
         }

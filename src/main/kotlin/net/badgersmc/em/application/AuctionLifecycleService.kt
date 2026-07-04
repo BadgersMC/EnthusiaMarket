@@ -258,19 +258,33 @@ class AuctionLifecycleService(
      */
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long): AuctionResult {
         val auction = auctionRepository.findById(auctionId)
+            ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
             ?: return AuctionResult.NotFound
 
         if (auction.state != AuctionState.OPEN) {
             return AuctionResult.Failure("Auction is not open")
         }
 
+        if (!economy.withdraw(playerUuid, amount)) {
+            return AuctionResult.Failure("Could not withdraw $amount. Check your balance.")
+        }
+
+        val previousBid = auction.highBid
         return try {
             val updated = auction.placeBid(playerUuid, amount, clock.instant())
             auctionRepository.save(updated)
+            if (previousBid != null) {
+                economy.deposit(previousBid.bidder, previousBid.amount)
+            }
             AuctionResult.Success(updated)
         } catch (e: IllegalArgumentException) {
+            economy.deposit(playerUuid, amount)
             AuctionResult.Failure(e.message ?: "Bid rejected")
         } catch (e: IllegalStateException) {
+            economy.deposit(playerUuid, amount)
+            AuctionResult.Failure(e.message ?: "Bid rejected")
+        } catch (e: Exception) {
+            economy.deposit(playerUuid, amount)
             AuctionResult.Failure(e.message ?: "Bid rejected")
         }
     }
@@ -304,6 +318,7 @@ class AuctionLifecycleService(
 
         val closed = auction.close()
         auctionRepository.save(closed)
+        auction.highBid?.let { economy.deposit(it.bidder, it.amount) }
         // Revert a system-mass-auctioned stall (AUCTIONING + no owner) back to
         // UNOWNED so the sign becomes buyable again after cancellation.
         if (stall.state == StallState.AUCTIONING &&
@@ -313,6 +328,43 @@ class AuctionLifecycleService(
             fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
         }
         return AuctionResult.Success(closed)
+    }
+
+    /**
+     * Emergency mass-cancel all open auctions and refund any held high bids.
+     *
+     * Errors for individual auctions are logged and counted but do not abort
+     * the batch.
+     *
+     * @return number of auctions cancelled
+     */
+    fun cancelAllAuctions(): Int {
+        val open = auctionRepository.allOpen()
+        var count = 0
+        var errors = 0
+        val auctioningStates = setOf(
+            StallState.AUCTIONING,
+            StallState.RE_AUCTIONING,
+            StallState.EMERGENCY_AUCTIONING,
+        )
+        for (auction in open) {
+            try {
+                val cancelled = auction.copy(state = AuctionState.CANCELLED)
+                auctionRepository.save(cancelled)
+                auction.highBid?.let { economy.deposit(it.bidder, it.amount) }
+                val stall = stallRepository.findById(auction.stallId)
+                if (stall != null && stall.state in auctioningStates && stall.owner.type == OwnerType.NONE) {
+                    stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                    fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+                }
+                count++
+            } catch (e: Exception) {
+                logger.warning("cancelAllAuctions: failed to cancel auction ${auction.id}: ${e.message}")
+                errors++
+            }
+        }
+        if (errors > 0) logger.warning("cancelAllAuctions: $errors error(s) during batch cancel")
+        return count
     }
 
     /**
@@ -382,9 +434,8 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
-        // REQ-212 — limit gate. Runs BEFORE economy.withdraw so a winner
-        // at their cap is never charged. Uses the stall's real kind and
-        // StallOwnershipCounter for SOLO-only counts.
+        // REQ-212 — limit gate. The winner already paid at bid time, so a
+        // rejection must refund the held bid before closing without award.
         val counts = ownership.counts(bid.bidder)
         val decision = limits.canClaim(
             player = bid.bidder,
@@ -393,32 +444,16 @@ class AuctionLifecycleService(
             currentForKind = counts.byKind[stall.kind] ?: 0,
         )
         if (decision is LimitResolutionService.ClaimDecision.Rejected) {
-            // Treat as no-bid: revert system-mass-auctioned stall to
-            // UNOWNED, close the auction so it stops appearing in
-            // findExpired(). Winner is never charged. A future event
-            // hook can notify the winner; for now, log + drop.
             logger.info(
                 "Auction ${auction.id} winner ${bid.bidder} over limit " +
-                    "($decision); reverting without payment."
+                    "($decision); refunding and reverting without award."
             )
+            economy.deposit(bid.bidder, bid.amount)
             closeWithoutAward(auction, stall)
             return
         }
 
-        // 0. Withdraw from winner FIRST (before any state changes).
-        // M-2 (audit 2026-06-09): a failed withdraw must NOT throw — that left
-        // the auction OPEN-and-expired, so the scheduler re-attempted (and
-        // logged an error) every tick forever while the stall sat wedged in
-        // AUCTIONING. An insolvent winner forfeits: same outcome as the
-        // limit-reject path above.
-        if (!economy.withdraw(bid.bidder, bid.amount)) {
-            logger.warning(
-                "Auction ${auction.id} winner ${bid.bidder} could not pay ${bid.amount}; " +
-                    "closing without award."
-            )
-            closeWithoutAward(auction, stall)
-            return
-        }
+        // Winner already paid at bid time. Settlement must not charge again.
 
         // 0.5 REQ-270/273/274 — snapshot the stall geometry BEFORE finalising
         // ownership. On failure: log, refund the winner, abort the transition,

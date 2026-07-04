@@ -6,6 +6,7 @@ import com.github.stefvanschie.inventoryframework.pane.OutlinePane
 import com.github.stefvanschie.inventoryframework.pane.PaginatedPane
 import com.github.stefvanschie.inventoryframework.pane.Pane
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.Stall
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference
 class AuctionBrowserMenu(
     private val auctions: AuctionRepository,
     private val stalls: StallRepository,
+    private val auctionService: AuctionLifecycleService,
     scheduler: NexusScheduler,
     private val lang: LangService,
     private val nameCache: OfflinePlayerNameCache = OfflinePlayerNameCache()
@@ -136,7 +138,11 @@ class AuctionBrowserMenu(
             val pagePane = OutlinePane(0, 0, 9, 5, Pane.Priority.LOWEST)
             val slice = sorted.drop(pageIdx * ITEMS_PER_PAGE).take(ITEMS_PER_PAGE)
             for (entry in slice) {
-                pagePane.addItem(GuiItem(entryIcon(entry, now)) { it.isCancelled = true })
+                pagePane.addItem(GuiItem(entryIcon(entry, now)) { event ->
+                    event.isCancelled = true
+                    val player = event.whoClicked as? Player ?: return@GuiItem
+                    AuctionBidMenu(entry.auction, auctionService, lang).open(player)
+                })
             }
             itemsPane.addPane(pageIdx, pagePane)
         }
@@ -236,7 +242,8 @@ class AuctionBrowserMenu(
                 bidLine,
                 lang.msg("gui.auctions.entry_lore_starting", KEY_AMOUNT to auction.startingBid),
                 lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining)),
-                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value)
+                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value),
+                lang.msg("gui.auctions.entry_lore_click")
             )
         }
     }

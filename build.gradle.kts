@@ -28,6 +28,7 @@ jacoco {
 
 group = "net.badgersmc.em"
 version = findProperty("releaseVersion")?.toString() ?: "0.2.0"
+System.getenv("EM_BUILD_DIR")?.let { layout.buildDirectory.set(file(it)) }
 
 repositories {
     mavenCentral()
@@ -127,7 +128,7 @@ dependencies {
     // LumaGuilds API for real GuildProvider implementation
     // Path can be overridden via -Plumaguilds.jar=... or LUMAGUILDS_JAR env var
     val lumaguildsJar = System.getenv("LUMAGUILDS_JAR") ?: project.findProperty("lumaguilds.jar")?.toString()
-        ?: "/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"
+        ?: "stubs/lumaguilds-api-local.jar"
     compileOnly(files(lumaguildsJar))
     testImplementation(files(lumaguildsJar))
 }
