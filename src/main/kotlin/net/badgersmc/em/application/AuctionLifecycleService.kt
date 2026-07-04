@@ -274,6 +274,15 @@ class AuctionLifecycleService(
             return AuctionResult.Failure(e.message ?: "Bid rejected")
         }
 
+        return chargeAndPersistBid(auction, updated, playerUuid, amount)
+    }
+
+    private fun chargeAndPersistBid(
+        auction: Auction,
+        updated: Auction,
+        playerUuid: UUID,
+        amount: Long,
+    ): AuctionResult {
         val previousBid = auction.highBid
         val charge = if (previousBid?.bidder == playerUuid) amount - previousBid.amount else amount
         if (charge <= 0L) {
@@ -363,25 +372,33 @@ class AuctionLifecycleService(
             StallState.EMERGENCY_AUCTIONING,
         )
         for (auction in open) {
-            try {
-                val cancelled = auction.copy(state = AuctionState.CANCELLED)
-                auctionRepository.save(cancelled)
-                auction.highBid?.let {
-                    refundOrLog(it.bidder, it.amount, "cancelAllAuctions refund for auction ${auction.id}")
-                }
-                val stall = stallRepository.findById(auction.stallId)
-                if (stall != null && stall.state in auctioningStates && stall.owner.type == OwnerType.NONE) {
-                    stallRepository.save(stall.copy(state = StallState.UNOWNED))
-                    fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
-                }
-                count++
-            } catch (e: Exception) {
-                logger.warning("cancelAllAuctions: failed to cancel auction ${auction.id}: ${e.message}")
-                errors++
-            }
+            if (cancelOneAuction(auction, auctioningStates)) count++ else errors++
         }
         if (errors > 0) logger.warning("cancelAllAuctions: $errors error(s) during batch cancel")
         return count
+    }
+
+    private fun cancelOneAuction(auction: Auction, auctioningStates: Set<StallState>): Boolean {
+        return try {
+            val cancelled = auction.copy(state = AuctionState.CANCELLED)
+            auctionRepository.save(cancelled)
+            auction.highBid?.let {
+                refundOrLog(it.bidder, it.amount, "cancelAllAuctions refund for auction ${auction.id}")
+            }
+            revertSystemAuctionedStall(auction, auctioningStates)
+            true
+        } catch (e: Exception) {
+            logger.warning("cancelAllAuctions: failed to cancel auction ${auction.id}: ${e.message}")
+            false
+        }
+    }
+
+    private fun revertSystemAuctionedStall(auction: Auction, auctioningStates: Set<StallState>) {
+        val stall = stallRepository.findById(auction.stallId)
+        if (stall != null && stall.state in auctioningStates && stall.owner.type == OwnerType.NONE) {
+            stallRepository.save(stall.copy(state = StallState.UNOWNED))
+            fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+        }
     }
 
     /**
@@ -451,8 +468,8 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
-        // REQ-212 — limit gate. The winner already paid at bid time, so a
-        // rejection must refund the held bid before closing without award.
+        // REQ-212 — limit gate. The winner already paid at bid time, so close
+        // the auction first to avoid retry/double-refund loops, then refund.
         val counts = ownership.counts(bid.bidder)
         val decision = limits.canClaim(
             player = bid.bidder,
