@@ -667,21 +667,12 @@ class AuctionLifecycleService(
     private fun refundOrLog(player: UUID, amount: Long, context: String): Boolean {
         if (amount <= 0L) return true
         return try {
-            if (economy.deposit(player, amount)) {
-                true
-            } else {
-                logger.severe(
-                    "REFUND FAILED: player=$player amount=$amount context=$context; " +
-                        "manual intervention required."
-                )
+            if (economy.deposit(player, amount)) true else {
+                logger.severe("REFUND FAILED: player=$player amount=$amount context=$context; manual intervention required.")
                 false
             }
         } catch (e: Exception) {
-            logger.log(
-                Level.SEVERE,
-                "REFUND FAILED: player=$player amount=$amount context=$context; manual intervention required.",
-                e,
-            )
+            logger.log(Level.SEVERE, "REFUND FAILED: player=$player amount=$amount context=$context; manual intervention required.", e)
             false
         }
     }

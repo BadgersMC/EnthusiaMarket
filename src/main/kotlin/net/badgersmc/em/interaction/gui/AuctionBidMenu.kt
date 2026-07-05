@@ -26,52 +26,37 @@ class AuctionBidMenu(
         val current = auction.highBid?.amount ?: auction.startingBid - 1
         val minimum = current + 1
         val amounts = listOf(minimum, minimum + 10L, minimum + 100L, minimum + 1000L)
+        val gui = buildBidGui(player, amounts)
+        gui.blockItemTheft()
+        gui.show(player)
+    }
 
+    private fun buildBidGui(player: Player, amounts: List<Long>): ChestGui {
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.auction_bid.title", "stall" to auction.stallId.value)))
         val pane = StaticPane(9, 3)
 
         pane.addItem(
-            GuiItem(
-                decorated(
-                    Material.EMERALD,
-                    lang.msg("gui.auction_bid.summary", "stall" to auction.stallId.value),
-                    listOf(
-                        lang.msg(
-                            "gui.auction_bid.current",
-                            "amount" to (auction.highBid?.amount ?: auction.startingBid),
-                        ),
-                        lang.msg("gui.auction_bid.auction_id", "id" to auction.id.value),
-                    ),
-                )
-            ) { it.isCancelled = true },
-            4,
-            0,
-        )
+            GuiItem(decorated(Material.EMERALD, lang.msg("gui.auction_bid.summary", "stall" to auction.stallId.value),
+                listOf(lang.msg("gui.auction_bid.current", "amount" to (auction.highBid?.amount ?: auction.startingBid)),
+                    lang.msg("gui.auction_bid.auction_id", "id" to auction.id.value)))) { it.isCancelled = true },
+            4, 0)
 
         amounts.forEachIndexed { index, amount ->
             pane.addItem(
-                GuiItem(decorated(Material.GOLD_INGOT, lang.msg("gui.auction_bid.amount", "amount" to amount))) {
-                    event ->
+                GuiItem(decorated(Material.GOLD_INGOT, lang.msg("gui.auction_bid.amount", "amount" to amount))) { event ->
                     event.isCancelled = true
                     place(player, amount)
-                },
-                2 + (index * 2),
-                1,
-            )
+                }, 2 + (index * 2), 1)
         }
 
         pane.addItem(
             GuiItem(decorated(Material.BARRIER, lang.msg("gui.auction_bid.close"))) { event ->
                 event.isCancelled = true
                 player.closeInventory()
-            },
-            4,
-            2,
-        )
+            }, 4, 2)
 
         gui.addPane(pane)
-        gui.blockItemTheft()
-        gui.show(player)
+        return gui
     }
 
     private fun place(player: Player, amount: Long) {
