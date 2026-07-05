@@ -156,54 +156,43 @@ class AuctionBrowserMenu(
     private fun buildControls(gui: ChestGui, pageCount: Int, total: Int): StaticPane {
         val pane = StaticPane(0, 5, 9, 1)
 
-        pane.addItem(GuiItem(itemStack(Material.ARROW) {
-            name(lang.msg("gui.auctions.prev"))
-        }) {
-            it.isCancelled = true
-            if (currentPage > 0) {
-                currentPage--
-                render(gui); gui.update()
-            }
-        }, 0, 0)
-
-        val sortName = lang.msg(
-            "gui.auctions.sort_name",
-            "mode" to lang.raw(sortMode.labelKey)
-        )
-        pane.addItem(GuiItem(itemStack(Material.HOPPER) {
-            name(sortName)
-            lore(lang.msg("gui.auctions.sort_lore_click"))
-        }) {
-            it.isCancelled = true
-            sortMode = sortMode.next()
-            currentPage = 0
-            render(gui); gui.update()
-        }, 2, 0)
-
-        pane.addItem(GuiItem(itemStack(Material.PAPER) {
-            name(lang.msg("gui.auctions.page_indicator", "current" to (currentPage + 1), "total" to pageCount))
-            lore(lang.msg("gui.auctions.page_lore_count", "count" to total))
-        }) { it.isCancelled = true }, 4, 0)
-
-        pane.addItem(GuiItem(itemStack(Material.ARROW) {
-            name(lang.msg("gui.auctions.next"))
-        }) {
-            it.isCancelled = true
-            if (currentPage < pageCount - 1) {
-                currentPage++
-                render(gui); gui.update()
-            }
-        }, 6, 0)
-
-        pane.addItem(GuiItem(itemStack(Material.BARRIER) {
-            name(lang.msg("gui.auctions.close"))
-        }) {
-            it.isCancelled = true
-            (it.whoClicked as? Player)?.closeInventory()
-        }, 8, 0)
+        pane.addItem(navButton(gui, "gui.auctions.prev", -1) { currentPage > 0 }, 0, 0)
+        pane.addItem(sortButton(gui), 2, 0)
+        pane.addItem(pageIndicator(pageCount, total), 4, 0)
+        pane.addItem(navButton(gui, "gui.auctions.next", +1) { currentPage < pageCount - 1 }, 6, 0)
+        pane.addItem(closeButton(), 8, 0)
 
         return pane
     }
+
+    private fun navButton(gui: ChestGui, langKey: String, delta: Int, enabled: () -> Boolean): GuiItem =
+        GuiItem(itemStack(Material.ARROW) { name(lang.msg(langKey)) }) {
+            it.isCancelled = true
+            if (enabled()) { currentPage += delta; render(gui); gui.update() }
+        }
+
+    private fun sortButton(gui: ChestGui): GuiItem {
+        val sortName = lang.msg("gui.auctions.sort_name", "mode" to lang.raw(sortMode.labelKey))
+        return GuiItem(itemStack(Material.HOPPER) {
+            name(sortName); lore(lang.msg("gui.auctions.sort_lore_click"))
+        }) {
+            it.isCancelled = true
+            sortMode = sortMode.next(); currentPage = 0
+            render(gui); gui.update()
+        }
+    }
+
+    private fun pageIndicator(pageCount: Int, total: Int): GuiItem =
+        GuiItem(itemStack(Material.PAPER) {
+            name(lang.msg("gui.auctions.page_indicator", "current" to (currentPage + 1), "total" to pageCount))
+            lore(lang.msg("gui.auctions.page_lore_count", "count" to total))
+        }) { it.isCancelled = true }
+
+    private fun closeButton(): GuiItem =
+        GuiItem(itemStack(Material.BARRIER) { name(lang.msg("gui.auctions.close")) }) {
+            it.isCancelled = true
+            (it.whoClicked as? Player)?.closeInventory()
+        }
 
     private fun entryComparator(mode: SortMode): Comparator<EntryView> = when (mode) {
         SortMode.HIGHEST_BID ->
