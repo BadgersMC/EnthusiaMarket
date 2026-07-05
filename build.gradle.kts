@@ -128,7 +128,7 @@ dependencies {
     // LumaGuilds API for real GuildProvider implementation
     // Path can be overridden via -Plumaguilds.jar=... or LUMAGUILDS_JAR env var
     val lumaguildsJar = System.getenv("LUMAGUILDS_JAR") ?: project.findProperty("lumaguilds.jar")?.toString()
-        ?: "stubs/lumaguilds-api-local.jar"
+        ?: "/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"
     compileOnly(files(lumaguildsJar))
     testImplementation(files(lumaguildsJar))
 }

@@ -274,41 +274,83 @@ class AuctionLifecycleService(
             return AuctionResult.Failure(e.message ?: "Bid rejected")
         }
 
-        return chargeAndPersistBid(auction, updated, playerUuid, amount)
+        return finalizeBid(auction, updated, playerUuid, amount)
     }
 
-    private fun chargeAndPersistBid(
-        auction: Auction,
+    /**
+     * Orchestrate the post-validation phases of a bid: compute the delta,
+     * charge the bidder, persist, and refund the previous high bidder.
+     * Extracted from [placeBid] to stay under detekt limits.
+     */
+    private fun finalizeBid(
+        original: Auction,
         updated: Auction,
         playerUuid: UUID,
         amount: Long,
     ): AuctionResult {
-        val previousBid = auction.highBid
-        val charge = if (previousBid?.bidder == playerUuid) amount - previousBid.amount else amount
-        if (charge <= 0L) {
-            return AuctionResult.Failure("Bid must exceed current high bid")
-        }
+        val previousBid = original.highBid
+        val charge = computeCharge(previousBid, playerUuid, amount)
+            ?: return AuctionResult.Failure("Bid must exceed current high bid")
 
         if (!economy.withdraw(playerUuid, charge)) {
             return AuctionResult.Failure("Could not withdraw $charge. Check your balance.")
         }
 
+        persistBidWithRollback(playerUuid, charge, updated, original.id)?.let { return it }
+        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id)
+        return AuctionResult.Success(updated)
+    }
+
+    /**
+     * Compute the amount to charge the bidder. Returns `null` if the bid
+     * would not increase the current high bid (bid too low or rebid at
+     * the same level).
+     */
+    private fun computeCharge(
+        previousBid: Bid?,
+        playerUuid: UUID,
+        amount: Long,
+    ): Long? {
+        val charge = if (previousBid?.bidder == playerUuid) amount - previousBid.amount else amount
+        return charge.takeIf { it > 0L }
+    }
+
+    /**
+     * Persist the updated auction and roll back the charge on failure.
+     * Returns `null` on success, or a [AuctionResult.Failure] that the
+     * caller should propagate.
+     */
+    private fun persistBidWithRollback(
+        playerUuid: UUID,
+        charge: Long,
+        updated: Auction,
+        auctionId: AuctionId,
+    ): AuctionResult.Failure? {
         try {
             auctionRepository.save(updated)
+            return null
         } catch (e: Exception) {
-            refundOrLog(playerUuid, charge, "placeBid rollback after auction save failed for ${auction.id}")
+            refundOrLog(playerUuid, charge, "placeBid rollback after auction save failed for $auctionId")
             return AuctionResult.Failure(e.message ?: "Bid rejected")
         }
+    }
 
+    /**
+     * Refund the previous high bidder if they were outbid by a different
+     * player.
+     */
+    private fun refundPreviousBidderIfOutbid(
+        previousBid: Bid?,
+        playerUuid: UUID,
+        auctionId: AuctionId,
+    ) {
         if (previousBid != null && previousBid.bidder != playerUuid) {
             refundOrLog(
                 previousBid.bidder,
                 previousBid.amount,
-                "previous high-bidder refund after outbid on auction ${auction.id}",
+                "previous high-bidder refund after outbid on auction $auctionId",
             )
         }
-
-        return AuctionResult.Success(updated)
     }
 
     /**
@@ -362,6 +404,7 @@ class AuctionLifecycleService(
      *
      * @return number of auctions cancelled
      */
+    @Suppress("LongMethod")
     fun cancelAllAuctions(): Int {
         val open = auctionRepository.allOpen()
         var count = 0
@@ -620,6 +663,7 @@ class AuctionLifecycleService(
         }
     }
 
+    @Suppress("LongMethod")
     private fun refundOrLog(player: UUID, amount: Long, context: String): Boolean {
         if (amount <= 0L) return true
         return try {

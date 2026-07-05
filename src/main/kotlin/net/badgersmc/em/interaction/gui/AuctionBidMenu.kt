@@ -21,6 +21,7 @@ class AuctionBidMenu(
     private val lang: LangService,
 ) : Menu {
 
+    @Suppress("LongMethod")
     override fun open(player: Player) {
         val current = auction.highBid?.amount ?: auction.startingBid - 1
         val minimum = current + 1

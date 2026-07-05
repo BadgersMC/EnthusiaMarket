@@ -16,5 +16,3 @@ libs/
 .kotlin/
 .wiki-venv/
 site/
-stubs/lumaguilds-api-classes/
-stubs/lumaguilds-api.jar
