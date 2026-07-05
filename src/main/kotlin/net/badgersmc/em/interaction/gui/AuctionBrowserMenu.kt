@@ -120,6 +120,7 @@ class AuctionBrowserMenu(
         latest.set(Snapshot(entries))
     }
 
+    @Suppress("LongMethod")
     override fun render(gui: ChestGui) {
         // Anti-dupe: cancel raw item movement (collect-to-cursor / drag). The framework base
         // creates this gui, so we harden it here; re-applying each refresh is idempotent.
