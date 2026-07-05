@@ -60,8 +60,8 @@ permissions:
     default: op
     description: All EnthusiaMarket permissions
     children:
-    - enthusiamarket.*.admin
-    - enthusiamarket.*.player
+    - enthusiamarket.admin
+    - enthusiamarket.player
   enthusiamarket.*.admin:
     default: op
   enthusiamarket.*.player:
@@ -76,6 +76,8 @@ permissions:
     - enthusiamarket.admin.refund
     - enthusiamarket.admin.reload
     - enthusiamarket.admin.setowner
+    - enthusiamarket.admin.bypasslimit
+    - enthusiamarket.admin.shop
   enthusiamarket.admin.bypasslimit:
     default: op
     description: Bypass all stall-ownership limits
