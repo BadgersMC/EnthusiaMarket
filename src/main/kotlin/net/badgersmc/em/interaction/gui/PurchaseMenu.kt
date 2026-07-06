@@ -70,13 +70,25 @@ class PurchaseMenu(
         val giveLabel = lang.msg("gui.shop.give_label")
         pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
         pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 0)
-        pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
+        if (shop.direction == SignDirection.TRADE) {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel, listOf(
+                lang.msg("gui.shop.trade_drop_hint")
+            ))), 6, 0)
+        } else {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
+        }
 
         // --- Row 1: the actual items ---
         val row = buildRowItems()
         pane.addItem(GuiItem(decorated(row.receiveItem, row.receiveName, row.receiveLore)), 2, 1)
         pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 1)
-        pane.addItem(GuiItem(decorated(row.giveItem, row.giveName, row.giveLore)), 6, 1)
+        if (shop.direction == SignDirection.TRADE) {
+            // Leave slot 15 empty — GuiItem blocks native item placement.
+            // Visual border indicates the drop zone (LumaGuilds GuildBannerMenu pattern).
+            addPlacementSlotBorder(pane)
+        } else {
+            pane.addItem(GuiItem(decorated(row.giveItem, row.giveName, row.giveLore)), 6, 1)
+        }
 
         // --- Row 2: multiplier controls + confirm ---
         buildMultiplierControls(pane, player)
@@ -289,6 +301,19 @@ class PurchaseMenu(
             event.isCancelled = true
             ShulkerPreviewMenu(sell.clone(), lang).open(player)
         }, 8, 0)
+    }
+
+    /** Visual border around the empty placement slot 15 for TRADE shops. */
+    private fun addPlacementSlotBorder(pane: StaticPane) {
+        val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
+        val borderMeta = borderItem.itemMeta ?: return
+        borderMeta.displayName(Component.text(" "))
+        borderItem.itemMeta = borderMeta
+        // Side borders around slot 15 (position 6,1); row 0 label + row 2 controls
+        // already frame the top and bottom.
+        listOf(Pair(5, 1), Pair(7, 1)).forEach { (x, y) ->
+            pane.addItem(GuiItem(borderItem.clone()), x, y)
+        }
     }
 
     private data class RowItems(
