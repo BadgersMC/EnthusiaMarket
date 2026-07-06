@@ -434,6 +434,7 @@ open class ContainerTradeService(
         shop: Shop, playerUuid: UUID, placedCost: ItemStack, multiplier: Int
     ): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
         if (shopVault == null) return ContainerTradeResult.Failure("Vault unavailable")
         val pre = slotTradePreconditions(shop, playerUuid)
         if (pre.result != null) return pre.result!!
@@ -469,8 +470,6 @@ open class ContainerTradeService(
     )
 
     private fun slotTradePreconditions(shop: Shop, playerUuid: UUID): SlotTradePreconditions {
-        if (shop.sellAmount <= 0 || shop.costAmount <= 0)
-            return SlotTradePreconditions(result = ContainerTradeResult.Failure("Invalid trade amounts"))
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall not found"))
         val player = getPlayer(playerUuid)
@@ -494,20 +493,14 @@ open class ContainerTradeService(
         return policyFailure
     }
 
-    @Suppress("ReturnCount", "LongMethod")
-    private fun executeSlotTradeTransfer(
-        ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts
-    ): ContainerTradeResult {
-        val sellLeftover = ctx.container.inventory.removeItem(
-            ctx.sellStack.clone().apply { amount = amounts.sell }
-        )
+    @Suppress("ReturnCount")
+    private fun executeSlotTradeTransfer(ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts): ContainerTradeResult {
+        val sellLeftover = ctx.container.inventory.removeItem(ctx.sellStack.clone().apply { amount = amounts.sell })
         if (sellLeftover.isNotEmpty()) {
             restorePartial(ctx.container.inventory, ctx.sellStack, sellLeftover)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
-        val remainder = ctx.player.inventory.addItem(
-            ctx.sellStack.clone().apply { amount = amounts.sell }
-        )
+        val remainder = ctx.player.inventory.addItem(ctx.sellStack.clone().apply { amount = amounts.sell })
         if (remainder.isNotEmpty()) {
             val received = amounts.sell - remainder.values.sumOf { it.amount }
             ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = received })
