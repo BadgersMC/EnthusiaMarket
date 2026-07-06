@@ -433,18 +433,24 @@ open class ContainerTradeService(
     fun executeTradeWithItem(
         shop: Shop, playerUuid: UUID, placedCost: ItemStack, multiplier: Int
     ): ContainerTradeResult {
+        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
         if (shopVault == null) return ContainerTradeResult.Failure("Vault unavailable")
         val pre = slotTradePreconditions(shop, playerUuid)
         if (pre.result != null) return pre.result!!
-        val totalSell = shop.sellAmount * multiplier
-        val totalCost = shop.costAmount * multiplier
-        if (!inventoryHasAtLeast(pre.ctx!!.container.inventory, pre.ctx.sellStack, totalSell))
+        val amounts = SlotTradeAmounts(shop.sellAmount * multiplier, shop.costAmount * multiplier)
+        val stockFail = checkSlotTradeStock(shop, pre.ctx!!, amounts.sell, playerUuid)
+        if (stockFail != null) return stockFail
+        return executeSlotTradeTransfer(pre.ctx, shop, placedCost, amounts)
+    }
+
+    private fun checkSlotTradeStock(
+        shop: Shop, ctx: SlotTradeContext, totalSell: Int, playerUuid: UUID
+    ): ContainerTradeResult.Failure? {
+        if (!inventoryHasAtLeast(ctx.container.inventory, ctx.sellStack, totalSell))
             return ContainerTradeResult.Failure("Out of stock")
-        if (!inventoryCanFit(pre.ctx.player.inventory, pre.ctx.sellStack, totalSell))
+        if (!inventoryCanFit(ctx.player.inventory, ctx.sellStack, totalSell))
             return ContainerTradeResult.Failure("Inventory full")
-        val policyFailure = checkGuildPolicy(shop, pre.ctx.stall, playerUuid)
-        if (policyFailure != null) return policyFailure
-        return executeSlotTradeTransfer(pre.ctx, shop, placedCost, SlotTradeAmounts(totalSell, totalCost))
+        return checkGuildPolicy(shop, ctx.stall, playerUuid)
     }
 
     private data class SlotTradeAmounts(val sell: Int, val cost: Int)
@@ -463,18 +469,21 @@ open class ContainerTradeService(
     )
 
     private fun slotTradePreconditions(shop: Shop, playerUuid: UUID): SlotTradePreconditions {
-        if (shop.frozen) return SlotTradePreconditions(result = ContainerTradeResult.Failure("This shop is frozen"))
         if (shop.sellAmount <= 0 || shop.costAmount <= 0)
             return SlotTradePreconditions(result = ContainerTradeResult.Failure("Invalid trade amounts"))
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall not found"))
         val player = getPlayer(playerUuid)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Player offline"))
-        val container = getContainer(shop)
-            ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Container missing"))
-        val sellStack = buildSellStack(shop)
-            ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Invalid item"))
+        val (container, sellStack) = resolveContainerStock(shop)
+            ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Container unavailable"))
         return SlotTradePreconditions(ctx = SlotTradeContext(player, container, sellStack, ownerUuid, stall))
+    }
+
+    private fun resolveContainerStock(shop: Shop): Pair<Container, ItemStack>? {
+        val container = getContainer(shop) ?: return null
+        val sellStack = buildSellStack(shop) ?: return null
+        return Pair(container, sellStack)
     }
 
     private fun checkGuildPolicy(
@@ -485,27 +494,28 @@ open class ContainerTradeService(
         return policyFailure
     }
 
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "LongMethod")
     private fun executeSlotTradeTransfer(
         ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts
     ): ContainerTradeResult {
-        val totalSellStack = ctx.sellStack.clone().apply { amount = amounts.sell }
-        val sellLeftover = ctx.container.inventory.removeItem(totalSellStack)
+        val sellLeftover = ctx.container.inventory.removeItem(
+            ctx.sellStack.clone().apply { amount = amounts.sell }
+        )
         if (sellLeftover.isNotEmpty()) {
             restorePartial(ctx.container.inventory, ctx.sellStack, sellLeftover)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
-        val remainder = ctx.player.inventory.addItem(ctx.sellStack.clone().apply { amount = amounts.sell })
+        val remainder = ctx.player.inventory.addItem(
+            ctx.sellStack.clone().apply { amount = amounts.sell }
+        )
         if (remainder.isNotEmpty()) {
             val received = amounts.sell - remainder.values.sumOf { it.amount }
             ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = received })
-            ctx.container.inventory.addItem(totalSellStack)
+            ctx.container.inventory.addItem(ctx.sellStack.clone().apply { amount = amounts.sell })
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
         shopVault!!.deposit(ctx.ownerUuid, placedCost.clone().apply { amount = amounts.cost }, amounts.cost)
-        fireTransactionEvent(TransactionEventData(
-            ctx.player, ctx.ownerUuid, ctx.sellStack, amounts.sell, 0, shop.id, shop.direction
-        ))
+        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, ctx.sellStack, amounts.sell, 0, shop.id, shop.direction))
         return ContainerTradeResult.Success("Traded ${amounts.sell}x for ${amounts.cost}x")
     }
 
