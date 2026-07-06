@@ -37,11 +37,7 @@ class PurchaseMenu(
 ) : Menu {
 
     private val sellStack: ItemStack? by lazy { ItemStackSerializer.deserialize(shop.sellItem) }
-    private val costStack: ItemStack? by lazy {
-        if (shop.direction == SignDirection.TRADE) ItemStackSerializer.deserialize(shop.costItem) else null
-    }
     private val sellName: String by lazy { sellStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "?" }
-    private val costName: String by lazy { costStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "currency" }
     private val ownerName: String by lazy { Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown" }
 
     override fun open(player: Player) {
@@ -306,12 +302,10 @@ class PurchaseMenu(
     /** Visual border around the empty placement slot 15 for TRADE shops. */
     private fun addPlacementSlotBorder(pane: StaticPane) {
         val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-        val borderMeta = borderItem.itemMeta ?: return
-        borderMeta.displayName(Component.text(" "))
-        borderItem.itemMeta = borderMeta
-        // Side borders around slot 15 (position 6,1); row 0 label + row 2 controls
-        // already frame the top and bottom.
-        listOf(Pair(5, 1), Pair(7, 1)).forEach { (x, y) ->
+            .apply { itemMeta = itemMeta?.apply { displayName(Component.text(" ")) } ?: return }
+        // Left, right, and bottom border around slot 15 (position 6,1).
+        // Row 0 col 6 already holds the YOU GIVE label framing the top.
+        listOf(Pair(5, 1), Pair(7, 1), Pair(6, 2)).forEach { (x, y) ->
             pane.addItem(GuiItem(borderItem.clone()), x, y)
         }
     }
@@ -358,12 +352,9 @@ class PurchaseMenu(
                 receiveLore = listOf(
                     lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                 ),
-                giveItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE),
-                giveName = lang.msg("gui.shop.trade_place_item", "amount" to totalCost, "item" to costName),
-                giveLore = listOf(
-                    lang.msg("gui.shop.trade_place_lore", "amount" to totalCost),
-                    lang.msg("gui.shop.trade_place_lore2")
-                ),
+                giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
+                giveName = Component.empty(),
+                giveLore = emptyList(),
             )
         }
     }
