@@ -439,17 +439,23 @@ open class ContainerTradeService(
         val pre = slotTradePreconditions(shop, playerUuid)
         if (pre.result != null) return pre.result!!
         val amounts = SlotTradeAmounts(shop.sellAmount * multiplier, shop.costAmount * multiplier)
-        val stockFail = checkSlotTradeStock(shop, pre.ctx!!, amounts.sell, playerUuid)
-        if (stockFail != null) return stockFail
+        val validFail = validateSlotTrade(shop, pre.ctx!!, placedCost, amounts, playerUuid)
+        if (validFail != null) return validFail
         return executeSlotTradeTransfer(pre.ctx, shop, placedCost, amounts)
     }
 
-    private fun checkSlotTradeStock(
-        shop: Shop, ctx: SlotTradeContext, totalSell: Int, playerUuid: UUID
+    private fun validateSlotTrade(
+        shop: Shop, ctx: SlotTradeContext, placedCost: ItemStack, amounts: SlotTradeAmounts, playerUuid: UUID
     ): ContainerTradeResult.Failure? {
-        if (!inventoryHasAtLeast(ctx.container.inventory, ctx.sellStack, totalSell))
+        val expectedCost = deserializeStack(shop.costItem)
+            ?: return ContainerTradeResult.Failure("Invalid item")
+        if (!placedCost.isSimilar(expectedCost))
+            return ContainerTradeResult.Failure("Wrong trade item")
+        if (placedCost.amount < amounts.cost)
+            return ContainerTradeResult.Failure("Cannot afford cost — need ${amounts.cost}, have ${placedCost.amount}")
+        if (!inventoryHasAtLeast(ctx.container.inventory, ctx.sellStack, amounts.sell))
             return ContainerTradeResult.Failure("Out of stock")
-        if (!inventoryCanFit(ctx.player.inventory, ctx.sellStack, totalSell))
+        if (!inventoryCanFit(ctx.player.inventory, ctx.sellStack, amounts.sell))
             return ContainerTradeResult.Failure("Inventory full")
         return checkGuildPolicy(shop, ctx.stall, playerUuid)
     }
@@ -495,16 +501,17 @@ open class ContainerTradeService(
 
     @Suppress("ReturnCount")
     private fun executeSlotTradeTransfer(ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts): ContainerTradeResult {
-        val sellLeftover = ctx.container.inventory.removeItem(ctx.sellStack.clone().apply { amount = amounts.sell })
+        val requestedSell = ctx.sellStack.clone().apply { amount = amounts.sell }
+        val sellLeftover = ctx.container.inventory.removeItem(requestedSell)
         if (sellLeftover.isNotEmpty()) {
-            restorePartial(ctx.container.inventory, ctx.sellStack, sellLeftover)
+            restorePartial(ctx.container.inventory, requestedSell, sellLeftover)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
         val remainder = ctx.player.inventory.addItem(ctx.sellStack.clone().apply { amount = amounts.sell })
         if (remainder.isNotEmpty()) {
             val received = amounts.sell - remainder.values.sumOf { it.amount }
             ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = received })
-            ctx.container.inventory.addItem(ctx.sellStack.clone().apply { amount = amounts.sell })
+            ctx.container.inventory.addItem(requestedSell)
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
         shopVault!!.deposit(ctx.ownerUuid, placedCost.clone().apply { amount = amounts.cost }, amounts.cost)
