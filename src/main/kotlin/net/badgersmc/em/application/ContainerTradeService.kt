@@ -419,6 +419,96 @@ open class ContainerTradeService(
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
 
+    /**
+     * Executes a barter trade using a cost item already placed into a GUI slot.
+     * The cost item has already been removed from the player's inventory — it sits
+     * in the GUI inventory, and the caller manages the slot lifecycle.  This method
+     * only consumes the cost conceptually and deposits it to the owner's vault.
+     *
+     * @param shop      the barter (TRADE-direction) shop
+     * @param playerUuid the clicking player's UUID
+     * @param placedCost the cost ItemStack sitting in the GUI placement slot (not cloned)
+     * @param multiplier the number of trade-units to execute at once
+     */
+    fun executeTradeWithItem(
+        shop: Shop, playerUuid: UUID, placedCost: ItemStack, multiplier: Int
+    ): ContainerTradeResult {
+        val pre = slotTradePreconditions(shop, playerUuid)
+        if (pre.result != null) return pre.result!!
+        val totalSell = shop.sellAmount * multiplier
+        val totalCost = shop.costAmount * multiplier
+        if (!inventoryHasAtLeast(pre.ctx!!.container.inventory, pre.ctx.sellStack, totalSell))
+            return ContainerTradeResult.Failure("Out of stock")
+        if (!inventoryCanFit(pre.ctx.player.inventory, pre.ctx.sellStack, totalSell))
+            return ContainerTradeResult.Failure("Inventory full")
+        val policyFailure = checkGuildPolicy(shop, pre.ctx.stall, playerUuid)
+        if (policyFailure != null) return policyFailure
+        return executeSlotTradeTransfer(pre.ctx, shop, placedCost, totalSell, totalCost)
+    }
+
+    private data class SlotTradeContext(
+        val player: Player,
+        val container: Container,
+        val sellStack: ItemStack,
+        val ownerUuid: UUID,
+        val stall: net.badgersmc.em.domain.stall.Stall,
+    )
+
+    private data class SlotTradePreconditions(
+        val ctx: SlotTradeContext? = null,
+        val result: ContainerTradeResult.Failure? = null,
+    )
+
+    private fun slotTradePreconditions(shop: Shop, playerUuid: UUID): SlotTradePreconditions {
+        if (shop.frozen) return SlotTradePreconditions(result = ContainerTradeResult.Failure("This shop is frozen"))
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0)
+            return SlotTradePreconditions(result = ContainerTradeResult.Failure("Invalid trade amounts"))
+        if (shopVault == null) return SlotTradePreconditions(result = ContainerTradeResult.Failure("Vault unavailable"))
+        val (ownerUuid, stall) = resolveStallOwner(shop)
+            ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall not found"))
+        val player = getPlayer(playerUuid)
+            ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Player offline"))
+        val container = getContainer(shop)
+            ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Container missing"))
+        val sellStack = buildSellStack(shop)
+            ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Invalid item"))
+        return SlotTradePreconditions(ctx = SlotTradeContext(player, container, sellStack, ownerUuid, stall))
+    }
+
+    private fun checkGuildPolicy(
+        shop: Shop, stall: net.badgersmc.em.domain.stall.Stall, playerUuid: UUID
+    ): ContainerTradeResult.Failure? {
+        val guildId = resolveGuildUuid(stall)
+        val (_, policyFailure) = resolveEffectiveCost(shop, playerUuid, 0L, guildId)
+        return policyFailure
+    }
+
+    @Suppress("ReturnCount")
+    private fun executeSlotTradeTransfer(
+        ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, totalSell: Int, totalCost: Int
+    ): ContainerTradeResult {
+        val totalSellStack = ctx.sellStack.clone().apply { amount = totalSell }
+        val sellLeftover = ctx.container.inventory.removeItem(totalSellStack)
+        if (sellLeftover.isNotEmpty()) {
+            val taken = totalSell - sellLeftover.values.sumOf { it.amount }
+            if (taken > 0) ctx.container.inventory.addItem(ctx.sellStack.clone().apply { amount = taken })
+            return ContainerTradeResult.Failure("Stock mismatch — container changed")
+        }
+        val remainder = ctx.player.inventory.addItem(ctx.sellStack.clone().apply { amount = totalSell })
+        if (remainder.isNotEmpty()) {
+            val received = totalSell - remainder.values.sumOf { it.amount }
+            ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = received })
+            ctx.container.inventory.addItem(totalSellStack)
+            return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
+        }
+        val costToDeposit = placedCost.clone().apply { amount = totalCost }
+        shopVault!!.deposit(ctx.ownerUuid, costToDeposit, totalCost)
+        fireTransactionEvent(TransactionEventData(
+            ctx.player, ctx.ownerUuid, ctx.sellStack, totalSell, 0, shop.id, shop.direction
+        ))
+        return ContainerTradeResult.Success("Traded ${totalSell}x for ${totalCost}x")
+    }
+
     protected open fun getContainer(shop: Shop): Container? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
         return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state as? Container
