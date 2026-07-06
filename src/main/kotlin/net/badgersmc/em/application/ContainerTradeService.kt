@@ -376,16 +376,19 @@ open class ContainerTradeService(
         return Pair(sellStack, costStack)
     }
 
+    /** Re-adds the portion of [stack] that was actually removed, given [leftover] from removeItem. */
+    private fun restorePartial(inv: Inventory, stack: ItemStack, leftover: Map<Int, ItemStack>) {
+        val taken = stack.amount - leftover.values.sumOf { it.amount }
+        if (taken > 0) inv.addItem(stack.clone().apply { amount = taken })
+    }
+
     private fun executeBarterTransaction(
         shop: Shop, ctx: TradeContext, sellStack: ItemStack, costStack: ItemStack
     ): ContainerTradeResult {
         // Remove cost items from player, check for partial failure
         val costLeftover = ctx.player.inventory.removeItem(costStack.clone())
         if (costLeftover.isNotEmpty()) {
-            val taken = costStack.amount - costLeftover.values.sumOf { it.amount }
-            if (taken > 0) {
-                ctx.player.inventory.addItem(costStack.clone().apply { amount = taken })
-            }
+            restorePartial(ctx.player.inventory, costStack, costLeftover)
             return ContainerTradeResult.Failure("Cannot afford cost — missing items")
         }
         // Remove sell items from container, check for partial failure
@@ -394,10 +397,7 @@ open class ContainerTradeService(
             // Return cost items that were already removed
             ctx.player.inventory.addItem(costStack.clone())
             // Return any sell items that were partially removed
-            val taken = sellStack.amount - sellLeftover.values.sumOf { it.amount }
-            if (taken > 0) {
-                ctx.containerInv.addItem(sellStack.clone().apply { amount = taken })
-            }
+            restorePartial(ctx.containerInv, sellStack, sellLeftover)
             return ContainerTradeResult.Failure("Out of stock — container has fewer items than listed")
         }
         // Give sell items to player
@@ -433,6 +433,7 @@ open class ContainerTradeService(
     fun executeTradeWithItem(
         shop: Shop, playerUuid: UUID, placedCost: ItemStack, multiplier: Int
     ): ContainerTradeResult {
+        if (shopVault == null) return ContainerTradeResult.Failure("Vault unavailable")
         val pre = slotTradePreconditions(shop, playerUuid)
         if (pre.result != null) return pre.result!!
         val totalSell = shop.sellAmount * multiplier
@@ -443,8 +444,10 @@ open class ContainerTradeService(
             return ContainerTradeResult.Failure("Inventory full")
         val policyFailure = checkGuildPolicy(shop, pre.ctx.stall, playerUuid)
         if (policyFailure != null) return policyFailure
-        return executeSlotTradeTransfer(pre.ctx, shop, placedCost, totalSell, totalCost)
+        return executeSlotTradeTransfer(pre.ctx, shop, placedCost, SlotTradeAmounts(totalSell, totalCost))
     }
+
+    private data class SlotTradeAmounts(val sell: Int, val cost: Int)
 
     private data class SlotTradeContext(
         val player: Player,
@@ -463,7 +466,6 @@ open class ContainerTradeService(
         if (shop.frozen) return SlotTradePreconditions(result = ContainerTradeResult.Failure("This shop is frozen"))
         if (shop.sellAmount <= 0 || shop.costAmount <= 0)
             return SlotTradePreconditions(result = ContainerTradeResult.Failure("Invalid trade amounts"))
-        if (shopVault == null) return SlotTradePreconditions(result = ContainerTradeResult.Failure("Vault unavailable"))
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall not found"))
         val player = getPlayer(playerUuid)
@@ -485,28 +487,26 @@ open class ContainerTradeService(
 
     @Suppress("ReturnCount")
     private fun executeSlotTradeTransfer(
-        ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, totalSell: Int, totalCost: Int
+        ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts
     ): ContainerTradeResult {
-        val totalSellStack = ctx.sellStack.clone().apply { amount = totalSell }
+        val totalSellStack = ctx.sellStack.clone().apply { amount = amounts.sell }
         val sellLeftover = ctx.container.inventory.removeItem(totalSellStack)
         if (sellLeftover.isNotEmpty()) {
-            val taken = totalSell - sellLeftover.values.sumOf { it.amount }
-            if (taken > 0) ctx.container.inventory.addItem(ctx.sellStack.clone().apply { amount = taken })
+            restorePartial(ctx.container.inventory, ctx.sellStack, sellLeftover)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
-        val remainder = ctx.player.inventory.addItem(ctx.sellStack.clone().apply { amount = totalSell })
+        val remainder = ctx.player.inventory.addItem(ctx.sellStack.clone().apply { amount = amounts.sell })
         if (remainder.isNotEmpty()) {
-            val received = totalSell - remainder.values.sumOf { it.amount }
+            val received = amounts.sell - remainder.values.sumOf { it.amount }
             ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = received })
             ctx.container.inventory.addItem(totalSellStack)
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
-        val costToDeposit = placedCost.clone().apply { amount = totalCost }
-        shopVault!!.deposit(ctx.ownerUuid, costToDeposit, totalCost)
+        shopVault!!.deposit(ctx.ownerUuid, placedCost.clone().apply { amount = amounts.cost }, amounts.cost)
         fireTransactionEvent(TransactionEventData(
-            ctx.player, ctx.ownerUuid, ctx.sellStack, totalSell, 0, shop.id, shop.direction
+            ctx.player, ctx.ownerUuid, ctx.sellStack, amounts.sell, 0, shop.id, shop.direction
         ))
-        return ContainerTradeResult.Success("Traded ${totalSell}x for ${totalCost}x")
+        return ContainerTradeResult.Success("Traded ${amounts.sell}x for ${amounts.cost}x")
     }
 
     protected open fun getContainer(shop: Shop): Container? {

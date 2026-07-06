@@ -269,7 +269,9 @@ class ContainerTradeServiceTradeTest {
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("cost", ignoreCase = true))
-        // Verify cost items that WERE removed are returned to player
+        // Verify cost items that WERE removed are returned to player.
+        // (MockK relaxed-mock clone() does not propagate property values, so
+        // we verify the call happened without asserting the exact restored amount.)
         verify(atLeast = 1) { playerInv.addItem(any()) }
         // Verify nothing was deposited to vault
         verify(exactly = 0) { vaultService.deposit(any(), any(), any()) }
