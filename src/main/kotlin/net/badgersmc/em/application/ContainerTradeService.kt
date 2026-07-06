@@ -379,10 +379,27 @@ open class ContainerTradeService(
     private fun executeBarterTransaction(
         shop: Shop, ctx: TradeContext, sellStack: ItemStack, costStack: ItemStack
     ): ContainerTradeResult {
-        // Remove cost items from player
-        ctx.player.inventory.removeItem(costStack.clone())
-        // Remove sell items from container
-        ctx.containerInv.removeItem(sellStack.clone())
+        // Remove cost items from player, check for partial failure
+        val costLeftover = ctx.player.inventory.removeItem(costStack.clone())
+        if (costLeftover.isNotEmpty()) {
+            val taken = costStack.amount - costLeftover.values.sumOf { it.amount }
+            if (taken > 0) {
+                ctx.player.inventory.addItem(costStack.clone().apply { amount = taken })
+            }
+            return ContainerTradeResult.Failure("Cannot afford cost — missing items")
+        }
+        // Remove sell items from container, check for partial failure
+        val sellLeftover = ctx.containerInv.removeItem(sellStack.clone())
+        if (sellLeftover.isNotEmpty()) {
+            // Return cost items that were already removed
+            ctx.player.inventory.addItem(costStack.clone())
+            // Return any sell items that were partially removed
+            val taken = sellStack.amount - sellLeftover.values.sumOf { it.amount }
+            if (taken > 0) {
+                ctx.containerInv.addItem(sellStack.clone().apply { amount = taken })
+            }
+            return ContainerTradeResult.Failure("Out of stock — container has fewer items than listed")
+        }
         // Give sell items to player
         val remainder = ctx.player.inventory.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
