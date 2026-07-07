@@ -23,8 +23,8 @@ class IpLimiter(private val config: EnthusiaMarketConfig) {
     /** IP → auction ID. An IP in this map has an active bid on that auction. */
     private val auctionBindings: ConcurrentHashMap<String, String> = ConcurrentHashMap()
 
-    /** IP → placeholder. An IP in this set already owns a stall. */
-    private val stallOwners: ConcurrentHashMap<String, Boolean> = ConcurrentHashMap()
+    /** IP → owner UUID. An IP in this map already owns a stall. */
+    private val stallOwners: ConcurrentHashMap<String, String> = ConcurrentHashMap()
 
     // ---- Auction binding ----
 
@@ -51,21 +51,21 @@ class IpLimiter(private val config: EnthusiaMarketConfig) {
     // ---- Stall ownership ----
 
     /**
-     * Try to claim a stall for [ip]. Returns true if allowed:
-     * the IP does not already own a stall.
+     * Try to claim a stall for [ip] on behalf of [ownerId].
+     * Returns true if allowed: the IP does not already own a stall.
      */
-    fun tryClaimStall(ip: String): Boolean {
+    fun tryClaimStall(ip: String, ownerId: String): Boolean {
         if (!config.ipLimiter.oneStallPerIp) return true
-        return stallOwners.putIfAbsent(ip, true) == null
-    }
-
-    /** Mark that [ip] now owns a stall. */
-    fun markStallOwned(ip: String) {
-        stallOwners[ip] = true
+        return stallOwners.putIfAbsent(ip, ownerId) == null
     }
 
     /** Release [ip]'s stall ownership (sold, evicted, transferred). */
     fun releaseStall(ip: String) {
         stallOwners.remove(ip)
+    }
+
+    /** Release all stall ownership entries for a given owner UUID. */
+    fun releaseStallByOwnerId(ownerId: String) {
+        stallOwners.entries.removeIf { it.value == ownerId }
     }
 }

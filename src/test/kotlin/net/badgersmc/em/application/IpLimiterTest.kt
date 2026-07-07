@@ -50,25 +50,32 @@ class IpLimiterTest {
 
     @Test fun `allows first stall claim`() {
         val limiter = IpLimiter(config())
-        assertTrue(limiter.tryClaimStall("1.2.3.4"))
+        assertTrue(limiter.tryClaimStall("1.2.3.4", "owner-uuid-1"))
     }
 
-    @Test fun `rejects second stall claim`() {
+    @Test fun `rejects second stall claim from same IP`() {
         val limiter = IpLimiter(config())
-        limiter.tryClaimStall("1.2.3.4")
-        assertFalse(limiter.tryClaimStall("1.2.3.4"))
+        limiter.tryClaimStall("1.2.3.4", "owner-uuid-1")
+        assertFalse(limiter.tryClaimStall("1.2.3.4", "owner-uuid-2"))
+    }
+
+    @Test fun `releaseStallByOwnerId allows claim again`() {
+        val limiter = IpLimiter(config())
+        limiter.tryClaimStall("1.2.3.4", "owner-uuid-1")
+        limiter.releaseStallByOwnerId("owner-uuid-1")
+        assertTrue(limiter.tryClaimStall("1.2.3.4", "owner-uuid-3"))
     }
 
     @Test fun `releaseStall allows claim again`() {
         val limiter = IpLimiter(config())
-        limiter.tryClaimStall("1.2.3.4")
+        limiter.tryClaimStall("1.2.3.4", "owner-uuid-1")
         limiter.releaseStall("1.2.3.4")
-        assertTrue(limiter.tryClaimStall("1.2.3.4"))
+        assertTrue(limiter.tryClaimStall("1.2.3.4", "owner-uuid-2"))
     }
 
     @Test fun `disabled oneStallPerIp always allows`() {
         val limiter = IpLimiter(config(oneStall = false))
-        limiter.tryClaimStall("1.2.3.4")
-        assertTrue(limiter.tryClaimStall("1.2.3.4"))
+        limiter.tryClaimStall("1.2.3.4", "owner-uuid-1")
+        assertTrue(limiter.tryClaimStall("1.2.3.4", "owner-uuid-2"))
     }
 }

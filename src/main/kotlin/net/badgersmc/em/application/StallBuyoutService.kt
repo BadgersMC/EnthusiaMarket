@@ -67,12 +67,8 @@ class StallBuyoutService(
      * Buy the stall for [buyer] personally. Charges + awards to a SOLO
      * owner ref. Convenience overload over [buyForOwner].
      */
-    fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result {
-        if (!ipLimiter.tryClaimStall(ip)) {
-            return Result.Rejected("Your IP already owns a stall.")
-        }
-        return buyForOwner(stallId, payer = buyer, owner = OwnerRef.solo(buyer), price = price)
-    }
+    fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result =
+        buyForOwner(stallId, payer = buyer, owner = OwnerRef.solo(buyer), price = price, ip = ip)
 
     /**
      * Buy the stall on behalf of [actor]'s current guild. [actor] is
@@ -92,11 +88,8 @@ class StallBuyoutService(
         ) {
             return Result.NoGuildPermission
         }
-        if (!ipLimiter.tryClaimStall(ip)) {
-            return Result.Rejected("Your IP already owns a stall.")
-        }
         // WG owner sync (including the GUILD skip) is handled inside buyForOwner.
-        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
+        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price, ip = ip)
     }
 
     /**
@@ -148,7 +141,7 @@ class StallBuyoutService(
             auctions.findOpenByStall(stallId) != null
 
     @Suppress("LongMethod", "CyclomaticComplexMethod")
-    private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {
+    private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
 
         val stall = stalls.findById(stallId) ?: return Result.NotFound
@@ -177,6 +170,10 @@ class StallBuyoutService(
         }
 
         enforceLimit(owner, payer, stall)?.let { return it }
+
+        if (!ipLimiter.tryClaimStall(ip, owner.id)) {
+            return Result.Rejected("Your IP already owns a stall.")
+        }
 
         if (!economy.withdraw(payer, price)) {
             return Result.Rejected("Insufficient funds: $price required")

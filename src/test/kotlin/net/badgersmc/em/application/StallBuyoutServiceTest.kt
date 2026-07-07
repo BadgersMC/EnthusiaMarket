@@ -72,7 +72,7 @@ class StallBuyoutServiceTest {
             regionMembers = mockk(relaxed = true),
             limits = limits,
             ownership = ownership,
-            ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.tryClaimStall(any()) } returns true },
+            ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.tryClaimStall(any(), any()) } returns true },
         )
         return ServiceWithMocks(svc, economy)
     }
@@ -138,7 +138,7 @@ class StallBuyoutServiceTest {
             economy = economy, config = EnthusiaMarketConfig(),
             guildProvider = guildProvider, regionMembers = mockk(relaxed = true),
             limits = limits, ownership = ownership,
-            ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.tryClaimStall(any()) } returns true },
+            ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.tryClaimStall(any(), any()) } returns true },
         )
 
         // claimDecision is TotalCapReached(0), but the guild buy (owner.type == GUILD) skips the
