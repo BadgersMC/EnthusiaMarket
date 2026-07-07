@@ -132,7 +132,8 @@ class AuctionLifecycleService(
             endAt = now.plus(duration),
             startingBid = startingBid,
             highBid = null,
-            antiSnipeWindow = Duration.ofSeconds(config.auction.antiSnipeSec.toLong())
+            antiSnipeWindow = Duration.ofSeconds(config.auction.antiSnipeSec.toLong()),
+            antiSnipeExtension = Duration.ofSeconds(config.auction.antiSnipeExtendSec.toLong())
         )
 
         auctionRepository.create(auction)
@@ -158,6 +159,7 @@ class AuctionLifecycleService(
         val now = clock.instant()
         val endAt = now.plus(duration)
         val antiSnipe = Duration.ofSeconds(config.auction.antiSnipeSec.toLong())
+        val antiSnipeExtend = Duration.ofSeconds(config.auction.antiSnipeExtendSec.toLong())
 
         val candidates = stallRepository.byState(StallState.UNOWNED)
         val created = mutableListOf<AuctionId>()
@@ -165,7 +167,7 @@ class AuctionLifecycleService(
         var errors = 0
 
         for (stall in candidates) {
-            val result = startAuctionForStall(stall, now, endAt, antiSnipe, startingBid)
+            val result = startAuctionForStall(stall, now, endAt, antiSnipe, antiSnipeExtend, startingBid)
             val id = result?.first
             when {
                 result == null -> skipped++
@@ -188,6 +190,7 @@ class AuctionLifecycleService(
         now: Instant,
         endAt: Instant,
         antiSnipe: Duration,
+        antiSnipeExtend: Duration,
         startingBid: Long
     ): Pair<AuctionId?, String>? {
         try {
@@ -202,7 +205,8 @@ class AuctionLifecycleService(
                 endAt = endAt,
                 startingBid = startingBid,
                 highBid = null,
-                antiSnipeWindow = antiSnipe
+                antiSnipeWindow = antiSnipe,
+                antiSnipeExtension = antiSnipeExtend
             )
             // Persist auction first, then transition stall. If the stall save
             // fails we compensate by closing the just-created auction so we

@@ -21,7 +21,8 @@ class AuctionTest {
         endAt = later,
         startingBid = 100L,
         highBid = null,
-        antiSnipeWindow = Duration.ofMinutes(10)
+        antiSnipeWindow = Duration.ofMinutes(10),
+        antiSnipeExtension = Duration.ofMinutes(10)
     )
 
     @Test fun `first bid must exceed starting bid`() {
@@ -47,7 +48,7 @@ class AuctionTest {
         }
     }
 
-    @Test fun `bid inside anti-snipe window extends endAt`() {
+    @Test fun `bid inside anti-snipe window extends endAt by extension duration`() {
         val a = freshAuction()
         val bidTime = later.minus(Duration.ofMinutes(5))
         val placed = a.placeBid(UUID.randomUUID(), 200L, at = bidTime)
@@ -59,6 +60,18 @@ class AuctionTest {
         val bidTime = now.plus(Duration.ofHours(1))
         val placed = a.placeBid(UUID.randomUUID(), 200L, at = bidTime)
         assertEquals(later, placed.endAt)
+    }
+
+    @Test fun `anti-snipe extension differs from window when configured`() {
+        val a = freshAuction().copy(
+            antiSnipeWindow = Duration.ofSeconds(30),
+            antiSnipeExtension = Duration.ofSeconds(120)
+        )
+        // Bid at 15s before end (inside 30s window)
+        val bidTime = a.endAt.minus(Duration.ofSeconds(15))
+        val placed = a.placeBid(UUID.randomUUID(), 200L, at = bidTime)
+        // Should extend by 120s, not 30s
+        assertEquals(bidTime.plus(Duration.ofSeconds(120)), placed.endAt)
     }
 
     @Test fun `bids rejected after auction has closed`() {
