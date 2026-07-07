@@ -75,6 +75,7 @@ class AuctionLifecycleService(
     private val sellOffers: SellOfferRepository,
     private val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync,
     private val ownership: StallOwnershipCounter,
+    private val ipLimiter: IpLimiter,
     private val schematics: net.badgersmc.em.domain.ports.SchematicService =
         net.badgersmc.em.domain.ports.SchematicService.Disabled,
 ) {
@@ -258,10 +259,15 @@ class AuctionLifecycleService(
      * @param auctionId the auction to bid on
      * @param playerUuid the bidder
      * @param amount the bid amount
+     * @param ip the bidder's IP address for rate limiting
      * @return [AuctionResult.Success] with the updated auction, [AuctionResult.Failure],
      *         or [AuctionResult.NotFound]
      */
-    fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long): AuctionResult {
+    fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult {
+        if (!ipLimiter.tryBindAuction(ip, auctionId.value)) {
+            return AuctionResult.Failure("You already have an active bid on another auction.")
+        }
+
         val auction = auctionRepository.findById(auctionId)
             ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
             ?: return AuctionResult.NotFound
@@ -386,6 +392,7 @@ class AuctionLifecycleService(
 
         val closed = auction.close()
         auctionRepository.save(closed)
+        ipLimiter.releaseAuctionBindings(auction.id.value)
         auction.highBid?.let {
             refundOrLog(it.bidder, it.amount, "cancelAuction refund for auction ${auction.id}")
         }
@@ -501,6 +508,7 @@ class AuctionLifecycleService(
                     auctionRepository.save(auction.close())
                 }
                 settled++
+                ipLimiter.releaseAuctionBindings(auction.id.value)
             } catch (e: Exception) {
                 errors++
             }
