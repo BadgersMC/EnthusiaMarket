@@ -140,25 +140,27 @@ class StallBuyoutService(
         stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) ||
             auctions.findOpenByStall(stallId) != null
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
-    private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
+    /**
+     * Run all validation gates before committing a purchase. Returns a rejecting
+     * [Result] if any gate fails, or null when the purchase is allowed to proceed.
+     * Extracted from [buyForOwner] to keep complexity within static analysis limits.
+     */
+    private fun validatePurchase(
+        stall: Stall,
+        stallId: StallId,
+        owner: OwnerRef,
+        payer: UUID,
+        price: Long,
+        ip: String,
+    ): Result? {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
 
-        val stall = stalls.findById(stallId) ?: return Result.NotFound
-
-        // Reject on AUCTIONING — the one-shot initial auction is using the
-        // stall right now; click-to-buy is for the post-auction lifecycle.
         if (isAuctionLive(stall, stallId)) return Result.AuctionLive
 
         if (stall.state != StallState.UNOWNED) {
             return Result.AlreadyOwned
         }
 
-        // REQ-XXX: direct-buy delay gate. If a recent closed auction exists
-        // and its end time + config delay has not yet passed, block direct
-        // purchase so the release plan's "auction-only window" is enforced.
-        // This runs AFTER the ownership check so owned stalls short-circuit
-        // correctly with AlreadyOwned.
         if (config.auction.directBuyDelaySeconds > 0) {
             val recentClosed = auctions.findMostRecentClosedByStall(stallId)
             if (recentClosed != null) {
@@ -174,6 +176,15 @@ class StallBuyoutService(
         if (!ipLimiter.tryClaimStall(ip, owner.id)) {
             return Result.Rejected("Your IP already owns a stall.")
         }
+
+        return null
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
+        val stall = stalls.findById(stallId) ?: return Result.NotFound
+
+        validatePurchase(stall, stallId, owner, payer, price, ip)?.let { return it }
 
         if (!economy.withdraw(payer, price)) {
             return Result.Rejected("Insufficient funds: $price required")

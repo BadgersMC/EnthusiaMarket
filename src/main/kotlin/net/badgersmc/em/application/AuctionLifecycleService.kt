@@ -446,6 +446,7 @@ class AuctionLifecycleService(
             auction.highBid?.let {
                 refundOrLog(it.bidder, it.amount, "cancelAllAuctions refund for auction ${auction.id}")
             }
+            ipLimiter.releaseAuctionBindings(auction.id.value)
             revertSystemAuctionedStall(auction, auctioningStates)
             true
         } catch (e: Exception) {
