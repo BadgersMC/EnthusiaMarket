@@ -36,7 +36,7 @@ class EnthusiaMarketConfig {
     var shopAudit: ShopAudit = ShopAudit()
     @Comment("Store URL for /store command (IS2-15, REQ-301)")
     var store: Store = Store()
-    @Comment("IP-based bid rate limiter")
+    @Comment("IP-based fairness limits: one active auction bid and/or one owned stall per IP")
     var ipLimiter: IpLimiter = IpLimiter()
 
     class Particles {

@@ -66,6 +66,7 @@ sealed class MassAuctionResult {
  * Handles creation, bidding, cancellation, and settlement of expired auctions.
  */
 @Service
+@Suppress("TooManyFunctions")
 class AuctionLifecycleService(
     private val auctionRepository: AuctionRepository,
     private val stallRepository: StallRepository,
@@ -268,9 +269,7 @@ class AuctionLifecycleService(
             return AuctionResult.Failure("You already have an active bid on another auction.")
         }
 
-        val auction = auctionRepository.findById(auctionId)
-            ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
-            ?: return AuctionResult.NotFound
+        val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
 
         if (auction.state != AuctionState.OPEN) {
             return AuctionResult.Failure("Auction is not open")
@@ -324,6 +323,14 @@ class AuctionLifecycleService(
         val charge = if (previousBid?.bidder == playerUuid) amount - previousBid.amount else amount
         return charge.takeIf { it > 0L }
     }
+
+    /**
+     * Look up an auction by ID, falling back to stall-ID match.
+     * Extracted from [placeBid] to keep complexity within Lizard limits.
+     */
+    private fun findAuction(auctionId: AuctionId) =
+        auctionRepository.findById(auctionId)
+            ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
 
     /**
      * Persist the updated auction and roll back the charge on failure.
