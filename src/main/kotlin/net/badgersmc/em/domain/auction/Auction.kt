@@ -27,7 +27,9 @@ data class Auction(
         require(amount > current) { "Bid must exceed current high bid of $current" }
 
         val newEnd =
-            if (Duration.between(at, endAt) <= antiSnipeWindow) at.plus(antiSnipeExtension)
+            if (Duration.between(at, endAt) <= antiSnipeWindow) {
+                maxOf(endAt, at.plus(antiSnipeExtension))
+            }
             else endAt
 
         return copy(

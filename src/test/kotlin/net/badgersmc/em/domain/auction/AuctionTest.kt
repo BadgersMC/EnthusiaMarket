@@ -74,6 +74,18 @@ class AuctionTest {
         assertEquals(bidTime.plus(Duration.ofSeconds(120)), placed.endAt)
     }
 
+    @Test fun `anti-snipe extension shorter than window never shrinks endAt`() {
+        val a = freshAuction().copy(
+            antiSnipeWindow = Duration.ofSeconds(30),
+            antiSnipeExtension = Duration.ofSeconds(10)
+        )
+        // Bid at 25s before end (inside 30s window, but extension=10s < remaining)
+        val bidTime = a.endAt.minus(Duration.ofSeconds(25))
+        val placed = a.placeBid(UUID.randomUUID(), 200L, at = bidTime)
+        // at + 10s = endAt - 15s, but maxOf ensures we keep the original endAt
+        assertEquals(a.endAt, placed.endAt)
+    }
+
     @Test fun `bids rejected after auction has closed`() {
         val a = freshAuction().copy(state = AuctionState.CLOSED)
         assertFailsWith<IllegalStateException> {

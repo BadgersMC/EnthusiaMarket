@@ -132,8 +132,8 @@ class AuctionLifecycleService(
             endAt = now.plus(duration),
             startingBid = startingBid,
             highBid = null,
-            antiSnipeWindow = Duration.ofSeconds(config.auction.antiSnipeSec.toLong()),
-            antiSnipeExtension = Duration.ofSeconds(config.auction.antiSnipeExtendSec.toLong())
+            antiSnipeWindow = config.auction.antiSnipeWindowDuration,
+            antiSnipeExtension = config.auction.antiSnipeExtensionDuration
         )
 
         auctionRepository.create(auction)
@@ -158,8 +158,8 @@ class AuctionLifecycleService(
 
         val now = clock.instant()
         val endAt = now.plus(duration)
-        val antiSnipe = Duration.ofSeconds(config.auction.antiSnipeSec.toLong())
-        val antiSnipeExtend = Duration.ofSeconds(config.auction.antiSnipeExtendSec.toLong())
+        val antiSnipe = config.auction.antiSnipeWindowDuration
+        val antiSnipeExtend = config.auction.antiSnipeExtensionDuration
 
         val candidates = stallRepository.byState(StallState.UNOWNED)
         val created = mutableListOf<AuctionId>()
