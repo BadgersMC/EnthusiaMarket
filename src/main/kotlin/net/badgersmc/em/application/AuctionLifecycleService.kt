@@ -309,7 +309,8 @@ class AuctionLifecycleService(
         }
 
         persistBidWithRollback(playerUuid, charge, updated, original.id)?.let { return it }
-        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id, original.stallId, amount)
+        val newBidderName = runCatching { Bukkit.getPlayer(playerUuid) }.getOrNull()?.name ?: "Unknown"
+        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id, original.stallId, amount, newBidderName)
         return AuctionResult.Success(updated)
     }
 
@@ -365,6 +366,7 @@ class AuctionLifecycleService(
         auctionId: AuctionId,
         stallId: StallId,
         newAmount: Long,
+        newBidderName: String,
     ) {
         if (previousBid != null && previousBid.bidder != playerUuid) {
             refundOrLog(
@@ -372,14 +374,9 @@ class AuctionLifecycleService(
                 previousBid.amount,
                 "previous high-bidder refund after outbid on auction $auctionId",
             )
-            // Notify the outbid player if online
-            val previousBidder = runCatching { Bukkit.getPlayer(previousBid.bidder) }.getOrNull()
-            if (previousBidder != null) {
-                val newBidderName = previousBidder.name
-                previousBidder.sendMessage(
-                    lang.msg("auction.outbid", "stall" to stallId.value, "amount" to newAmount, "bidder" to newBidderName)
-                )
-            }
+            runCatching { Bukkit.getPlayer(previousBid.bidder) }?.getOrNull()?.sendMessage(
+                lang.msg("auction.outbid", "stall" to stallId.value, "amount" to newAmount, "bidder" to newBidderName)
+            )
         }
     }
 

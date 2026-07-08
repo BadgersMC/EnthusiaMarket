@@ -74,7 +74,7 @@ class AuctionScheduler(
     private fun sendReminderForAuction(auction: net.badgersmc.em.domain.auction.Auction, remaining: Duration) {
         val bidderUuid = auction.highBid?.bidder ?: return
         val bidder = Bukkit.getPlayer(bidderUuid) ?: return
-        val hit = reminderThresholds.firstOrNull { remaining <= it }
+        val hit = reminderThresholds.lastOrNull { remaining <= it }
             ?: return
         val thresholdKey = auction.id.value to hit.seconds
         if (reminded.add(thresholdKey)) {

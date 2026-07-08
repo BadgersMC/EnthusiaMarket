@@ -460,6 +460,7 @@ gui:
     custom: "<gold>Custom amount..."
     custom_prompt: "<prefix><yellow>Type your bid amount in chat for</yellow> <aqua><stall>"
     custom_invalid: "<prefix><red>Invalid bid amount: <input> — must be a positive whole number"
+    custom_timeout: "<prefix><gray>Bid prompt for</gray> <aqua><stall></aqua> <gray>expired — open the menu again to bid."
 
 auction:
   outbid: "<prefix><yellow>You have been outbid on</yellow> <aqua><stall></aqua><yellow>! New bid: <gold><amount></gold> <gray>by</gray> <white><bidder>"

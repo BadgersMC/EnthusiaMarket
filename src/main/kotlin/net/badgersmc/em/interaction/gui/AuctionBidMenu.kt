@@ -115,7 +115,8 @@ class AuctionBidMenu(
             val entry = pendingCustomBids.remove(player.uniqueId) ?: return false
             val (auction, promptedAt) = entry
             if (java.time.Duration.between(promptedAt, Instant.now()).seconds > CUSTOM_BID_TIMEOUT_SEC) {
-                return false
+                player.sendMessage(lang.msg("gui.auction_bid.custom_timeout", "stall" to auction.stallId.value))
+                return true
             }
             return executeCustomBid(player, message, auction, lang, auctionService)
         }
@@ -135,17 +136,18 @@ class AuctionBidMenu(
             }
             val result = auctionService.placeBid(auction.id, player.uniqueId, amount,
                 player.address.address.hostAddress ?: "unknown")
-            val msg = when (result) {
-                is AuctionResult.Success -> lang.msg(
-                    "admin.bid.success",
-                    "amount" to (result.auction.highBid?.amount ?: amount),
-                    "stall" to result.auction.stallId.value,
-                )
-                is AuctionResult.Failure -> lang.msg("admin.bid.failure", "reason" to result.reason)
-                is AuctionResult.NotFound -> lang.msg("admin.bid.not_found")
-            }
-            player.sendMessage(msg)
+            player.sendMessage(formatBidResult(result, amount, lang))
             return true
+        }
+
+        private fun formatBidResult(result: AuctionResult, amount: Long, lang: LangService) = when (result) {
+            is AuctionResult.Success -> lang.msg(
+                "admin.bid.success",
+                "amount" to (result.auction.highBid?.amount ?: amount),
+                "stall" to result.auction.stallId.value,
+            )
+            is AuctionResult.Failure -> lang.msg("admin.bid.failure", "reason" to result.reason)
+            is AuctionResult.NotFound -> lang.msg("admin.bid.not_found")
         }
     }
 }
