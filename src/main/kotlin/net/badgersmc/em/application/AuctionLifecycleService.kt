@@ -309,8 +309,7 @@ class AuctionLifecycleService(
         }
 
         persistBidWithRollback(playerUuid, charge, updated, original.id)?.let { return it }
-        val bidderName = safePlayerName(playerUuid)
-        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id, original.stallId, amount, bidderName)
+        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id, original.stallId, amount)
         return AuctionResult.Success(updated)
     }
 
@@ -366,7 +365,6 @@ class AuctionLifecycleService(
         auctionId: AuctionId,
         stallId: StallId,
         newAmount: Long,
-        newBidderName: String,
     ) {
         if (previousBid != null && previousBid.bidder != playerUuid) {
             refundOrLog(
@@ -375,9 +373,13 @@ class AuctionLifecycleService(
                 "previous high-bidder refund after outbid on auction $auctionId",
             )
             // Notify the outbid player if online
-            runCatching { Bukkit.getPlayer(previousBid.bidder) }.getOrNull()?.sendMessage(
-                lang.msg("auction.outbid", "stall" to stallId.value, "amount" to newAmount, "bidder" to newBidderName)
-            )
+            val previousBidder = runCatching { Bukkit.getPlayer(previousBid.bidder) }.getOrNull()
+            if (previousBidder != null) {
+                val newBidderName = previousBidder.name
+                previousBidder.sendMessage(
+                    lang.msg("auction.outbid", "stall" to stallId.value, "amount" to newAmount, "bidder" to newBidderName)
+                )
+            }
         }
     }
 
@@ -728,10 +730,6 @@ class AuctionLifecycleService(
             null
         }
     }
-
-    /** Resolve a player name safely (returns "Unknown" when Bukkit isn't available in tests). */
-    private fun safePlayerName(uuid: UUID): String =
-        runCatching { Bukkit.getOfflinePlayer(uuid).name }.getOrNull() ?: "Unknown"
 
     /**
      * Fire-and-forget StallStateChangedEvent. Bukkit may be unavailable

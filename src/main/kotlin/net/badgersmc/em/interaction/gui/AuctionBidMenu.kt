@@ -115,13 +115,17 @@ class AuctionBidMenu(
             val entry = pendingCustomBids.remove(player.uniqueId) ?: return false
             val (auction, promptedAt) = entry
             if (java.time.Duration.between(promptedAt, Instant.now()).seconds > CUSTOM_BID_TIMEOUT_SEC) {
-                return false // expired
+                return false
             }
-            val amount = message.trim().toLongOrNull() ?: run {
-                player.sendMessage(lang.msg("gui.auction_bid.custom_invalid", "input" to message))
-                return true
-            }
-            if (amount <= 0) {
+            return executeCustomBid(player, message, auction, lang, auctionService)
+        }
+
+        private fun executeCustomBid(
+            player: Player, message: String, auction: Auction,
+            lang: LangService, auctionService: AuctionLifecycleService,
+        ): Boolean {
+            val amount = message.trim().toLongOrNull()?.takeIf { it > 0 }
+            if (amount == null) {
                 player.sendMessage(lang.msg("gui.auction_bid.custom_invalid", "input" to message))
                 return true
             }
