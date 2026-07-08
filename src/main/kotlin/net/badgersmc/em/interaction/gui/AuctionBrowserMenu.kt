@@ -123,10 +123,12 @@ class AuctionBrowserMenu(
 
     @Suppress("LongMethod")
     override fun render(gui: ChestGui) {
-        // Block raw item theft (shift/double-click/drag) while letting single clicks
-        // reach GuiItem handlers so sort/page/close/bid controls function.
+        // Block raw item theft (shift/double-click/drag/drop) while letting single
+        // left/right clicks reach GuiItem handlers so controls function.
         gui.setOnGlobalClick { event ->
-            if (event.isShiftClick || event.click.isKeyboardClick || event.click.isCreativeAction) {
+            if (event.click != org.bukkit.event.inventory.ClickType.LEFT &&
+                event.click != org.bukkit.event.inventory.ClickType.RIGHT
+            ) {
                 event.isCancelled = true
             }
         }
