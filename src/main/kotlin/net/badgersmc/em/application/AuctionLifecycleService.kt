@@ -16,6 +16,8 @@ import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
+import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Bukkit
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -66,7 +68,7 @@ sealed class MassAuctionResult {
  * Handles creation, bidding, cancellation, and settlement of expired auctions.
  */
 @Service
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList")
 class AuctionLifecycleService(
     private val auctionRepository: AuctionRepository,
     private val stallRepository: StallRepository,
@@ -79,6 +81,7 @@ class AuctionLifecycleService(
     private val ipLimiter: IpLimiter,
     private val schematics: net.badgersmc.em.domain.ports.SchematicService =
         net.badgersmc.em.domain.ports.SchematicService.Disabled,
+    private val lang: LangService,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -306,7 +309,8 @@ class AuctionLifecycleService(
         }
 
         persistBidWithRollback(playerUuid, charge, updated, original.id)?.let { return it }
-        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id)
+        val bidderName = safePlayerName(playerUuid)
+        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id, original.stallId, amount, bidderName)
         return AuctionResult.Success(updated)
     }
 
@@ -360,12 +364,19 @@ class AuctionLifecycleService(
         previousBid: Bid?,
         playerUuid: UUID,
         auctionId: AuctionId,
+        stallId: StallId,
+        newAmount: Long,
+        newBidderName: String,
     ) {
         if (previousBid != null && previousBid.bidder != playerUuid) {
             refundOrLog(
                 previousBid.bidder,
                 previousBid.amount,
                 "previous high-bidder refund after outbid on auction $auctionId",
+            )
+            // Notify the outbid player if online
+            runCatching { Bukkit.getPlayer(previousBid.bidder) }.getOrNull()?.sendMessage(
+                lang.msg("auction.outbid", "stall" to stallId.value, "amount" to newAmount, "bidder" to newBidderName)
             )
         }
     }
@@ -624,6 +635,11 @@ class AuctionLifecycleService(
         }
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
+        // Notify the winner if online
+        runCatching { Bukkit.getPlayer(bid.bidder) }.getOrNull()?.sendMessage(
+            lang.msg("auction.won", "stall" to stall.id.value, "amount" to bid.amount)
+        )
+
         // 2. Sync region AFTER persist (best-effort).
         // If this fails, the DB is correct; /em rg resync can fix WG.
         try {
@@ -712,6 +728,10 @@ class AuctionLifecycleService(
             null
         }
     }
+
+    /** Resolve a player name safely (returns "Unknown" when Bukkit isn't available in tests). */
+    private fun safePlayerName(uuid: UUID): String =
+        runCatching { Bukkit.getOfflinePlayer(uuid).name }.getOrNull() ?: "Unknown"
 
     /**
      * Fire-and-forget StallStateChangedEvent. Bukkit may be unavailable
