@@ -251,7 +251,9 @@ class ShopCommands(
 
     /** Re-apply the four sign lines from stored shop data onto the live sign block. */
     private fun reRenderShopSign(shop: net.badgersmc.em.domain.shop.Shop, sign: org.bukkit.block.Sign) {
-        val sell = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+        val deserialized = ItemStackSerializer.deserialize(shop.sellItem)
+        val sell = deserialized?.type?.name?.lowercase() ?: "?"
+        val displayName = deserialized?.itemMeta?.displayName()
         val costDisplay = if (shop.direction == SignDirection.TRADE) {
             val costMat = ItemStackSerializer.deserialize(shop.costItem)?.type?.name?.lowercase() ?: "?"
             "${shop.costAmount}x $costMat"
@@ -259,7 +261,7 @@ class ShopCommands(
             "${shop.costAmount}"
         }
         val side = sign.getSide(org.bukkit.block.sign.Side.FRONT)
-        signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay)
+        signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay, displayName)
             .forEachIndexed { i, c -> side.line(i, c) }
         sign.update()
     }

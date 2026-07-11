@@ -14,6 +14,7 @@ import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -245,15 +246,18 @@ class CreateShopMenu(
         val block = world.getBlockAt(signLoc.blockX, signLoc.blockY, signLoc.blockZ)
         val sign = block.state as? Sign ?: return false
         val side = sign.getSide(Side.FRONT)
-        val sellMatName = try { ItemStackSerializer.deserialize(sellItemBase64)?.type?.name?.lowercase()
-            ?: "?" } catch (_: Exception) { "?" }
+        val deserialized = try { ItemStackSerializer.deserialize(sellItemBase64) } catch (_: Exception) { null }
+        val sellMatName = deserialized?.type?.name?.lowercase() ?: "?"
+        val displayName = deserialized?.itemMeta?.displayName()
         val headerColor = when (shop.direction) {
             SignDirection.BUY -> NamedTextColor.GOLD
             SignDirection.TRADE -> NamedTextColor.LIGHT_PURPLE
             else -> NamedTextColor.AQUA
         }
         side.line(0, Component.text("[${shop.direction.name}]", headerColor))
-        side.line(1, Component.text("${shop.sellAmount}x $sellMatName", NamedTextColor.WHITE))
+        // Use custom display name if available with truncation, otherwise material name
+        val itemComponent = displayName ?: Component.text(sellMatName, NamedTextColor.WHITE)
+        side.line(1, Component.text("${shop.sellAmount}x ", NamedTextColor.WHITE).append(truncateSignName(itemComponent)))
         val costText = if (shop.direction == SignDirection.TRADE) {
             val costItem = try { ItemStackSerializer.deserialize(shop.costItem) } catch (_: Exception) { null }
             "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "?"}"
@@ -263,5 +267,12 @@ class CreateShopMenu(
         side.line(2, Component.text(costText, NamedTextColor.GOLD))
         side.line(3, Component.text("[Shop]", NamedTextColor.GOLD))
         return sign.update(true, false)
+    }
+
+    /** Truncate component plain text to 14 chars + "…", preserving original style. */
+    private fun truncateSignName(component: Component): Component {
+        val plain = PlainTextComponentSerializer.plainText().serialize(component)
+        if (plain.length <= 14) return component
+        return Component.text(plain.take(14) + "…", component.style())
     }
 }
