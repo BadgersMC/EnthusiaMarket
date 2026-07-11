@@ -252,7 +252,7 @@ class CreateShopMenu(
         val displayName = deserialized?.itemMeta?.displayName()
         val costDisplay = if (shop.direction == SignDirection.TRADE) {
             val costItem = try { ItemStackSerializer.deserialize(shop.costItem) } catch (_: Exception) { null }
-            "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "?"}"
+            "${shop.costAmount}x ${costItem?.type?.name?.lowercase() ?: "?"}"
         } else {
             "${shop.costAmount}"
         }
