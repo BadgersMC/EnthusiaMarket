@@ -93,7 +93,12 @@ class GuildTradePolicyMenu(
             shift -> if (left) policyService.setEmbargo(actor, ownerGuildId, policy.targetGuildId)
                      else policyService.clear(actor, ownerGuildId, policy.targetGuildId)
             left -> policyService.setTariff(actor, ownerGuildId, policy.targetGuildId, stepUp(currentRate(policy)))
-            else -> policyService.setTariff(actor, ownerGuildId, policy.targetGuildId, stepDown(currentRate(policy)))
+            // Right-click at min tariff removes policy instead of silently no-oping
+            else -> {
+                val current = currentRate(policy)
+                if (current <= MIN_TARIFF_PCT) policyService.clear(actor, ownerGuildId, policy.targetGuildId)
+                else policyService.setTariff(actor, ownerGuildId, policy.targetGuildId, stepDown(current))
+            }
         }
 
     private fun currentRate(policy: GuildTradePolicy): Int =

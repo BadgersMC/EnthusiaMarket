@@ -100,18 +100,13 @@ data class Stall(
             OwnerType.NONE -> false
             OwnerType.SOLO -> {
                 try {
-                    UUID.fromString(owner.id) == playerUuid
+                    UUID.fromString(owner.id) == playerUuid || playerUuid in members
                 } catch (_: IllegalArgumentException) {
                     false
                 }
             }
             OwnerType.GUILD -> {
-                guildProvider.isMember(playerUuid, owner.id) &&
-                    guildProvider.hasShopPermission(
-                        playerUuid,
-                        owner.id,
-                        GuildProvider.GuildPermission.MANAGE_SHOPS
-                    )
+                guildProvider.isMember(playerUuid, owner.id)
             }
         }
     }

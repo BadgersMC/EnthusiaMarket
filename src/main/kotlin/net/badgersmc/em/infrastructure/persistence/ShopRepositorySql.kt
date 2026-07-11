@@ -150,6 +150,11 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             setString(1, material)
         }
 
+    override fun findBySellMaterialPrefix(prefix: String): List<Shop> =
+        queryMany("SELECT * FROM shop_items WHERE sell_material LIKE ? AND search_enabled = 1") {
+            setString(1, "$prefix%")
+        }
+
     @Suppress("NestedBlockDepth")
     override fun backfillSellMaterials(): Int {
         var updated = 0

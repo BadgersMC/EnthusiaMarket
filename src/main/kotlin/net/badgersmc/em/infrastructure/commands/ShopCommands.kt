@@ -157,19 +157,28 @@ class ShopCommands(
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
         if (query == null) { player.sendMessage(lang.msg("shop.cmd.search.usage")); return }
         val material = org.bukkit.Material.matchMaterial(query)
-        if (material == null) { player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query)); return }
         val mode = when (modeArg.lowercase()) {
             "sell" -> ShopSearchService.SearchMode.SELL
             "buy" -> ShopSearchService.SearchMode.BUY
             else -> ShopSearchService.SearchMode.ANY
         }
-        if (mode == ShopSearchService.SearchMode.BUY) {
-            player.sendMessage(lang.msg("shop.cmd.search.buy_unavailable")); return
+        // Exact match first, then prefix fallback for partial queries (2+ chars)
+        if (material != null) {
+            val results = shopRepository.findBySellMaterial(material.name)
+            if (results.isNotEmpty()) {
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
+                return
+            }
         }
-        // SELL/ANY both match the sell item today (BUY is rejected above). SQL-filtered, no full scan.
-        val results = shopRepository.findBySellMaterial(material.name)
-        if (results.isEmpty()) { player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query)); return }
-        net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
+        // Prefix fallback
+        if (query.length >= 2) {
+            val prefixResults = shopRepository.findBySellMaterialPrefix(query.uppercase())
+            if (prefixResults.isNotEmpty()) {
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(prefixResults, query, pageArg.coerceAtLeast(1), lang).open(player)
+                return
+            }
+        }
+        player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
     }
 
     @Subcommand("history")
