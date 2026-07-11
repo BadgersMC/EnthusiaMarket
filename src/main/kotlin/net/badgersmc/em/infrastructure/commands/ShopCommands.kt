@@ -5,7 +5,6 @@ import net.badgersmc.em.application.AdminBreakMode
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.application.ShopManagementService
-import net.badgersmc.em.application.ShopSearchService
 import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -146,6 +145,7 @@ class ShopCommands(
 
     @Subcommand("search")
     @Permission("enthusiamarket.shop.use")
+    @Suppress("UnusedParameter")
     fun search(
         @Context sender: CommandSender,
         @net.badgersmc.nexus.commands.annotations.Arg("query")
@@ -157,11 +157,6 @@ class ShopCommands(
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
         if (query == null) { player.sendMessage(lang.msg("shop.cmd.search.usage")); return }
         val material = org.bukkit.Material.matchMaterial(query)
-        val mode = when (modeArg.lowercase()) {
-            "sell" -> ShopSearchService.SearchMode.SELL
-            "buy" -> ShopSearchService.SearchMode.BUY
-            else -> ShopSearchService.SearchMode.ANY
-        }
         // Exact match first, then prefix fallback for partial queries (2+ chars)
         if (material != null) {
             val results = shopRepository.findBySellMaterial(material.name)

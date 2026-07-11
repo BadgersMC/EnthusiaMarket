@@ -88,7 +88,7 @@ class GuildTradePolicyMenu(
         render(player)
     }
 
-    private fun applyClick(policy: GuildTradePolicy, left: Boolean, shift: Boolean): GuildTradePolicyService.PolicyResult =
+    internal fun applyClick(policy: GuildTradePolicy, left: Boolean, shift: Boolean): GuildTradePolicyService.PolicyResult =
         when {
             shift -> if (left) policyService.setEmbargo(actor, ownerGuildId, policy.targetGuildId)
                      else policyService.clear(actor, ownerGuildId, policy.targetGuildId)

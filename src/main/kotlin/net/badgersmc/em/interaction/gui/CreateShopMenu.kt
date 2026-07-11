@@ -6,6 +6,7 @@ import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopFactory
+import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
@@ -13,8 +14,6 @@ import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -43,6 +42,7 @@ class CreateShopMenu(
     private val initialPrice: Long = 100,
     private val initialCostItemB64: String? = null,
     private val initialCostAmount: Int? = null,
+    private val signRenderer: ShopSignRenderer = ShopSignRenderer(),
 ) : Menu {
 
     private var direction: SignDirection = initialDirection
@@ -240,39 +240,25 @@ class CreateShopMenu(
         return item
     }
 
-    /** Write the shop's direction/amount/price onto the sign after creation (matches ShopSignRenderer formatting). */
+    /** Write the shop's sign text via the shared [ShopSignRenderer], matching SignPlaceListener and ShopCommands. */
     private fun writeSignText(shop: Shop): Boolean {
         val world = signLoc.world ?: return false
         val block = world.getBlockAt(signLoc.blockX, signLoc.blockY, signLoc.blockZ)
         val sign = block.state as? Sign ?: return false
         val side = sign.getSide(Side.FRONT)
+
         val deserialized = try { ItemStackSerializer.deserialize(sellItemBase64) } catch (_: Exception) { null }
         val sellMatName = deserialized?.type?.name?.lowercase() ?: "?"
         val displayName = deserialized?.itemMeta?.displayName()
-        val headerColor = when (shop.direction) {
-            SignDirection.BUY -> NamedTextColor.GOLD
-            SignDirection.TRADE -> NamedTextColor.LIGHT_PURPLE
-            else -> NamedTextColor.AQUA
-        }
-        side.line(0, Component.text("[${shop.direction.name}]", headerColor))
-        // Use custom display name if available with truncation, otherwise material name
-        val itemComponent = displayName ?: Component.text(sellMatName, NamedTextColor.WHITE)
-        side.line(1, Component.text("${shop.sellAmount}x ", NamedTextColor.WHITE).append(truncateSignName(itemComponent)))
-        val costText = if (shop.direction == SignDirection.TRADE) {
+        val costDisplay = if (shop.direction == SignDirection.TRADE) {
             val costItem = try { ItemStackSerializer.deserialize(shop.costItem) } catch (_: Exception) { null }
             "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "?"}"
         } else {
             "${shop.costAmount}"
         }
-        side.line(2, Component.text(costText, NamedTextColor.GOLD))
-        side.line(3, Component.text("[Shop]", NamedTextColor.GOLD))
-        return sign.update(true, false)
-    }
 
-    /** Truncate component plain text to 14 chars + "…", preserving original style. */
-    private fun truncateSignName(component: Component): Component {
-        val plain = PlainTextComponentSerializer.plainText().serialize(component)
-        if (plain.length <= 14) return component
-        return Component.text(plain.take(14) + "…", component.style())
+        signRenderer.lines(shop.direction, sellMatName, shop.sellAmount, costDisplay, displayName)
+            .forEachIndexed { i, c -> side.line(i, c) }
+        return sign.update(true, false)
     }
 }

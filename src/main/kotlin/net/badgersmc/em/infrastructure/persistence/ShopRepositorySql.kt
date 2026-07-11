@@ -151,8 +151,9 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
 
     override fun findBySellMaterialPrefix(prefix: String): List<Shop> =
-        queryMany("SELECT * FROM shop_items WHERE sell_material LIKE ? AND search_enabled = 1") {
-            setString(1, "$prefix%")
+        queryMany("SELECT * FROM shop_items WHERE sell_material LIKE ? ESCAPE '\\' AND search_enabled = 1") {
+            // Escape LIKE wildcards in the user-supplied prefix, then append % for prefix match
+            setString(1, "${prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")}%")
         }
 
     @Suppress("NestedBlockDepth")

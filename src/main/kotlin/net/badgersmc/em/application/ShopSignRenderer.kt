@@ -42,7 +42,18 @@ class ShopSignRenderer {
         )
     }
 
-    /** Truncate plain text to [maxLen] + "…", preserving the original Component style. */
+    /**
+     * Truncate the plain-text representation of [display] to [maxLen] characters followed
+     * by an ellipsis ("…"). The original [Component.style] is preserved on the truncated
+     * result.
+     *
+     * **Limitation:** truncation serializes the component to plain text via
+     * [PlainTextComponentSerializer] and reapplies only the root component's style.
+     * Styling from child components (e.g. per-word colors in a
+     * `Component.text("Red").append(Component.text("Blue", BLUE))` chain) is lost.
+     * Callers with rich nested styling should truncate at a higher level before
+     * constructing the multi-style component.
+     */
     private fun truncate(display: Component, maxLen: Int = 14): Component {
         val plain = PlainTextComponentSerializer.plainText().serialize(display)
         if (plain.length <= maxLen) return display

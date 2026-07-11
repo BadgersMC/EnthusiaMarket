@@ -36,7 +36,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
-@Suppress("LongParameterList", "TooManyFunctions")
+@Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
 class AdminCommands(
     private val service: ImportStallsService,
     private val stalls: StallRepository,
