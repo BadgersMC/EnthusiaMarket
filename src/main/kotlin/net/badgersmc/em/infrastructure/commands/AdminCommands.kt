@@ -3,9 +3,11 @@ package net.badgersmc.em.infrastructure.commands
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.LimitResolutionService
 import net.badgersmc.em.application.MassAuctionResult
 import net.badgersmc.em.application.SellOfferService
+import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.application.StallEvictionService
 import net.badgersmc.em.application.StallMemberService
 import net.badgersmc.em.application.StallOwnershipCounter
@@ -18,6 +20,8 @@ import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.application.GuildTradePolicyService
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -62,6 +66,8 @@ class AdminCommands(
     private val policyService: GuildTradePolicyService,
     private val guildProvider: GuildProvider,
     private val rentResync: net.badgersmc.em.application.RentTermsResyncService,
+    private val shopRepository: ShopRepository,
+    private val signRenderer: ShopSignRenderer,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -709,6 +715,36 @@ class AdminCommands(
             return
         }
         sender.sendMessage(net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicPage(topic))
+    }
+
+    /** Re-render all shop signs from the database. */
+    @Subcommand("refreshsigns")
+    @Permission("enthusiamarket.admin.shop")
+    fun refreshSigns(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shops = shopRepository.all()
+        var fixed = 0; var skipped = 0; var errors = 0
+        for (shop in shops) {
+            val world = org.bukkit.Bukkit.getWorld(shop.signWorld)
+            if (world == null) { errors++; continue }
+            val sign = world.getBlockAt(shop.signX, shop.signY, shop.signZ).state as? org.bukkit.block.Sign
+            if (sign == null) { skipped++; continue }
+            val deserialized = ItemStackSerializer.deserialize(shop.sellItem)
+            val sell = deserialized?.type?.name?.lowercase() ?: "?"
+            val displayName = deserialized?.itemMeta?.displayName()
+            val costDisplay = if (shop.direction == SignDirection.TRADE) {
+                val costMat = ItemStackSerializer.deserialize(shop.costItem)?.type?.name?.lowercase() ?: "?"
+                "${shop.costAmount}x $costMat"
+            } else {
+                "${shop.costAmount}"
+            }
+            val side = sign.getSide(org.bukkit.block.sign.Side.FRONT)
+            signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay, displayName)
+                .forEachIndexed { i, c -> side.line(i, c) }
+            sign.update()
+            fixed++
+        }
+        player.sendMessage(lang.msg("admin.refreshsigns.result", "fixed" to fixed, "skipped" to skipped, "errors" to errors))
     }
 
     /**
