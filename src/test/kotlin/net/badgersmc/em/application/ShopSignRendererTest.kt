@@ -58,4 +58,15 @@ class ShopSignRendererTest {
         val lines = r.lines(SignDirection.SELL, "netherite_ingot", 1, "1000")
         assertEquals("1x netherite_i…", plain.serialize(lines[1]))
     }
+
+    @Test fun `MiniMessage gradient display name preserved on sign`() {
+        val gradientName = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage()
+            .deserialize("<gradient:red:gold>Epic Sword</gradient>")
+        val lines = r.lines(SignDirection.SELL, "diamond_sword", 1, "500", displayName = gradientName)
+        assertEquals("1x Epic Sword", plain.serialize(lines[1]))
+        // Gradient display name must not be flattened to plain text — verify
+        // the appended component has children (gradient produces per-char styling)
+        val itemChild = lines[1].children()
+        assert(itemChild.isNotEmpty()) { "gradient display name was flattened — no children found" }
+    }
 }
