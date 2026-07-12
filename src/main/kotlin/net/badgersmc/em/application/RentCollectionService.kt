@@ -12,6 +12,8 @@ import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
+import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Bukkit
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -38,6 +40,7 @@ class RentCollectionService(
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
     private val auctionRepository: AuctionRepository,
+    private val lang: LangService,
 ) {
 
     private val activeStates = setOf(StallState.OWNED, StallState.GRACE)
@@ -170,6 +173,12 @@ class RentCollectionService(
         // won't be processed again once it leaves GRACE/OWNED activeStates.
         stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING, ownerSince = now))
         auctionRepository.create(auction)
+        try {
+            Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
+                "stall" to stall.id.value, "bid" to startingBid))
+        } catch (_: Exception) {
+            // Broadcast is best-effort; don't let it roll back the auction creation.
+        }
         return ProcessResult.Evicted  // reuse Evicted for counting
     }
 
