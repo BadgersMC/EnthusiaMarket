@@ -11,9 +11,7 @@ import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.paper.listeners.Listener
 import org.bukkit.Bukkit
 import org.bukkit.Material
-import org.bukkit.block.Chest
 import org.bukkit.block.Container
-import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -119,12 +117,7 @@ class ContainerStockListener(
         // Material pre-check avoids snapshot for non-container blocks.
         return when (block.type) {
             Material.CHEST, Material.TRAPPED_CHEST -> {
-                val state = block.state
-                if (state is Chest) {
-                    val singleInv = state.blockInventory       // Paper API — live
-                    val holder = singleInv.holder
-                    if (holder is DoubleChest) holder.inventory else singleInv
-                } else null
+                (block.state as? Container)?.inventory
             }
             Material.BARREL, Material.HOPPER, Material.DROPPER,
             Material.DISPENSER, Material.FURNACE, Material.BLAST_FURNACE,
