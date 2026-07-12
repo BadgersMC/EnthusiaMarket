@@ -3,7 +3,6 @@ package net.badgersmc.em.infrastructure.commands
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
-import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.LimitResolutionService
 import net.badgersmc.em.application.MassAuctionResult
 import net.badgersmc.em.application.SellOfferService
@@ -21,7 +20,6 @@ import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.application.GuildTradePolicyService
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -725,24 +723,16 @@ class AdminCommands(
         val shops = shopRepository.all()
         var fixed = 0; var skipped = 0; var errors = 0
         for (shop in shops) {
-            val world = org.bukkit.Bukkit.getWorld(shop.signWorld)
-            if (world == null) { errors++; continue }
-            val sign = world.getBlockAt(shop.signX, shop.signY, shop.signZ).state as? org.bukkit.block.Sign
-            if (sign == null) { skipped++; continue }
-            val deserialized = ItemStackSerializer.deserialize(shop.sellItem)
-            val sell = deserialized?.type?.name?.lowercase() ?: "?"
-            val displayName = deserialized?.itemMeta?.displayName()
-            val costDisplay = if (shop.direction == SignDirection.TRADE) {
-                val costMat = ItemStackSerializer.deserialize(shop.costItem)?.type?.name?.lowercase() ?: "?"
-                "${shop.costAmount}x $costMat"
-            } else {
-                "${shop.costAmount}"
+            try {
+                val world = org.bukkit.Bukkit.getWorld(shop.signWorld)
+                if (world == null) { errors++; continue }
+                val sign = world.getBlockAt(shop.signX, shop.signY, shop.signZ).state as? org.bukkit.block.Sign
+                if (sign == null) { skipped++; continue }
+                SignRenderHelper.renderToSign(signRenderer, sign, shop)
+                fixed++
+            } catch (_: Exception) {
+                errors++
             }
-            val side = sign.getSide(org.bukkit.block.sign.Side.FRONT)
-            signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay, displayName)
-                .forEachIndexed { i, c -> side.line(i, c) }
-            sign.update()
-            fixed++
         }
         player.sendMessage(lang.msg("admin.refreshsigns.result", "fixed" to fixed, "skipped" to skipped, "errors" to errors))
     }

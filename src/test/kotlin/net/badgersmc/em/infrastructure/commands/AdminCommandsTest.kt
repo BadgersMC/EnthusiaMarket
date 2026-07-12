@@ -196,4 +196,64 @@ class AdminCommandsTest {
 
         verify { members.listMembers(StallId("s1"), actorUuid) }
     }
+
+    @Test fun `refreshSigns reports result counts`() {
+        val player = mockk<Player>(relaxed = true)
+        every { player.uniqueId } returns UUID.randomUUID()
+
+        val shop = net.badgersmc.em.domain.shop.Shop(
+            id = 1L, stallId = "s1", owner = UUID.randomUUID(),
+            signWorld = "world", signX = 10, signY = 64, signZ = 10,
+            containerWorld = "world", containerX = 50, containerY = 64, containerZ = 60,
+            sellItem = "base64item", sellAmount = 1,
+            costItem = "base64cost", costAmount = 100,
+            direction = net.badgersmc.em.domain.shop.SignDirection.SELL,
+        )
+
+        val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>()
+        every { shopRepo.all() } returns listOf(shop)
+
+        val signState = mockk<org.bukkit.block.Sign>(relaxed = true)
+        val side = mockk<org.bukkit.block.sign.SignSide>(relaxed = true)
+        every { signState.getSide(org.bukkit.block.sign.Side.FRONT) } returns side
+        every { signState.update() } returns true
+        val world = mockk<org.bukkit.World>(relaxed = true)
+        every { world.getBlockAt(10, 64, 10) } returns mockk<org.bukkit.block.Block>(relaxed = true).also {
+            every { it.state } returns signState
+        }
+        every { Bukkit.getWorld("world") } returns world
+
+        val signRenderer = mockk<net.badgersmc.em.application.ShopSignRenderer>(relaxed = true)
+        every { signRenderer.lines(any(), any(), any(), any(), any()) } returns listOf(
+            net.kyori.adventure.text.Component.text("line1"),
+            net.kyori.adventure.text.Component.text("line2"),
+            net.kyori.adventure.text.Component.text("line3"),
+            net.kyori.adventure.text.Component.text("line4"),
+        )
+
+        val cmd = AdminCommands(
+            mockk(relaxed = true), mockk(relaxed = true), config,
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            shopRepo,
+            signRenderer,
+        )
+        cmd.refreshSigns(player)
+
+        verify { player.sendMessage(any<Component>()) }
+    }
 }
