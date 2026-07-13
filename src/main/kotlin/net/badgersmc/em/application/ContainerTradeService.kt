@@ -222,7 +222,7 @@ open class ContainerTradeService(
             val received = sellStack.amount - remainder.values.sumOf { it.amount }
             val toRemove = sellStack.clone().apply { amount = received }
             ctx.player.inventory.removeItem(toRemove)
-            val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack, ctx.player)
+            val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
             val msg = if (rolledBack) {
                 "Trade reversed — check your inventory"
             } else {
@@ -248,9 +248,10 @@ open class ContainerTradeService(
     private fun rollbackFullTransaction(
         guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, cost: Long,
         containerInv: Inventory, sellStack: ItemStack,
-        player: Player,
     ): Boolean {
-        val itemsRestored = transferSimilar(player.inventory, containerInv, sellStack, sellStack.amount) is TransferResult.Success
+        // Restore stock to container from the deserialized template (sell undo).
+        // Partial player items were already removed by the caller.
+        val itemsRestored = containerInv.addItem(sellStack.clone()).isEmpty()
         val fundsReversed = if (guildId != null) {
             guildProvider?.bankWithdraw(guildId.toString(), cost) == true
         } else {
@@ -564,8 +565,9 @@ open class ContainerTradeService(
     /**
      * Transfers [amount] items matching [template] (by [ItemStack.isSimilar]) from
      * [source] to [dest], preserving the original item stacks including display names
-     * and NBT. Returns a map of items that could not fit in [dest]. An empty map
-     * means the full amount was transferred.
+     * and NBT. Atomic — preflights source count and dest capacity before mutating
+     * either inventory. Returns [TransferResult.Success] when the full amount was
+     * transferred.
      */
     private sealed class TransferResult {
         data object Success : TransferResult()
@@ -582,6 +584,17 @@ open class ContainerTradeService(
     ): TransferResult {
         val contents = source.contents
         if (contents != null && contents.isNotEmpty()) {
+            // Preflight: don't mutate until we know the full amount can be moved
+            if (!ItemStackMatch.containsAtLeastSimilar(source, template, amount)) {
+                val fail = HashMap<Int, ItemStack>()
+                fail[0] = template.clone().apply { this.amount = amount }
+                return TransferResult.SourceFailure(fail)
+            }
+            if (!ItemStackMatch.canFitSimilar(dest, template, amount)) {
+                val fail = HashMap<Int, ItemStack>()
+                fail[0] = template.clone().apply { this.amount = amount }
+                return TransferResult.DestFull(fail)
+            }
             var remaining = amount
             for (item in contents) {
                 if (item == null) continue
@@ -589,17 +602,10 @@ open class ContainerTradeService(
                 val take = minOf(item.amount, remaining)
                 val batch = item.clone().apply { this.amount = take }
                 source.removeItem(batch)
-                val leftover = dest.addItem(batch)
-                if (leftover.isNotEmpty()) {
-                    source.addItem(batch)
-                    return TransferResult.DestFull(leftover)
-                }
+                dest.addItem(batch)
                 remaining -= take
                 if (remaining <= 0) return TransferResult.Success
             }
-            val fail = HashMap<Int, ItemStack>()
-            fail[0] = template.clone().apply { this.amount = remaining }
-            return TransferResult.SourceFailure(fail)
         }
         // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
         val batch = template.clone().apply { this.amount = amount }
