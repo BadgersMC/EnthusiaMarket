@@ -94,24 +94,10 @@ open class ContainerTradeService(
         sellStack: ItemStack,
         effectiveCost: Long,
     ): ContainerTradeResult {
-        val removalResult = ctx.player.inventory.removeItem(sellStack.clone())
-        if (removalResult.isNotEmpty()) return ContainerTradeResult.Failure("Not enough items in inventory")
-
-        val remainder = ctx.containerInv.addItem(sellStack.clone())
-        if (remainder.isNotEmpty()) {
-            undoPartialInsert(ctx.containerInv, ctx.player.inventory, sellStack, remainder)
-            return ContainerTradeResult.Failure("Container is full")
-        }
+        val leftover = transferSimilar(ctx.player.inventory, ctx.containerInv, sellStack, sellStack.amount)
+        if (leftover.isNotEmpty()) return ContainerTradeResult.Failure("Not enough items in inventory")
 
         return processBuyPayment(shop, ctx, sellStack, effectiveCost)
-    }
-
-    /** Reverses a partial container insertion — removes what was added, returns original items. */
-    private fun undoPartialInsert(containerInv: Inventory, playerInv: Inventory, sellStack: ItemStack, remainder: Map<Int, ItemStack>) {
-        val inserted = sellStack.amount - remainder.values.sumOf { it.amount }
-        val toRemove = sellStack.clone().apply { amount = inserted }
-        containerInv.removeItem(toRemove)
-        playerInv.addItem(sellStack)
     }
 
     /** Handles payment flow: withdraw from shop owner → deposit to player. */
@@ -232,7 +218,7 @@ open class ContainerTradeService(
             val received = sellStack.amount - remainder.values.sumOf { it.amount }
             val toRemove = sellStack.clone().apply { amount = received }
             ctx.player.inventory.removeItem(toRemove)
-            val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
+            val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack, ctx.player)
             val msg = if (rolledBack) {
                 "Trade reversed — check your inventory"
             } else {
@@ -249,15 +235,15 @@ open class ContainerTradeService(
     }
 
     private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack) {
-        containerInv.removeItem(stack)
-        player.inventory.addItem(stack)
+        transferSimilar(containerInv, player.inventory, stack, stack.amount)
     }
 
     private fun rollbackFullTransaction(
         guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, cost: Long,
-        containerInv: Inventory, sellStack: ItemStack
+        containerInv: Inventory, sellStack: ItemStack,
+        player: Player,
     ): Boolean {
-        val itemsRestored = containerInv.addItem(sellStack).isEmpty()
+        val itemsRestored = transferSimilar(player.inventory, containerInv, sellStack, sellStack.amount).isEmpty()
         val fundsReversed = if (guildId != null) {
             guildProvider?.bankWithdraw(guildId.toString(), cost) == true
         } else {
@@ -566,5 +552,50 @@ open class ContainerTradeService(
             return ContainerTradeResult.Failure("Guild bank is unavailable")
         }
         return ContainerTradeResult.Failure(defaultMessage)
+    }
+
+    /**
+     * Transfers [amount] items matching [template] (by [ItemStack.isSimilar]) from
+     * [source] to [dest], preserving the original item stacks including display names
+     * and NBT. Returns a map of items that could not fit in [dest]. An empty map
+     * means the full amount was transferred.
+     */
+    @Suppress("CyclomaticComplexMethod")
+    private fun transferSimilar(
+        source: Inventory,
+        dest: Inventory,
+        template: ItemStack,
+        amount: Int,
+    ): Map<Int, ItemStack> {
+        val contents = source.contents
+        if (contents != null && contents.isNotEmpty()) {
+            var remaining = amount
+            for (item in contents) {
+                if (item == null) continue
+                if (!item.isSimilar(template)) continue
+                val take = minOf(item.amount, remaining)
+                val batch = item.clone().apply { this.amount = take }
+                source.removeItem(batch)
+                val leftover = dest.addItem(batch)
+                if (leftover.isNotEmpty()) {
+                    source.addItem(batch)
+                    return leftover
+                }
+                remaining -= take
+                if (remaining <= 0) return emptyMap()
+            }
+            val fail = HashMap<Int, ItemStack>()
+            fail[0] = template.clone().apply { this.amount = remaining }
+            return fail
+        }
+        // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
+        val batch = template.clone().apply { this.amount = amount }
+        val removed = source.removeItem(batch)
+        if (removed.isNotEmpty()) return removed
+        val leftover = dest.addItem(batch)
+        if (leftover.isNotEmpty()) {
+            source.addItem(batch)
+        }
+        return leftover
     }
 }

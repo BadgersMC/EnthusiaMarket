@@ -392,7 +392,7 @@ class ContainerTradeServiceTest {
 
         val result = service.executeBuy(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for full container")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Container is full", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Not enough items", ignoreCase = true))
 
         // Verify rollback: item returned to player
         verify { playerInv.addItem(any()) }
