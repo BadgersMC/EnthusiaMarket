@@ -17,6 +17,7 @@ import org.bukkit.Bukkit
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.logging.Logger
 
 /**
  * Report from a single rent collection tick.
@@ -42,6 +43,8 @@ class RentCollectionService(
     private val auctionRepository: AuctionRepository,
     private val lang: LangService,
 ) {
+
+    private val log = Logger.getLogger(RentCollectionService::class.java.name)
 
     private val activeStates = setOf(StallState.OWNED, StallState.GRACE)
 
@@ -176,8 +179,9 @@ class RentCollectionService(
         try {
             Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
                 "stall" to stall.id.value, "bid" to startingBid))
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // Broadcast is best-effort; don't let it roll back the auction creation.
+            log.warning("Emergency auction broadcast failed for stall ${stall.id.value}: ${e.message}")
         }
         return ProcessResult.Evicted  // reuse Evicted for counting
     }

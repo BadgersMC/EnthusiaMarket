@@ -485,6 +485,8 @@ open class ContainerTradeService(
     private fun slotTradePreconditions(shop: Shop, playerUuid: UUID): SlotTradePreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall not found"))
+        if (stall.state == StallState.GRACE)
+            return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
         val player = getPlayer(playerUuid)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Player offline"))
         val (container, sellStack) = resolveContainerStock(shop)
