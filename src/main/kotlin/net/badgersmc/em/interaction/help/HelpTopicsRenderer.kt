@@ -47,7 +47,7 @@ object HelpTopicsRenderer {
             .append(Component.text(topic.displayName, NamedTextColor.YELLOW))
             .append(Component.text("] ", NamedTextColor.DARK_GRAY))
             .append(Component.text(topic.summary, NamedTextColor.GRAY))
-            .clickEvent(ClickEvent.runCommand("/em help ${topic.slug}"))
+            .clickEvent(ClickEvent.runCommand("/em help topic ${topic.slug}"))
             .hoverEvent(HoverEvent.showText(Component.text("Open ${topic.displayName} help", NamedTextColor.GOLD)))
             .build()
     }
