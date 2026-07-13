@@ -174,7 +174,7 @@ permissions:
     default: op
     description: Manage own stalls
   enthusiamarket.stall.members:
-    default: op
+    default: true
     description: Manage stall members
   enthusiamarket.stall.offer:
     default: true
