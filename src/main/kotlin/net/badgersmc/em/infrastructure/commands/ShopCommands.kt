@@ -23,6 +23,7 @@ import org.bukkit.entity.Player
  * matching ItemShops: list / edit / trust / untrust / delete / breakdelete.
  */
 @Command(name = "shop", description = "Manage your shops", aliases = ["shops"])
+@Suppress("LongParameterList")
 class ShopCommands(
     private val management: ShopManagementService,
     private val shopRepository: ShopRepository,
