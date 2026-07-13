@@ -78,17 +78,20 @@ class ShopSignRenderer {
 
         // If the component already has styled children (per-char colors, etc.),
         // it's already parsed — don't touch it
-        if (display.children().any { child ->
-            val s = child.style()
-            s.color() != null || s.hasDecoration(net.kyori.adventure.text.format.TextDecoration.BOLD) ||
-                s.hasDecoration(net.kyori.adventure.text.format.TextDecoration.ITALIC) ||
-                child.children().isNotEmpty()
-        }) return display
+        if (display.children().any { hasStyledChildren(it) }) return display
 
         return try {
             MiniMessage.miniMessage().deserialize(plain)
         } catch (_: Exception) {
             display // Parse failed — return original
         }
+    }
+
+    private fun hasStyledChildren(component: Component): Boolean {
+        val s = component.style()
+        return s.color() != null ||
+            s.hasDecoration(net.kyori.adventure.text.format.TextDecoration.BOLD) ||
+            s.hasDecoration(net.kyori.adventure.text.format.TextDecoration.ITALIC) ||
+            component.children().isNotEmpty()
     }
 }
