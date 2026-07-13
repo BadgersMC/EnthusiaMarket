@@ -291,7 +291,6 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             pos = skipSimpleNbt(data, pos, tagId)
         }
         return pos
->>>>>>> 41bb9b7 (fix(search): add NBT deserialization fallback for pre-1.20.5 item format)
     }
 
     private fun updateSellMaterial(conn: java.sql.Connection, id: Long, material: String) {
