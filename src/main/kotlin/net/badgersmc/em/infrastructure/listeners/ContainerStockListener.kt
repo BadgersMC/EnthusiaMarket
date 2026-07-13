@@ -118,7 +118,11 @@ class ContainerStockListener(
     }
 
     private fun rawStockOf(inventory: Inventory, shop: Shop): Int {
-        val templateBytes = Base64.getDecoder().decode(shop.sellItem)
+        val templateBytes = try {
+            Base64.getDecoder().decode(shop.sellItem)
+        } catch (_: IllegalArgumentException) {
+            return 0
+        }
         return ItemStackMatch.countInBytes(inventory, templateBytes)
     }
 

@@ -205,6 +205,27 @@ class ContainerStockListenerTest {
     }
 
     @Test
+    fun `refreshAllSigns survives corrupt sellItem base64`() {
+        val corruptShop = Shop(
+            id = 1L, stallId = "s1", owner = UUID.randomUUID(),
+            signWorld = "world", signX = 100, signY = 64, signZ = 200,
+            containerWorld = "world", containerX = 50, containerY = 64, containerZ = 60,
+            sellItem = "!!!not-valid-base64!!!", sellAmount = 1,
+            costItem = "base64cost", costAmount = 10
+        )
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(corruptShop)
+
+        val contItem = matchingStock(10)
+        mockWorld(contents = arrayOf(contItem))
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        // Must NOT throw — corrupt data returns 0 stock gracefully
+        listener.refreshAllSigns()
+        verify { repo.updateStockBatch(mapOf(corruptShop.id to 0)) }
+    }
+
+    @Test
     fun `refreshAllSigns skips update when sign chunk not loaded`() {
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)

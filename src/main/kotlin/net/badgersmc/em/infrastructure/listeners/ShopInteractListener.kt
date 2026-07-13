@@ -92,7 +92,11 @@ open class ShopInteractListener(
         val world = Bukkit.getWorld(shop.containerWorld) ?: return 0
         val state = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
         val inv = (state as? org.bukkit.block.Container)?.inventory ?: return 0
-        val templateBytes = Base64.getDecoder().decode(shop.sellItem)
+        val templateBytes = try {
+            Base64.getDecoder().decode(shop.sellItem)
+        } catch (_: IllegalArgumentException) {
+            return 0
+        }
         val total = net.badgersmc.em.application.ItemStackMatch.countInBytes(inv, templateBytes)
         return total / shop.sellAmount.coerceAtLeast(1)
     }
