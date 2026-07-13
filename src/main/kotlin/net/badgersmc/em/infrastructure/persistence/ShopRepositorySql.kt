@@ -277,6 +277,16 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             0x0B -> pos + 4 + (4 * readIntBigEndian(data, pos))
             0x0C -> pos + 4 + (8 * readIntBigEndian(data, pos))
             0x0A -> skipCompound(data, pos)
+            0x09 -> { // TAG_List
+                val childType = data[pos].toInt() and 0xFF
+                val count = readIntBigEndian(data, pos + 1)
+                var skipPos = pos + 5
+                @Suppress("UNUSED_VARIABLE")
+                for (i in 0 until count) {
+                    skipPos = skipSimpleNbt(data, skipPos, childType)
+                }
+                skipPos
+            }
             else -> pos
         }
     }

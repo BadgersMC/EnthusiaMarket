@@ -94,8 +94,12 @@ open class ContainerTradeService(
         sellStack: ItemStack,
         effectiveCost: Long,
     ): ContainerTradeResult {
-        val leftover = transferSimilar(ctx.player.inventory, ctx.containerInv, sellStack, sellStack.amount)
-        if (leftover.isNotEmpty()) return ContainerTradeResult.Failure("Not enough items in inventory")
+        val result = transferSimilar(ctx.player.inventory, ctx.containerInv, sellStack, sellStack.amount)
+        when (result) {
+            is TransferResult.Success -> {}
+            is TransferResult.SourceFailure -> return ContainerTradeResult.Failure("Not enough items in inventory")
+            is TransferResult.DestFull -> return ContainerTradeResult.Failure("Container is full")
+        }
 
         return processBuyPayment(shop, ctx, sellStack, effectiveCost)
     }
@@ -235,7 +239,10 @@ open class ContainerTradeService(
     }
 
     private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack) {
-        transferSimilar(containerInv, player.inventory, stack, stack.amount)
+        val result = transferSimilar(containerInv, player.inventory, stack, stack.amount)
+        if (result !is TransferResult.Success) {
+            Bukkit.getLogger().warning("Rollback failed: items could not be returned to ${player.name}")
+        }
     }
 
     private fun rollbackFullTransaction(
@@ -243,7 +250,7 @@ open class ContainerTradeService(
         containerInv: Inventory, sellStack: ItemStack,
         player: Player,
     ): Boolean {
-        val itemsRestored = transferSimilar(player.inventory, containerInv, sellStack, sellStack.amount).isEmpty()
+        val itemsRestored = transferSimilar(player.inventory, containerInv, sellStack, sellStack.amount) is TransferResult.Success
         val fundsReversed = if (guildId != null) {
             guildProvider?.bankWithdraw(guildId.toString(), cost) == true
         } else {
@@ -524,10 +531,10 @@ open class ContainerTradeService(
     protected open fun deserializeStack(base64: String): ItemStack? = ItemStackSerializer.deserialize(base64)
 
     protected open fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
-        ItemStackMatch.containsAtLeast(inventory, template, amount)
+        ItemStackMatch.containsAtLeastSimilar(inventory, template, amount)
 
     protected open fun inventoryCanFit(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
-        ItemStackMatch.canFit(inventory, template, amount)
+        ItemStackMatch.canFitSimilar(inventory, template, amount)
 
     private fun resolveEffectiveCost(
         shop: Shop,
@@ -560,13 +567,19 @@ open class ContainerTradeService(
      * and NBT. Returns a map of items that could not fit in [dest]. An empty map
      * means the full amount was transferred.
      */
+    private sealed class TransferResult {
+        data object Success : TransferResult()
+        data class SourceFailure(val leftover: Map<Int, ItemStack>) : TransferResult()
+        data class DestFull(val leftover: Map<Int, ItemStack>) : TransferResult()
+    }
+
     @Suppress("CyclomaticComplexMethod")
     private fun transferSimilar(
         source: Inventory,
         dest: Inventory,
         template: ItemStack,
         amount: Int,
-    ): Map<Int, ItemStack> {
+    ): TransferResult {
         val contents = source.contents
         if (contents != null && contents.isNotEmpty()) {
             var remaining = amount
@@ -579,23 +592,24 @@ open class ContainerTradeService(
                 val leftover = dest.addItem(batch)
                 if (leftover.isNotEmpty()) {
                     source.addItem(batch)
-                    return leftover
+                    return TransferResult.DestFull(leftover)
                 }
                 remaining -= take
-                if (remaining <= 0) return emptyMap()
+                if (remaining <= 0) return TransferResult.Success
             }
             val fail = HashMap<Int, ItemStack>()
             fail[0] = template.clone().apply { this.amount = remaining }
-            return fail
+            return TransferResult.SourceFailure(fail)
         }
         // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
         val batch = template.clone().apply { this.amount = amount }
         val removed = source.removeItem(batch)
-        if (removed.isNotEmpty()) return removed
+        if (removed.isNotEmpty()) return TransferResult.SourceFailure(removed)
         val leftover = dest.addItem(batch)
         if (leftover.isNotEmpty()) {
             source.addItem(batch)
+            return TransferResult.DestFull(leftover)
         }
-        return leftover
+        return TransferResult.Success
     }
 }
