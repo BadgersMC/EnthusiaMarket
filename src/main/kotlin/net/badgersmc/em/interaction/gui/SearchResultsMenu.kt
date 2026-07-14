@@ -140,8 +140,7 @@ class SearchResultsMenu(
         } else {
             // Fall back to average from current listings when no transaction history
             if (results.isNotEmpty()) {
-                val unitPrices = results.map { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
-                val avgListing = unitPrices.average()
+                val avgListing = results.sumOf { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) } / results.size
                 lore += lang.msg("gui.shop.search.ticker_lore_listing",
                     "avg" to "%,.1f".format(avgListing),
                     "count" to results.size,
