@@ -33,9 +33,10 @@ open class ShopInteractListener(
     private val logger = java.util.logging.Logger.getLogger(ShopInteractListener::class.java.name)
 
     @EventHandler
-    fun onSignRightClick(event: PlayerInteractEvent) {
-        // Only right-click on blocks with main hand
-        if (event.action != Action.RIGHT_CLICK_BLOCK) return
+    fun onSignInteract(event: PlayerInteractEvent) {
+        val isRight = event.action == Action.RIGHT_CLICK_BLOCK
+        val isLeft = event.action == Action.LEFT_CLICK_BLOCK
+        if (!isRight && !isLeft) return
         if (event.hand != EquipmentSlot.HAND) return
 
         val block = event.clickedBlock ?: return
@@ -46,27 +47,11 @@ open class ShopInteractListener(
             loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
         ) ?: return
 
-        event.isCancelled = true
-        openShop(event.player, shop)
-    }
+        // Cancel right-click to prevent vanilla sign edit; deny left-click
+        // item use to suppress held-item abilities (e.g. spear lunge).
+        if (isLeft) event.setUseItemInHand(org.bukkit.event.Event.Result.DENY)
+        else event.isCancelled = true
 
-    @EventHandler
-    fun onSignLeftClick(event: PlayerInteractEvent) {
-        // Left-click on a shop sign should open the shop, not trigger
-        // held-item abilities (e.g. spear lunge).  Handled at NORMAL
-        // priority so an upstream HIGHEST listener could override.
-        if (event.action != Action.LEFT_CLICK_BLOCK) return
-        if (event.hand != EquipmentSlot.HAND) return
-
-        val block = event.clickedBlock ?: return
-        if (block.state !is Sign) return
-
-        val loc = block.location
-        val shop = shopRepository.findBySign(
-            loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
-        ) ?: return
-
-        event.isCancelled = true
         openShop(event.player, shop)
     }
 
