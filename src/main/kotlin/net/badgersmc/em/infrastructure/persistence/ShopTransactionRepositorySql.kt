@@ -89,7 +89,7 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
         var result: PriceStats? = null
         ds.connection.use { c ->
             c.prepareStatement(
-                """SELECT AVG(CAST(total_price AS REAL) / quantity), COUNT(*)
+                """SELECT CAST(SUM(total_price) AS REAL) / SUM(quantity), COUNT(*)
                    FROM shop_transactions
                    WHERE item = ? AND direction = 'SELL'
                      AND created_at >= ? AND created_at < ?"""
