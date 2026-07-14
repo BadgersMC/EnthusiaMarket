@@ -199,8 +199,9 @@ class SearchResultsMenu(
         }
 
         private fun fmtEnchant(ench: Enchantment): String =
-            ench.key.key.replace('_', ' ').lowercase()
-                .replaceFirstChar { it.uppercase() }
+            ench.key.key.split('_').joinToString(" ") { word ->
+                word.lowercase().replaceFirstChar { it.uppercase() }
+            }
 
         private fun romanNumeral(n: Int): String = when (n) {
             1 -> "I"; 2 -> "II"; 3 -> "III"; 4 -> "IV"; 5 -> "V"
