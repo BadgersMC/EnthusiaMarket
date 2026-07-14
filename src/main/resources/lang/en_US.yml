@@ -63,29 +63,29 @@ admin:
 # Render templates are state-driven by PurchaseSignRenderer.
 purchase_sign:
   buyable:
-    line1: "<dark_gray>[<gold>EM</gold>]"
-    line2: "<aqua><stall>"
-    line3: "<gold><price>"
-    line4: "<green>Click to buy"
+    line1: "<dark_gray><shadow:#000000:1>[<gold>EM</gold>]</shadow>"
+    line2: "<shadow:#000000:1><aqua><stall></shadow>"
+    line3: "<shadow:#000000:1><gold><price></shadow>"
+    line4: "<shadow:#000000:1><green>Click to buy</shadow>"
   auction:
-    line1: "<dark_gray>[<gold>EM</gold>]"
-    line2: "<aqua><stall>"
-    line3: "<yellow>Bid: <bid>"
-    line4: "<gray>/em bid"
+    line1: "<dark_gray><shadow:#000000:1>[<gold>EM</gold>]</shadow>"
+    line2: "<shadow:#000000:1><aqua><stall></shadow>"
+    line3: "<shadow:#000000:1><yellow>Bid: <bid></shadow>"
+    line4: "<shadow:#000000:1><gray>/em bid</shadow>"
   emergency_auction:
-    line1: "<dark_gray>[<dark_red>EM</dark_red>]"
-    line2: "<red><stall>"
-    line3: "<gold>Bid: <bid>"
-    line4: "<red>Emergency!</red>"
+    line1: "<dark_gray><shadow:#000000:1>[<dark_red>EM</dark_red>]</shadow>"
+    line2: "<shadow:#000000:1><red><stall></shadow>"
+    line3: "<shadow:#000000:1><gold>Bid: <bid></shadow>"
+    line4: "<shadow:#000000:1><red>Emergency!</red></shadow>"
   owned:
-    line1: "<dark_gray>[<gold>EM</gold>] <aqua><stall>"
-    line2: "<yellow><owner>"
-    line3: "<gray>Rent: <time>"
-    line4: "<aqua>Right-click"
-    overdue: "<red>Overdue"
+    line1: "<shadow:#000000:1><dark_gray>[<gold>EM</gold>] <aqua><stall></shadow>"
+    line2: "<shadow:#000000:1><yellow><owner></shadow>"
+    line3: "<shadow:#000000:1><gray>Rent: <time></shadow>"
+    line4: "<shadow:#000000:1><aqua>Right-click</shadow>"
+    overdue: "<shadow:#000000:1><red>Overdue</shadow>"
   missing:
-    line1: "<dark_gray>[<gold>EM</gold>]"
-    line2: "<red>?<stall>"
+    line1: "<shadow:#000000:1><dark_gray>[<gold>EM</gold>]</shadow>"
+    line2: "<shadow:#000000:1><red>?<stall></shadow>"
   msg:
     created: "<prefix><shadow:#000000:1><green>Sign linked to</green> <aqua><stall></aqua> <gray>for</gray> <gold><price></shadow>"
     invalid_stall: "<prefix><shadow:#000000:1><red>Unknown stall:</red> <stall></shadow>"
@@ -508,7 +508,7 @@ bedrock:
     clicked: "<gray>Shop at <white><world> <x> <y> <z> <gray>— pasted to chat."
 
 container_sign:
-  stock_line: "<gray>Stock: <trades>"
+  stock_line: "<shadow:#000000:1><gray>Stock: <trades></shadow>"
 
 guildpolicy:
   not_in_guild: "<shadow:#000000:1><red>You must be in a guild to manage trade policy.</red></shadow>"
