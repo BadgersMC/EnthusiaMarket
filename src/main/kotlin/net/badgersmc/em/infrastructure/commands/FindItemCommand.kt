@@ -3,7 +3,6 @@ package net.badgersmc.em.infrastructure.commands
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
-import net.badgersmc.em.domain.shop.PriceTicker
 import net.badgersmc.em.interaction.gui.SearchResultsMenu
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
@@ -44,7 +43,7 @@ class FindItemCommand(
             val results = shopRepository.findBySellMaterial(material.name)
                 .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
             if (results.isNotEmpty()) {
-                val ticker = priceTicker(material.name)
+                val ticker = net.badgersmc.em.application.PriceTickerService.compute(material.name, transactions)
                 SearchResultsMenu(results, query, 1, lang, stallRepository, ticker).open(player)
                 return
             }
@@ -61,19 +60,5 @@ class FindItemCommand(
         player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
     }
 
-    // duplicated from ShopCommands.priceTicker — see PR comments about extracting this
-    private fun priceTicker(item: String): net.badgersmc.em.domain.shop.PriceTicker? {
-        val now = System.currentTimeMillis()
-        val dayMs = 24 * 60 * 60 * 1000L
-        val current = transactions.avgPriceInWindow(item, now - dayMs, now)
-        if (current == null) return null
-        fun change(days: Int, cachedNow: net.badgersmc.em.domain.shop.PriceStats): Double? {
-            val window = days * dayMs
-            val prev = transactions.avgPriceInWindow(item, now - window * 2, now - window)
-            return if (prev != null && prev.avgPrice > 0)
-                ((cachedNow.avgPrice - prev.avgPrice) / prev.avgPrice) * 100 else null
-        }
-        return PriceTicker(current.avgPrice, current.sampleCount,
-            change(1, current), change(7, current), change(30, current))
-    }
 }
+
