@@ -505,6 +505,10 @@ bedrock:
     result: "<green><sell_amt>x <gray>for <gold><cost>  <dark_gray>| <aqua><trades> trades  <dark_gray>| <yellow><owner>"
     clicked: "<gray>Shop at <white><world> <x> <y> <z> <gray>— pasted to chat."
 
+sign_header:
+  sell: "<shadow:#000000:1><aqua>[SELL]</aqua></shadow>"
+  sell_out: "<shadow:#000000:1><red>[SELL]</red></shadow>"
+
 container_sign:
   stock_line: "<shadow:#000000:1><gray>Stock: <trades></shadow>"
 
