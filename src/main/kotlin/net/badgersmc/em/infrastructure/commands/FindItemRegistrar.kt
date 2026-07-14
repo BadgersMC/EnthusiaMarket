@@ -1,7 +1,6 @@
 package net.badgersmc.em.infrastructure.commands
 
 import com.mojang.brigadier.arguments.StringArgumentType
-import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import com.mojang.brigadier.builder.RequiredArgumentBuilder
 import com.mojang.brigadier.tree.LiteralCommandNode
 import io.papermc.paper.command.brigadier.CommandSourceStack
@@ -15,6 +14,7 @@ import net.badgersmc.em.domain.shop.ShopTransactionRepository
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.interaction.gui.SearchResultsMenu
 import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
@@ -50,34 +50,39 @@ object FindItemRegistrar {
                                 sender.sendRichMessage("<red>Players only")
                                 return@executes 0
                             }
-                            val material = Material.matchMaterial(query)
-                            val results: List<Shop>
-                            val displayQuery: String
-                            if (material != null) {
-                                results = shopRepo.findBySellMaterial(material.name)
-                                    .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
-                                displayQuery = query
-                            } else if (query.length >= 2) {
-                                results = shopRepo.findBySellMaterialPrefix(query.uppercase())
-                                    .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
-                                displayQuery = query
-                            } else {
-                                player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query))
-                                return@executes 0
+                            // Offload DB queries off the main thread; open the GUI
+                            // back on the server thread (REQ-605 sync requirement).
+                            Bukkit.getScheduler().runTaskAsynchronously(plugin) { _ ->
+                                val material = Material.matchMaterial(query)
+                                val results: List<Shop>
+                                if (material != null) {
+                                    results = shopRepo.findBySellMaterial(material.name)
+                                        .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
+                                } else if (query.length >= 2) {
+                                    results = shopRepo.findBySellMaterialPrefix(query.uppercase())
+                                        .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
+                                } else {
+                                    player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query))
+                                    return@runTaskAsynchronously
+                                }
+                                if (results.isEmpty()) {
+                                    player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
+                                    return@runTaskAsynchronously
+                                }
+                                val ticker = PriceTickerService.compute(
+                                    material?.name ?: query.uppercase(), transactions
+                                )
+                                // GUI must open on the server thread
+                                Bukkit.getScheduler().runTask(plugin) { _ ->
+                                    SearchResultsMenu(results, query, 1, lang, stallRepo, ticker).open(player)
+                                }
                             }
-                            if (results.isEmpty()) {
-                                player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
-                                return@executes 0
-                            }
-                            val ticker = PriceTickerService.compute(
-                                material?.name ?: query.uppercase(), transactions)
-                            SearchResultsMenu(results, displayQuery, 1, lang, stallRepo, ticker).open(player)
                             1
                         }
                 )
                 .build()
 
-            event.registrar().dispatcher.root.addChild(node)
+            event.registrar().register(node, "Search for items in the market")
         }
     }
 }
