@@ -5,15 +5,32 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.player.AsyncPlayerChatEvent
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * Listener that parses a chat message as a custom price/amount for [CreateShopMenu].
  * Registered via Nexus DI with the [Listener] annotation.
+ *
+ * Each prompt expires after [TIMEOUT_SECONDS] — typing nothing (or any message that
+ * isn't the price prompt) removes the player from the waiting set so the chat
+ * interception doesn't outlast the menu.
  */
 @Listener
 class ChatPriceListener : org.bukkit.event.Listener {
     companion object {
+        private const val TIMEOUT_SECONDS = 60L
+
+        /** (playerUUID → menu). Populated on prompt, cleared on answer or expiry. */
         val waiting = ConcurrentHashMap<UUID, CreateShopMenu>()
+
+        internal fun register(playerId: UUID, menu: CreateShopMenu, plugin: org.bukkit.plugin.Plugin) {
+            waiting[playerId] = menu
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+                waiting.remove(playerId)?.let {
+                    it.internalNotifyTimeout(playerId)
+                }
+            }, TimeUnit.SECONDS.toSeconds(TIMEOUT_SECONDS) * 20L)
+        }
     }
 
     @EventHandler

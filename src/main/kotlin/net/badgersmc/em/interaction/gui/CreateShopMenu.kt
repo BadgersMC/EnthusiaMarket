@@ -59,6 +59,9 @@ class CreateShopMenu(
     internal val internalLang: LangService get() = lang
 
     internal fun setPrice(value: Long) { price = value }
+    internal fun internalNotifyTimeout(playerId: UUID) {
+        org.bukkit.Bukkit.getPlayer(playerId)?.sendMessage(lang.msg("gui.shop.create.custom_price_timeout"))
+    }
 
     override fun open(player: Player) {
         render(player)
@@ -203,7 +206,7 @@ class CreateShopMenu(
             priceInputTarget = "price"
             player.closeInventory()
             player.sendMessage(lang.msg("gui.shop.create.custom_price_prompt"))
-            ChatPriceListener.waiting[player.uniqueId] = this
+            ChatPriceListener.register(player.uniqueId, this, org.bukkit.Bukkit.getPluginManager().getPlugin("EnthusiaMarket")!!)
         }, 3, 3)
     }
 
