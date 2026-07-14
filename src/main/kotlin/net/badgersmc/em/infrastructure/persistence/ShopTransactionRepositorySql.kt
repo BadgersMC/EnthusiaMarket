@@ -40,22 +40,33 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
     }
 
     override fun findByOwner(owner: UUID, limit: Int, offset: Int): List<ShopTransaction> {
-        return findByField("owner", owner, limit, offset)
-    }
-
-    override fun findByBuyer(buyer: UUID, limit: Int, offset: Int): List<ShopTransaction> {
-        return findByField("buyer", buyer, limit, offset)
-    }
-
-    private fun findByField(field: String, id: UUID, limit: Int, offset: Int): List<ShopTransaction> {
         ds.connection.use { c ->
             c.prepareStatement(
-                """SELECT * FROM shop_transactions WHERE $field = ?
+                """SELECT * FROM shop_transactions WHERE owner = ?
                    ORDER BY created_at DESC LIMIT ? OFFSET ?"""
             ).use { ps ->
-                ps.setString(1, id.toString())
+                ps.setString(1, owner.toString())
                 ps.setInt(2, limit)
                 ps.setInt(3, offset)
+                ps.executeQuery().use { rs ->
+                    val out = mutableListOf<ShopTransaction>()
+                    while (rs.next()) out += map(rs)
+                    return out
+                }
+            }
+        }
+    }
+
+    override fun findByOwnerOrBuyer(player: UUID, limit: Int, offset: Int): List<ShopTransaction> {
+        ds.connection.use { c ->
+            c.prepareStatement(
+                """SELECT * FROM shop_transactions WHERE owner = ? OR buyer = ?
+                   ORDER BY created_at DESC LIMIT ? OFFSET ?"""
+            ).use { ps ->
+                ps.setString(1, player.toString())
+                ps.setString(2, player.toString())
+                ps.setInt(3, limit)
+                ps.setInt(4, offset)
                 ps.executeQuery().use { rs ->
                     val out = mutableListOf<ShopTransaction>()
                     while (rs.next()) out += map(rs)

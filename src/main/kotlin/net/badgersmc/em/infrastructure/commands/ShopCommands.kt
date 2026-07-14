@@ -208,11 +208,7 @@ class ShopCommands(
     fun history(@Context sender: CommandSender) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
         // Show sales where the player is EITHER the shop owner OR the customer (for stall members)
-        val owned = transactions.findByOwner(player.uniqueId, PAGE_SIZE, 0)
-        val bought = transactions.findByBuyer(player.uniqueId, PAGE_SIZE, 0)
-        val rows = (owned + bought).distinctBy { it.id }
-            .sortedByDescending { it.createdAt }
-            .take(PAGE_SIZE)
+        val rows = transactions.findByOwnerOrBuyer(player.uniqueId, PAGE_SIZE, 0)
         if (rows.isEmpty()) { player.sendMessage(lang.msg("shop.history.empty")); return }
         player.sendMessage(lang.msg("shop.history.header", "page" to 1))
         val fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
