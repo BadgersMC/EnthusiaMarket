@@ -162,7 +162,7 @@ class ShopCommands(
             if (results.isNotEmpty()) {
                 val ticker = priceTicker(material.name)
                 net.badgersmc.em.interaction.gui.SearchResultsMenu(
-                    results, query, 1, lang, stallRepository, ticker.first, ticker.second,
+                    results, query, 1, lang, stallRepository, ticker,
                 ).open(player)
                 return
             }
@@ -174,7 +174,7 @@ class ShopCommands(
             if (prefixResults.isNotEmpty()) {
                 val ticker = priceTicker(query.uppercase())
                 net.badgersmc.em.interaction.gui.SearchResultsMenu(
-                    prefixResults, query, 1, lang, stallRepository, ticker.first, ticker.second,
+                    prefixResults, query, 1, lang, stallRepository, ticker,
                 ).open(player)
                 return
             }
@@ -182,12 +182,24 @@ class ShopCommands(
         player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
     }
 
-    private fun priceTicker(item: String): Pair<net.badgersmc.em.domain.shop.PriceStats?, net.badgersmc.em.domain.shop.PriceStats?> {
+    private fun priceTicker(item: String): net.badgersmc.em.domain.shop.PriceTicker? {
         val now = System.currentTimeMillis()
         val dayMs = 24 * 60 * 60 * 1000L
-        val current = transactions.avgPriceInWindow(item, now - dayMs, now)
-        val previous = transactions.avgPriceInWindow(item, now - 2 * dayMs, now - dayMs)
-        return current to previous
+        fun change(windowDays: Int): Double? {
+            val winMs = windowDays * dayMs
+            val cur = transactions.avgPriceInWindow(item, now - winMs, now)
+            val prev = transactions.avgPriceInWindow(item, now - 2 * winMs, now - winMs)
+            if (cur == null || prev == null || prev.avgPrice <= 0) return null
+            return ((cur.avgPrice - prev.avgPrice) / prev.avgPrice) * 100
+        }
+        val current = transactions.avgPriceInWindow(item, now - dayMs, now) ?: return null
+        return net.badgersmc.em.domain.shop.PriceTicker(
+            avgPrice = current.avgPrice,
+            sampleCount = current.sampleCount,
+            change24h = change(1),
+            change7d = change(7),
+            change30d = change(30),
+        )
     }
 
     @Subcommand("history")

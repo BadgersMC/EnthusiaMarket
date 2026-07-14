@@ -6,7 +6,7 @@ import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ItemStackSerializer
-import net.badgersmc.em.domain.shop.PriceStats
+import net.badgersmc.em.domain.shop.PriceTicker
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
@@ -35,8 +35,7 @@ class SearchResultsMenu(
     private val page: Int,
     private val lang: LangService,
     private val stallRepository: StallRepository,
-    private val priceNow: PriceStats? = null,
-    private val pricePrevious: PriceStats? = null,
+    private val ticker: PriceTicker? = null,
 ) : Menu {
 
     @Suppress("LongMethod")
@@ -101,13 +100,13 @@ class SearchResultsMenu(
         if (current > 1) {
             pane.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.shop.search.prev"))) {
                 it.isCancelled = true
-                SearchResultsMenu(results, query, current - 1, lang, stallRepository, priceNow, pricePrevious).open(player)
+                SearchResultsMenu(results, query, current - 1, lang, stallRepository, ticker).open(player)
             }, 0, ROWS - 1)
         }
         if (current < totalPages) {
             pane.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.shop.search.next"))) {
                 it.isCancelled = true
-                SearchResultsMenu(results, query, current + 1, lang, stallRepository, priceNow, pricePrevious).open(player)
+                SearchResultsMenu(results, query, current + 1, lang, stallRepository, ticker).open(player)
             }, 8, ROWS - 1)
         }
 
@@ -129,21 +128,14 @@ class SearchResultsMenu(
         meta.displayName(name)
 
         val lore = mutableListOf<Component>()
-        if (priceNow != null) {
+        if (ticker != null) {
             lore += lang.msg("gui.shop.search.ticker_lore_avg",
-                "avg" to "%.1f".format(priceNow.avgPrice),
-                "count" to priceNow.sampleCount,
+                "avg" to "%,.1f".format(ticker.avgPrice),
+                "count" to ticker.sampleCount,
             )
-        }
-
-        if (priceNow != null && pricePrevious != null && pricePrevious.avgPrice > 0) {
-            val changePct = ((priceNow.avgPrice - pricePrevious.avgPrice) / pricePrevious.avgPrice) * 100
-            val changeKey = when {
-                changePct > 0.1 -> "gui.shop.search.ticker_lore_up"
-                changePct < -0.1 -> "gui.shop.search.ticker_lore_down"
-                else -> "gui.shop.search.ticker_lore_flat"
-            }
-            lore += lang.msg(changeKey, "change" to "%.1f".format(abs(changePct)))
+            lore += changeLine("24h", ticker.change24h)
+            lore += changeLine("7d", ticker.change7d)
+            lore += changeLine("30d", ticker.change30d)
         } else {
             lore += lang.msg("gui.shop.search.ticker_lore_no_data")
         }
@@ -151,6 +143,16 @@ class SearchResultsMenu(
         meta.lore(lore)
         item.itemMeta = meta
         return item
+    }
+
+    private fun changeLine(label: String, pct: Double?): Component {
+        if (pct == null) return lang.msg("gui.shop.search.ticker_lore_no_change", "label" to label)
+        val key = when {
+            pct > 0.1 -> "gui.shop.search.ticker_lore_up"
+            pct < -0.1 -> "gui.shop.search.ticker_lore_down"
+            else -> "gui.shop.search.ticker_lore_flat"
+        }
+        return lang.msg(key, "label" to label, "change" to "%.1f".format(abs(pct)))
     }
 
     private fun named(material: Material, name: Component): ItemStack {
