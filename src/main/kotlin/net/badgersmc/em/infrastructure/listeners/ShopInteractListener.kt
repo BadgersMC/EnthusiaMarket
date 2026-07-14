@@ -47,9 +47,30 @@ open class ShopInteractListener(
         ) ?: return
 
         event.isCancelled = true
+        openShop(event.player, shop)
+    }
 
-        val player = event.player
+    @EventHandler
+    fun onSignLeftClick(event: PlayerInteractEvent) {
+        // Left-click on a shop sign should open the shop, not trigger
+        // held-item abilities (e.g. spear lunge).  Handled at NORMAL
+        // priority so an upstream HIGHEST listener could override.
+        if (event.action != Action.LEFT_CLICK_BLOCK) return
+        if (event.hand != EquipmentSlot.HAND) return
 
+        val block = event.clickedBlock ?: return
+        if (block.state !is Sign) return
+
+        val loc = block.location
+        val shop = shopRepository.findBySign(
+            loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
+        ) ?: return
+
+        event.isCancelled = true
+        openShop(event.player, shop)
+    }
+
+    private fun openShop(player: Player, shop: Shop) {
         // Shift-right-click → info card (ItemShops parity SP6)
         if (player.isSneaking) {
             val owner = org.bukkit.Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
