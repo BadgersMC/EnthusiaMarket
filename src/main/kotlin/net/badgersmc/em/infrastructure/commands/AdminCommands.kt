@@ -552,14 +552,15 @@ class AdminCommands(
                     } catch (_: Exception) {
                         errors++
                     }
-                    OwnerType.GUILD -> {
+                    OwnerType.GUILD -> try {
+                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
                         val guids = guildProvider.memberIds(stall.owner.id)
                         if (guids.isNotEmpty()) {
                             regionMembers.syncGuildMembers(stall.world, stall.regionId, guids)
-                            fixed++
-                        } else {
-                            skipped++  // no online guild members; will sync when they log in
                         }
+                        fixed++  // owners/members always cleared above; sync best-effort
+                    } catch (_: Exception) {
+                        errors++
                     }
                     OwnerType.NONE -> Unit
                 }

@@ -228,14 +228,15 @@ class StallBuyoutService(
                     updated.world, updated.regionId, java.util.UUID.fromString(owner.id)
                 )
                 OwnerType.GUILD -> {
+                    regionMembers.clearOwnersAndMembers(updated.world, updated.regionId)
                     val guids = guildProvider.memberIds(owner.id)
                     if (guids.isNotEmpty()) {
                         regionMembers.syncGuildMembers(updated.world, updated.regionId, guids)
                     } else {
                         log.warning(
                             "StallBuyoutService: stall ${stallId.value} awarded to guild ${owner.id} " +
-                                "but no online guild members found — region will be empty until members " +
-                                "log in and /em rg resync runs."
+                                "but no online guild members found — region owners/members cleared; " +
+                                "members will gain access when /em rg resync runs with them online."
                         )
                     }
                 }
