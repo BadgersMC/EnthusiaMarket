@@ -50,7 +50,7 @@ class LumaGuildsGuildProvider : GuildProvider {
             val field = GuildLookupImpl::class.java.getDeclaredField("banks")
             field.isAccessible = true
             field.get(impl) as? BankService
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             logger.log(java.util.logging.Level.WARNING, "Failed to extract BankService from GuildLookupImpl; bank operations will use GuildLookup fallback", e)
             null
         }
@@ -154,13 +154,11 @@ class LumaGuildsGuildProvider : GuildProvider {
         if (amount <= 0) return false
         val uuid = parseUuid(guildId) ?: return false
         val bs = bankService
-        if (bs != null) {
-            val intAmount = if (amount in 1..Int.MAX_VALUE) amount.toInt() else return false
-            // Use deductFromGuildBank — modifies vault gold directly, no player required.
-            // Works in all bank modes (PHYSICAL, VIRTUAL, BOTH).
-            return bs.deductFromGuildBank(uuid, intAmount, "EnthusiaMarket stall rent")
+        if (bs != null && amount in 1..Int.MAX_VALUE) {
+            // Fast path: deductFromGuildBank modifies vault gold directly, no player required.
+            return bs.deductFromGuildBank(uuid, amount.toInt(), "EnthusiaMarket stall rent")
         }
-        // Fallback: use GuildLookup (only works in VIRTUAL/BOTH with a real online player actor).
+        // Fallback: use GuildLookup (handles Long amounts, but requires online player actor).
         return lookup?.bankWithdraw(uuid, SYSTEM_ACTOR_UUID, amount, "System withdrawal") ?: false
     }
 
@@ -168,10 +166,9 @@ class LumaGuildsGuildProvider : GuildProvider {
         if (amount <= 0) return false
         val uuid = parseUuid(guildId) ?: return false
         val bs = bankService
-        if (bs != null) {
-            val intAmount = if (amount in 1..Int.MAX_VALUE) amount.toInt() else return false
-            // Use creditToGuildBank — modifies vault gold directly, no player required.
-            return bs.creditToGuildBank(uuid, intAmount, "EnthusiaMarket")
+        if (bs != null && amount in 1..Int.MAX_VALUE) {
+            // Fast path: creditToGuildBank modifies vault gold directly, no player required.
+            return bs.creditToGuildBank(uuid, amount.toInt(), "EnthusiaMarket")
         }
         return lookup?.bankDeposit(uuid, SYSTEM_ACTOR_UUID, amount, "System deposit") ?: false
     }
