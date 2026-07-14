@@ -227,11 +227,18 @@ class StallBuyoutService(
                 OwnerType.SOLO -> regionMembers.setOwner(
                     updated.world, updated.regionId, java.util.UUID.fromString(owner.id)
                 )
-                OwnerType.GUILD -> log.warning(
-                    "StallBuyoutService: stall ${stallId.value} awarded to guild ${owner.id} " +
-                        "but WG owner mapping for guilds isn't wired — guild members may need " +
-                        "op or explicit /em stall members add to build until a bridge ships."
-                )
+                OwnerType.GUILD -> {
+                    val guids = guildProvider.memberIds(owner.id)
+                    if (guids.isNotEmpty()) {
+                        regionMembers.syncGuildMembers(updated.world, updated.regionId, guids)
+                    } else {
+                        log.warning(
+                            "StallBuyoutService: stall ${stallId.value} awarded to guild ${owner.id} " +
+                                "but no online guild members found — region will be empty until members " +
+                                "log in and /em rg resync runs."
+                        )
+                    }
+                }
                 OwnerType.NONE -> Unit // unreachable; awardTo rejects NONE.
             }
         } catch (e: Exception) {

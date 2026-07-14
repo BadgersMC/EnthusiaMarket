@@ -552,7 +552,15 @@ class AdminCommands(
                     } catch (_: Exception) {
                         errors++
                     }
-                    OwnerType.GUILD -> skipped++  // no auto WG bridge for guilds yet
+                    OwnerType.GUILD -> {
+                        val guids = guildProvider.memberIds(stall.owner.id)
+                        if (guids.isNotEmpty()) {
+                            regionMembers.syncGuildMembers(stall.world, stall.regionId, guids)
+                            fixed++
+                        } else {
+                            skipped++  // no online guild members; will sync when they log in
+                        }
+                    }
                     OwnerType.NONE -> Unit
                 }
                 StallState.UNOWNED -> try {
