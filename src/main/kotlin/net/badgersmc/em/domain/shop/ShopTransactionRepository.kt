@@ -18,6 +18,8 @@ interface ShopTransactionRepository {
     fun record(tx: ShopTransaction): ShopTransaction
     /** Newest-first, paged. */
     fun findByOwner(owner: UUID, limit: Int, offset: Int): List<ShopTransaction>
+    /** Transactions where this player was the buyer/customer (for stall members). */
+    fun findByBuyer(buyer: UUID, limit: Int, offset: Int): List<ShopTransaction>
     fun countUnnotified(owner: UUID): Int
     fun markNotified(owner: UUID)
     /** Delete rows older than [beforeMs]; returns rows removed. */
