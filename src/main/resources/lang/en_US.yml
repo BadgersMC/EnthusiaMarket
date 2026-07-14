@@ -5,7 +5,7 @@
 #
 # Bedrock/Cumulus paths render these to legacy §-codes via LegacyComponentSerializer.
 
-prefix: "<gradient:#FF7272:#FFC976><shadow:#000000:1>[Mar</shadow></gradient><gradient:#FFC976:#FFC976><shadow:#000000:1>ket]</shadow></gradient> "
+prefix: "<gradient:#FF7272:#FFC976><shadow:#000000:1>[Mar</shadow></gradient><#FFC976><shadow:#000000:1>ket]</shadow></#FFC976> "
 
 common:
   unknown_player: "<shadow:#000000:1>Unknown</shadow>"
@@ -206,11 +206,17 @@ shop:
     invalid_trade_cost: "<shadow:#000000:1><red>Line 3 must be '<amount> <item>', e.g. '16 diamond'.</shadow>"
   help:
     unknown_topic: "<shadow:#000000:1><red>Unknown topic '<topic>'. Run /em help to see available topics.</shadow>"
+    line1: "<shadow:#000000:1><gold>━━ Shop Tutorial ━━</shadow>"
+    line2: "<shadow:#000000:1><gray>1. Place a wall sign on a container (chest, barrel, etc.) inside your stall.</shadow>"
+    line3: "<shadow:#000000:1><gray>2. A configuration menu will open — choose BUY, SELL, or TRADE.</shadow>"
+    line4: "<shadow:#000000:1><gray>3. Set the amount per trade and the price (or cost item for TRADE).</shadow>"
+    line5: "<shadow:#000000:1><gray>4. Confirm to create the shop. Use /shop edit to manage your shops.</shadow>"
   edit:
     not_owner: "<shadow:#000000:1><red>You don't own this shop</shadow>"
     frozen: "<shadow:#000000:1><red>Shop frozen</shadow>"
     unfrozen: "<shadow:#000000:1><green>Shop unfrozen</shadow>"
     updated: "<shadow:#000000:1><green>Shop updated</shadow>"
+    saved: "<shadow:#000000:1><green>Shop updated.</shadow>"
   protect:
     use_edit_menu: "<prefix><shadow:#000000:1>Use the edit menu to delete this shop (coming in TDD-57)</shadow>"
     cannot_break_sign: "<shadow:#000000:1><red>You cannot break this shop sign</shadow>"
@@ -274,18 +280,10 @@ shop:
       enabled: "<shadow:#000000:1><green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it.</shadow>"
       disabled: "<shadow:#000000:1><gray>Break-others mode disabled.</shadow>"
       deleted: "<shadow:#000000:1><green>Admin-broke and deleted that shop.</shadow>"
-  edit:
-    saved: "<shadow:#000000:1><green>Shop updated.</shadow>"
   delete:
     done: "<shadow:#000000:1><yellow>Shop deleted.</shadow>"
   store:
     url: "<shadow:#000000:1><green>Our web store: <aqua><click:open_url:'<url>'><url></click></shadow>"
-  help:
-    line1: "<shadow:#000000:1><gold>━━ Shop Tutorial ━━</shadow>"
-    line2: "<shadow:#000000:1><gray>1. Place a wall sign on a container (chest, barrel, etc.) inside your stall.</shadow>"
-    line3: "<shadow:#000000:1><gray>2. A configuration menu will open — choose BUY, SELL, or TRADE.</shadow>"
-    line4: "<shadow:#000000:1><gray>3. Set the amount per trade and the price (or cost item for TRADE).</shadow>"
-    line5: "<shadow:#000000:1><gray>4. Confirm to create the shop. Use /shop edit to manage your shops.</shadow>"
 
 gui:
   common:
@@ -437,12 +435,12 @@ gui:
     manage_trusted_lore_count: "<gray>Currently trusted: <count>"
     manage_trusted_lore_click: "<yellow>Click to open"
   trust:
-    title: "<shadow:#000000:1><dark_gray>Manage Trusted Players</shadow>"
-    member_name: "<shadow:#000000:1><yellow><name></shadow>"
-    member_lore_uuid: "<shadow:#000000:1><gray>UUID: <uuid></shadow>"
-    member_lore_remove: "<shadow:#000000:1><red>Left-click to remove</shadow>"
-    add_name: "<shadow:#000000:1><green>ADD TRUSTED PLAYER</shadow>"
-    add_lore: "<shadow:#000000:1><gray>Type a player name in chat to add</shadow>"
+    title: "<dark_gray>Manage Trusted Players"
+    member_name: "<yellow><name>"
+    member_lore_uuid: "<gray>UUID: <uuid>"
+    member_lore_remove: "<red>Left-click to remove"
+    add_name: "<green>ADD TRUSTED PLAYER"
+    add_lore: "<gray>Type a player name in chat to add"
   auctions:
     title: "<dark_gray>Auctions"
     prev: "<yellow>← Previous Page"
