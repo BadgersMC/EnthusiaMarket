@@ -59,16 +59,31 @@ class ContainerStockListener(
         loadedSign(shop)?.let { updateSignStock(it, shop, trades) }
     }
 
-    // ── Timer path (called from EnthusiaMarket.onEnable every 20t) ─────
+    // ── Timer path (called from EnthusiaMarket.onEnable every tick) ─────
 
-    /** Recompute stock for every shop whose container chunk is loaded,
-     *  then flush all batched stock writes to DB in one pass. */
+    /** Shops per tick for incremental refresh (scales to 1000+ shops). */
+    private var cursor = 0
+
+    /** Recompute stock for a batch of shops and flush on cycle completion. */
+    fun refreshBatch(batchSize: Int = 50) {
+        val shops = shopRepository.all().toList()
+        if (shops.isEmpty()) return
+        val end = (cursor + batchSize).coerceAtMost(shops.size)
+        for (i in cursor until end) {
+            val shop = shops[i]
+            val inventory = liveContainerInventory(shop) ?: continue
+            refreshOne(shop, inventory)
+        }
+        cursor = if (end >= shops.size) 0 else end
+        if (cursor == 0) flushDirtyStock()  // full cycle complete → persist
+    }
+
+    /** Recompute stock for every shop whose container chunk is loaded (admin resync). */
     fun refreshAllSigns() {
         for (shop in shopRepository.all()) {
             val inventory = liveContainerInventory(shop) ?: continue
             refreshOne(shop, inventory)
         }
-        // Flush batched stock writes from both trade + timer paths (PERF-5).
         flushDirtyStock()
     }
 
