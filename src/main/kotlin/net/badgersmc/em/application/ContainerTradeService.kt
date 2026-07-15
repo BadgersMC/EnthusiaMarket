@@ -233,22 +233,6 @@ open class ContainerTradeService(
         }
     }
 
-    private fun rollbackFullTransaction(
-        guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, cost: Long,
-        containerInv: Inventory, sellStack: ItemStack,
-    ): Boolean {
-        // Restore stock to container from the deserialized template (sell undo).
-        // Partial player items were already removed by the caller.
-        val itemsRestored = containerInv.addItem(sellStack.clone()).isEmpty()
-        val fundsReversed = if (guildId != null) {
-            guildProvider?.bankWithdraw(guildId.toString(), cost) == true
-        } else {
-            economy.withdraw(ownerUuid, cost)
-        }
-        val playerRefunded = economy.deposit(playerUuid, cost)
-        return itemsRestored && fundsReversed && playerRefunded
-    }
-
     private fun canAffordShopCost(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
         return if (guildId != null) {
             guildProvider != null && guildProvider.bankBalance(guildId.toString()) >= cost
@@ -260,11 +244,6 @@ open class ContainerTradeService(
     private fun withdrawFromShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
         return if (guildId != null) guildProvider?.bankWithdraw(guildId.toString(), cost) ?: false
         else economy.withdraw(ownerUuid, cost)
-    }
-
-    private fun depositToShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
-        return if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
-        else economy.deposit(ownerUuid, cost)
     }
 
     private fun refundShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
