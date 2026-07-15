@@ -24,11 +24,11 @@ import java.util.concurrent.ConcurrentHashMap
  * **Trade path** — [onTransaction] fires after every successful [PostShopTransactionEvent]:
  * recomputes raw stock, stages the DB write for the next timer flush, and updates the sign.
  *
- * **Timer path** — [refreshAllSigns] is called every 20 ticks from [EnthusiaMarket.onEnable].
- * Iterates all shops, reads the live container inventory for loaded chunks only (never
- * force-loads), flushes batched stock writes to SQLite, and updates sign text when the
- * raw stock changes. This catches stock drift from shift-click, hopper, or other-plugin
- * inventory mutations without needing per-event listeners.
+ * **Timer path** — [refreshBatch] is called every tick from [EnthusiaMarket.onEnable].
+ * Processes 50 shops per tick with a rotating cursor so a full cycle completes in
+ * ~1s at current scale and ~3s at 3000+ shops. Flushes batched stock writes to
+ * SQLite at cycle end. This catches stock drift from shift-click, hopper, or
+ * other-plugin inventory mutations without needing per-event listeners.
  */
 @Listener
 @Component
