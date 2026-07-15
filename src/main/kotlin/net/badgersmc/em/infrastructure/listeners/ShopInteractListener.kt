@@ -34,7 +34,9 @@ open class ShopInteractListener(
 
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {
-        if (event.action != Action.RIGHT_CLICK_BLOCK) return
+        val isRight = event.action == Action.RIGHT_CLICK_BLOCK
+        val isLeft = event.action == Action.LEFT_CLICK_BLOCK
+        if (!isRight && !isLeft) return
         if (event.hand != EquipmentSlot.HAND) return
 
         val block = event.clickedBlock ?: return
@@ -45,10 +47,15 @@ open class ShopInteractListener(
             loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
         ) ?: return
 
-        // Right-click: open the shop. Cancel the event and deny item use
-        // to suppress held-item abilities (e.g. spear lunge).
+        // Left-click: only suppress held-item abilities (e.g. spear lunge).
+        // Do NOT open the shop — the owner needs to be able to break the sign.
+        if (isLeft) {
+            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY)
+            return
+        }
+
+        // Right-click: open the shop.
         event.isCancelled = true
-        event.setUseItemInHand(org.bukkit.event.Event.Result.DENY)
         openShop(event.player, shop)
     }
 
