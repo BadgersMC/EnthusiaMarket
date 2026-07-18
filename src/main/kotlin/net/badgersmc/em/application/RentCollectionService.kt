@@ -116,7 +116,12 @@ class RentCollectionService(
                     shops.freezeByStall(stall.id.value, frozen = true)
                     return emergencyAuction(stall, now, rentDue)
                 }
-                // Save stall FIRST: if shop freeze fails we're at least in GRACE for next tick retry.
+                // Freeze shops FIRST: if it fails, the stall stays OWNED and the next
+                // tick retries. If we save GRACE first and the freeze throws, the stall
+                // is in GRACE with active shops — the GRACE processing branch does not
+                // re-freeze, so the eviction penalty would be broken for the entire
+                // grace period.
+                shops.freezeByStall(stall.id.value, frozen = true)
                 // Preserve original ownerSince — do NOT reset it so the audit trail stays intact.
                 // Anchor nextRentAt so the grace window starts from now, not the original purchase
                 // date (which could be months ago and would cause instant eviction on next tick).
@@ -124,7 +129,6 @@ class RentCollectionService(
                     state = StallState.GRACE,
                     nextRentAt = stall.nextRentAt ?: now
                 ))
-                shops.freezeByStall(stall.id.value, frozen = true)
                 ProcessResult.Defaulted
             }
             StallState.GRACE -> {
@@ -158,7 +162,7 @@ class RentCollectionService(
         // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
         // (admin must manually create one). This prevents duplicate auctions on retry — the stall
         // won't be processed again once it leaves GRACE/OWNED activeStates.
-        stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING, ownerSince = now))
+        stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING))
         auctionRepository.create(auction)
         try {
             Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
