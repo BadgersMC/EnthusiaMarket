@@ -83,7 +83,7 @@ object ItemStackMatch {
      *  edge case where both items are undamaged but one carries an explicit
      *  `Damage:0` NBT tag while the other has no Damage tag at all — Bukkit's
      *  [CraftMetaItem.equals] treats `null != 0` and rejects them. */
-    private fun isSimilarIgnoringDamageNullZero(a: ItemStack, b: ItemStack): Boolean {
+    internal fun isSimilarIgnoringDamageNullZero(a: ItemStack, b: ItemStack): Boolean {
         if (a.isSimilar(b)) return true
         val aMeta = a.itemMeta
         val bMeta = b.itemMeta
@@ -92,8 +92,12 @@ object ItemStackMatch {
                 // Both undamaged; force damage to 0 on both and retry.
                 val aClone = a.clone()
                 val bClone = b.clone()
-                (aClone.itemMeta as Damageable).damage = 0
-                (bClone.itemMeta as Damageable).damage = 0
+                val aDamageMeta = aClone.itemMeta as Damageable
+                aDamageMeta.damage = 0
+                aClone.itemMeta = aDamageMeta
+                val bDamageMeta = bClone.itemMeta as Damageable
+                bDamageMeta.damage = 0
+                bClone.itemMeta = bDamageMeta
                 return aClone.isSimilar(bClone)
             }
         }
