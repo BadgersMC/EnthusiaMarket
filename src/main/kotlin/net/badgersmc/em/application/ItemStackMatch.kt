@@ -4,6 +4,17 @@ import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.Damageable
 
+/** Sets damage to 0 on [Damageable] items that report no damage,
+ *  so absent-damage and damage=0 produce identical serialized bytes.
+ *  repair_cost, enchantments, names, lore, and custom data are untouched. */
+internal fun normalizeDamage(stack: ItemStack) {
+    val meta = stack.itemMeta
+    if (meta is Damageable && !meta.hasDamage()) {
+        meta.damage = 0
+        stack.itemMeta = meta
+    }
+}
+
 /** Byte-exact item matching for shop stock/cost checks (ignores stack size). */
 @Suppress("TooManyFunctions")
 object ItemStackMatch {
@@ -133,16 +144,7 @@ object ItemStackMatch {
         return false
     }
 
-    /** Sets damage to 0 on [Damageable] items that report no damage,
-     *  so absent-damage and damage=0 produce identical serialized bytes.
-     *  repair_cost, enchantments, names, lore, and custom data are untouched. */
-    private fun normalizeDamage(stack: ItemStack) {
-        val meta = stack.itemMeta
-        if (meta is Damageable && !meta.hasDamage()) {
-            meta.damage = 0
-            stack.itemMeta = meta
-        }
-    }
+    private fun normalizeDamage(stack: ItemStack) = net.badgersmc.em.application.normalizeDamage(stack)
 
     private fun normalizedBytes(stack: ItemStack): ByteArray {
         val single = stack.clone()
