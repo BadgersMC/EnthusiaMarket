@@ -26,8 +26,14 @@ open class PurchaseSignRefreshListener(
     private val renderer: PurchaseSignRenderer,
 ) : Listener {
 
+    /** Cached sign list — invalidated on state changes (sign placement,
+     *  auction settlement, eviction, etc). Avoids querying the DB every
+     *  60 ticks (~3s) when signs rarely change outside events. */
+    private var cachedSigns: List<PurchaseSign>? = null
+
     @EventHandler
     fun onStallStateChanged(event: StallStateChangedEvent) {
+        cachedSigns = null  // invalidate — signs may have been added/removed
         val bound = signs.findByStall(StallId(event.stallId))
         for (sign in bound) {
             refresh(sign)
@@ -42,7 +48,8 @@ open class PurchaseSignRefreshListener(
      */
     fun refreshLoaded() {
         renderer.refreshAuctionCache()
-        for (sign in signs.all()) {
+        val list = cachedSigns ?: signs.all().also { cachedSigns = it }
+        for (sign in list) {
             val world = Bukkit.getWorld(sign.world) ?: continue
             if (!world.isChunkLoaded(sign.x shr 4, sign.z shr 4)) continue
             refresh(sign)
