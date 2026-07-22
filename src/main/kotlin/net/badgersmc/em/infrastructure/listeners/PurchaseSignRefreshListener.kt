@@ -51,7 +51,7 @@ open class PurchaseSignRefreshListener(
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {
-        if (event.block.state is Sign) cachedSigns = null
+        if (event.block.type.name.endsWith("_SIGN")) cachedSigns = null
     }
 
     /**
