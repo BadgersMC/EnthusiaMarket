@@ -45,12 +45,14 @@ class OwnerNameResolver(
         } catch (_: IllegalArgumentException) {
             return uuidStr
         }
-        val bukkitName = nameCache.computeIfAbsent(uuid) {
-            try {
-                Bukkit.getOfflinePlayer(uuid).name ?: uuidStr
+        val bukkitName = nameCache[uuid] ?: run {
+            val resolved = try {
+                Bukkit.getOfflinePlayer(uuid).name
             } catch (_: Throwable) {
-                uuidStr
+                null
             }
+            if (resolved != null) nameCache.putIfAbsent(uuid, resolved) ?: resolved
+            else uuidStr  // don't cache misses — transient failures aren't permanent
         }
         // Resolve %player_name% from data we already hold (the owner's name),
         // rather than delegating it to PAPI's optional "Player" expansion —

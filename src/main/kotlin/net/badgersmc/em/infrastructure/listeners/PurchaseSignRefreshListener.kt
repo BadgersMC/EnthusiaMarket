@@ -9,7 +9,10 @@ import net.badgersmc.nexus.annotations.Component
 import org.bukkit.Bukkit
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
+import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
+import org.bukkit.event.block.BlockBreakEvent
+import org.bukkit.event.block.SignChangeEvent
 
 /**
  * Re-renders every purchase sign bound to a stall whenever its state
@@ -38,6 +41,17 @@ open class PurchaseSignRefreshListener(
         for (sign in bound) {
             refresh(sign)
         }
+    }
+
+    /** Purchase signs may be created or destroyed without a stall state
+     *  change. Invalidate the cache so the next refresh picks them up. */
+    @Suppress("UnusedParameter")
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onSignChange(event: SignChangeEvent) { cachedSigns = null }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onBlockBreak(event: BlockBreakEvent) {
+        if (event.block.state is Sign) cachedSigns = null
     }
 
     /**
