@@ -167,14 +167,15 @@ class RentCollectionService(
         // (admin must manually create one). This prevents duplicate auctions on retry — the stall
         // won't be processed again once it leaves GRACE/OWNED activeStates.
         stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING))
-        auctionRepository.create(auction)
+        // Broadcast BEFORE auction creation — if the DB write fails the alert
+        // still goes out and players know to expect the auction.
         try {
             Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
                 "stall" to stall.id.value, "bid" to startingBid))
         } catch (e: Exception) {
-            // Broadcast is best-effort; don't let it roll back the auction creation.
             log.warning("Emergency auction broadcast failed for stall ${stall.id.value}: ${e.message}")
         }
+        auctionRepository.create(auction)
         return ProcessResult.Evicted  // reuse Evicted for counting
     }
 
