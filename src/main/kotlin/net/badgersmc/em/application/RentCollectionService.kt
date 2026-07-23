@@ -148,16 +148,20 @@ class RentCollectionService(
      *  the auction winner inherits the stall with all bound shops. */
     private fun emergencyAuction(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
         val startingBid = maxOf(rentDue, 1L)
+        val duration = auctionDuration()
         val auction = Auction(
             id = AuctionId(UUID.randomUUID().toString()),
             stallId = stall.id,
             state = AuctionState.OPEN,
             startAt = now,
-            endAt = now.plus(auctionDuration()),
+            // Timer starts on the first bid — keep the auction open
+            // indefinitely until someone participates.
+            endAt = Instant.MAX,
             startingBid = startingBid,
             highBid = null,
             antiSnipeWindow = config.auction.antiSnipeWindowDuration,
             antiSnipeExtension = config.auction.antiSnipeExtensionDuration,
+            auctionDuration = duration,
         )
         // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
         // (admin must manually create one). This prevents duplicate auctions on retry — the stall
