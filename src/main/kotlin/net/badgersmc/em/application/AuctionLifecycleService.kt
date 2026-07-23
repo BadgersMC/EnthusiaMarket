@@ -535,7 +535,9 @@ class AuctionLifecycleService(
 
     private fun revertSystemAuctionedStall(auction: Auction, auctioningStates: Set<StallState>) {
         val stall = stallRepository.findById(auction.stallId)
-        if (stall != null && stall.state in auctioningStates && stall.owner.type == OwnerType.NONE) {
+        if (stall != null && stall.state in auctioningStates &&
+            (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)
+        ) {
             stallRepository.save(stall.copy(state = StallState.UNOWNED))
             fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
         }
@@ -570,7 +572,8 @@ class AuctionLifecycleService(
                     // stall would stay stuck in AUCTIONING forever.
                     val stall = stallRepository.findById(auction.stallId)
                     if (stall != null
-                        && stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+                        && (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+                            || stall.state == StallState.EMERGENCY_AUCTIONING)
                         && stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
                     ) {
                         stallRepository.save(stall.copy(state = StallState.UNOWNED))
@@ -692,7 +695,7 @@ class AuctionLifecycleService(
             }
             try {
                 if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
-                    stall.owner.type == OwnerType.NONE) {
+                    (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)) {
                     stallRepository.save(stall.copy(state = StallState.UNOWNED))
                     fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                 }
@@ -754,9 +757,12 @@ class AuctionLifecycleService(
     private fun closeWithoutAward(auction: Auction, stall: Stall) {
         auctionRepository.save(auction.close())
         // Revert any system-auctioned stall (all auctioning states + no owner)
-        // back to UNOWNED so it returns to the buyable pool.
+        // OR emergency-auctioned stall (any owner — the previous owner lost their
+        // claim when the emergency auction was triggered) back to UNOWNED so it
+        // returns to the buyable pool.
         if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
-            stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+                || stall.state == StallState.EMERGENCY_AUCTIONING)
         ) {
             try {
                 stallRepository.save(stall.copy(state = StallState.UNOWNED))
