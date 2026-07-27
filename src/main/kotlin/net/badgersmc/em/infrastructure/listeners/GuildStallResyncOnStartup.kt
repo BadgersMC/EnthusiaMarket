@@ -52,14 +52,14 @@ class GuildStallResyncOnStartup(
             if (stall.owner.type != OwnerType.GUILD) continue
 
             try {
-                regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
                 val memberUuids = guildProvider.memberIds(stall.owner.id)
-                if (memberUuids.isNotEmpty()) {
-                    regionMembers.syncGuildMembers(stall.world, stall.regionId, memberUuids)
-                    synced++
-                } else {
+                if (memberUuids.isEmpty()) {
                     skipped++
+                    continue
                 }
+                regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                regionMembers.syncGuildMembers(stall.world, stall.regionId, memberUuids)
+                synced++
             } catch (e: Exception) {
                 log.warning(
                     "GuildStallResyncOnStartup: failed to resync WG for stall ${stall.id.value} " +
