@@ -27,6 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class AuctionLifecycleServiceTest {
 
     private val playerUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")

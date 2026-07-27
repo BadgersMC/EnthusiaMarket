@@ -533,11 +533,16 @@ class AuctionLifecycleService(
         }
     }
 
+    /** True when a system-auctioned stall should be reverted: it's in an
+     *  auctioning state AND either has no owner (mass auction) or is in
+     *  emergency auction (owner lost claim when emergency was triggered). */
+    private fun canRevertStall(stall: Stall, auctioningStates: Set<StallState>): Boolean =
+        stall.state in auctioningStates &&
+            (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)
+
     private fun revertSystemAuctionedStall(auction: Auction, auctioningStates: Set<StallState>) {
         val stall = stallRepository.findById(auction.stallId)
-        if (stall != null && stall.state in auctioningStates &&
-            (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)
-        ) {
+        if (stall != null && canRevertStall(stall, auctioningStates)) {
             stallRepository.save(stall.copy(state = StallState.UNOWNED))
             fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
         }
@@ -564,18 +569,10 @@ class AuctionLifecycleService(
                 if (auction.highBid != null) {
                     settleWithWinner(auction)
                 } else {
-                    // No bids. If this was a system-initiated mass auction
-                    // (UNOWNED stall transitioned to AUCTIONING), revert the
-                    // stall BEFORE closing the auction. If we closed the
-                    // auction first and the stall save then failed, the
-                    // auction would no longer appear in findExpired() and the
-                    // stall would stay stuck in AUCTIONING forever.
+                    // No bids. Revert the stall BEFORE closing the auction.
+                    val auctioningStates = setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
                     val stall = stallRepository.findById(auction.stallId)
-                    if (stall != null
-                        && (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
-                            || stall.state == StallState.EMERGENCY_AUCTIONING)
-                        && stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
-                    ) {
+                    if (stall != null && canRevertStall(stall, auctioningStates)) {
                         stallRepository.save(stall.copy(state = StallState.UNOWNED))
                         // M3 — drop any lingering sell offer on the
                         // now-UNOWNED stall so a follow-up click doesn't
