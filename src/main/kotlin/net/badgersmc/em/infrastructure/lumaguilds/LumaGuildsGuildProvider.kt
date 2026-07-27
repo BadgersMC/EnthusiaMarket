@@ -95,6 +95,14 @@ class LumaGuildsGuildProvider : GuildProvider {
 
     override fun memberIds(guildId: String): Set<UUID> {
         val uuid = parseUuid(guildId) ?: return emptySet()
+        // Primary path: query ALL guild members via the new GuildLookup API.
+        // This fixes the "members cannot build after server restart" gap where
+        // only online players were synced to WG, leaving offline members locked out.
+        val allMembers = lookup?.getGuildMemberIds(uuid)
+        if (allMembers != null && allMembers.isNotEmpty()) return allMembers
+
+        // Fallback: if the new API returns empty (e.g. LumaGuilds not updated yet),
+        // revert to online-only filtering so existing behavior is preserved.
         return org.bukkit.Bukkit.getOnlinePlayers()
             .filter { lookup?.isMember(it.uniqueId, uuid) == true }
             .map { it.uniqueId }
