@@ -57,6 +57,16 @@ class RentCollectionService(
      * @param now the current instant (injectable for testability, defaults to system clock)
      */
     fun tick(now: Instant = Instant.now()): RentReport {
+        // Recover stalls stuck in EMERGENCY_AUCTIONING with no OPEN auction.
+        // Fixed by PR #182 (emergency revert paths now clear owner), but stalls
+        // that were stuck before the fix was deployed are still orphaned.
+        // Run BEFORE the tick loop so a transient auction-write failure during
+        // emergencyAuction() this tick doesn't get mistaken for an orphan.
+        val recovered = recoverOrphanedEmergencyStalls()
+        if (recovered > 0) {
+            log.info("RentCollectionService: recovered $recovered orphaned emergency-auction stall(s)")
+        }
+
         val stalls = stallRepository.all()
         var defaults = 0
         var evictions = 0
@@ -75,16 +85,6 @@ class RentCollectionService(
             } catch (e: Exception) {
                 errors++
             }
-        }
-
-        // Recover stalls stuck in EMERGENCY_AUCTIONING with no OPEN auction.
-        // Fixed by PR #182 (emergency revert paths now clear owner), but stalls
-        // that were stuck before the fix was deployed are still orphaned.
-        // On each tick, scan and revert them. Idempotent — stalls with an
-        // active OPEN auction are left alone.
-        val recovered = recoverOrphanedEmergencyStalls()
-        if (recovered > 0) {
-            log.info("RentCollectionService: recovered $recovered orphaned emergency-auction stall(s)")
         }
 
         return RentReport(
@@ -212,9 +212,13 @@ class RentCollectionService(
         var recovered = 0
         for (stall in stallRepository.all()) {
             if (stall.state != StallState.EMERGENCY_AUCTIONING) continue
-            val openAuction = auctionRepository.findOpenByStall(stall.id)
-            if (openAuction != null) continue // has active auction, skip
             try {
+                val openAuction = auctionRepository.findOpenByStall(stall.id)
+                if (openAuction != null) continue // has active auction, skip
+                // Unfreeze shops frozen by the grace/emergency path before
+                // reverting. UNOWNED stalls are skipped by all other paths, so
+                // frozen shops would remain frozen forever otherwise.
+                shops.freezeByStall(stall.id.value, frozen = false)
                 stallRepository.save(stall.copy(
                     state = StallState.UNOWNED,
                     owner = OwnerRef.unowned(),
