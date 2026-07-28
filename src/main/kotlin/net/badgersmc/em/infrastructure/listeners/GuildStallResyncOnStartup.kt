@@ -2,9 +2,7 @@ package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
-import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallRepository
-import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
@@ -33,7 +31,7 @@ class GuildStallResyncOnStartup(
     private val log = Logger.getLogger(javaClass.name)
 
     @EventHandler
-    fun onServerLoad(event: ServerLoadEvent) {
+    fun onServerLoad(@Suppress("UNUSED_PARAMETER") event: ServerLoadEvent) {
         // Run after a delay so all plugins are fully initialized
         Bukkit.getScheduler().runTaskLater(
             Bukkit.getPluginManager().getPlugin("EnthusiaMarket")!!,
@@ -48,8 +46,8 @@ class GuildStallResyncOnStartup(
         var errors = 0
 
         for (stall in stalls.all()) {
-            if (stall.state !in setOf(StallState.OWNED, StallState.GRACE)) continue
-            if (stall.owner.type != OwnerType.GUILD) continue
+            // Only resync guild-owned stalls that are actively held
+            if (!stall.isActiveGuildStall()) continue
 
             try {
                 val memberUuids = guildProvider.memberIds(stall.owner.id)
