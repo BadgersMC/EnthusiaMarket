@@ -148,29 +148,36 @@ class RentCollectionService(
      *  the auction winner inherits the stall with all bound shops. */
     private fun emergencyAuction(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
         val startingBid = maxOf(rentDue, 1L)
+        val duration = auctionDuration()
         val auction = Auction(
             id = AuctionId(UUID.randomUUID().toString()),
             stallId = stall.id,
             state = AuctionState.OPEN,
             startAt = now,
-            endAt = now.plus(auctionDuration()),
+            // Timer starts on the first bid — keep the auction open
+            // indefinitely until someone participates. Instant.MAX cannot be
+            // serialised to epoch millis (overflows Long), so use the
+            // maximum representable instant instead.
+            endAt = Instant.ofEpochMilli(Long.MAX_VALUE),
             startingBid = startingBid,
             highBid = null,
             antiSnipeWindow = config.auction.antiSnipeWindowDuration,
             antiSnipeExtension = config.auction.antiSnipeExtensionDuration,
+            auctionDuration = duration,
         )
         // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
         // (admin must manually create one). This prevents duplicate auctions on retry — the stall
         // won't be processed again once it leaves GRACE/OWNED activeStates.
         stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING))
-        auctionRepository.create(auction)
+        // Broadcast BEFORE auction creation — if the DB write fails the alert
+        // still goes out and players know to expect the auction.
         try {
             Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
                 "stall" to stall.id.value, "bid" to startingBid))
         } catch (e: Exception) {
-            // Broadcast is best-effort; don't let it roll back the auction creation.
             log.warning("Emergency auction broadcast failed for stall ${stall.id.value}: ${e.message}")
         }
+        auctionRepository.create(auction)
         return ProcessResult.Evicted  // reuse Evicted for counting
     }
 

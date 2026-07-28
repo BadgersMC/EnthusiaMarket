@@ -65,6 +65,8 @@ class AuctionScheduler(
     private fun sendReminders() {
         val now = Instant.now()
         for (auction in auctionRepository.allOpen()) {
+            // Skip auctions where the timer hasn't started yet (no bids placed).
+            if (auction.endAt == Instant.MAX) continue
             val remaining = Duration.between(now, auction.endAt)
             if (remaining.isNegative) continue
             sendReminderForAuction(auction, remaining)
