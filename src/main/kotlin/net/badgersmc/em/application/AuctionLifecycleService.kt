@@ -543,7 +543,12 @@ class AuctionLifecycleService(
     private fun revertSystemAuctionedStall(auction: Auction, auctioningStates: Set<StallState>) {
         val stall = stallRepository.findById(auction.stallId)
         if (stall != null && canRevertStall(stall, auctioningStates)) {
-            stallRepository.save(stall.copy(state = StallState.UNOWNED))
+            val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
+                stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
+            } else {
+                stall.copy(state = StallState.UNOWNED)
+            }
+            stallRepository.save(reverted)
             fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
         }
     }
@@ -573,7 +578,12 @@ class AuctionLifecycleService(
                     val auctioningStates = setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
                     val stall = stallRepository.findById(auction.stallId)
                     if (stall != null && canRevertStall(stall, auctioningStates)) {
-                        stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                        val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
+                            stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
+                        } else {
+                            stall.copy(state = StallState.UNOWNED)
+                        }
+                        stallRepository.save(reverted)
                         // M3 — drop any lingering sell offer on the
                         // now-UNOWNED stall so a follow-up click doesn't
                         // trip the offer-mutex check (matches
@@ -753,16 +763,19 @@ class AuctionLifecycleService(
      */
     private fun closeWithoutAward(auction: Auction, stall: Stall) {
         auctionRepository.save(auction.close())
-        // Revert any system-auctioned stall (all auctioning states + no owner)
-        // OR emergency-auctioned stall (any owner — the previous owner lost their
-        // claim when the emergency auction was triggered) back to UNOWNED so it
-        // returns to the buyable pool.
-        if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
-            (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
-                || stall.state == StallState.EMERGENCY_AUCTIONING)
-        ) {
+        // Revert any system-auctioned or emergency-auctioned stall back to
+        // UNOWNED so it returns to the buyable pool. Emergency stalls also
+        // clear the former owner — they lost their claim when the emergency
+        // auction was triggered.
+        val auctioningStates = setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
+        if (canRevertStall(stall, auctioningStates)) {
             try {
-                stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
+                    stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
+                } else {
+                    stall.copy(state = StallState.UNOWNED)
+                }
+                stallRepository.save(reverted)
                 fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
             } catch (e: Exception) {
                 logger.severe(

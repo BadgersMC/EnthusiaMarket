@@ -813,7 +813,10 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         svc.service.settleExpired()
 
         verify {
-            svc.stallRepo.save(match { it.state == StallState.UNOWNED })
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED &&
+                    it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            })
         }
         verify {
             svc.auctionRepo.save(match { it.state == AuctionState.CLOSED })
@@ -842,7 +845,10 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
             svc.auctionRepo.save(match { it.state == AuctionState.CANCELLED })
         }
         verify {
-            svc.stallRepo.save(match { it.state == StallState.UNOWNED })
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED &&
+                    it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            })
         }
     }
 }

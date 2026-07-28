@@ -155,8 +155,10 @@ class RentCollectionService(
             state = AuctionState.OPEN,
             startAt = now,
             // Timer starts on the first bid — keep the auction open
-            // indefinitely until someone participates.
-            endAt = Instant.MAX,
+            // indefinitely until someone participates. Instant.MAX cannot be
+            // serialised to epoch millis (overflows Long), so use the
+            // maximum representable instant instead.
+            endAt = Instant.ofEpochMilli(Long.MAX_VALUE),
             startingBid = startingBid,
             highBid = null,
             antiSnipeWindow = config.auction.antiSnipeWindowDuration,

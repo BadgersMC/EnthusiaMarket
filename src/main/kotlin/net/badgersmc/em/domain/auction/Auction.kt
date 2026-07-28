@@ -17,9 +17,9 @@ data class Auction(
     val antiSnipeExtension: Duration,
     /** Non-zero when the timer should start on the first bid rather than at
      *  creation. Emergency/re-auction flows set this to the auction duration
-     *  and ship with [endAt] = [Instant.MAX]; the first bid sets [endAt] to
-     *  `now + auctionDuration`. Zero means normal behaviour — the timer runs
-     *  from [startAt] regardless of bids. */
+     *  and ship with [endAt] at the max representable instant; the first bid
+     *  sets [endAt] to `now + auctionDuration`. Zero means normal behaviour —
+     *  the timer runs from [startAt] regardless of bids. */
     val auctionDuration: Duration = Duration.ZERO,
 ) {
     init {
