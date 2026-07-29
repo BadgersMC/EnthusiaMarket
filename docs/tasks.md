@@ -7,6 +7,22 @@
 Tags: `TDD` (failing test before code), `DOC` (markdown / template authoring), `INFRA` (manifests, CI, repo plumbing).
 State legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[!]` blocked.
 
+## Item data component preservation (REQ-300, REQ-301)
+
+Reported: Ominous keys purchased from market have their data components stripped, making them non-functional. Root cause: (1) `ItemStackSerializer.deserialize()` round-trips through legacy `ItemStack.serialize()`/`deserialize()` Map format which drops modern Paper 1.21+ data components. (2) SELL/TRADE trade paths deliver `sellStack.clone()` (deserialized template) instead of items cloned from the actual container inventory.
+
+- [x] **TDD-300** — ItemStackSerializer preserves data components through round-trip
+  References: REQ-300
+  Tag: TDD
+  Description: Remove the `ItemStack.deserialize(item.serialize())` round-trip from `ItemStackSerializer.deserialize()`. The `deserializeBytes()` path already handles data version migration internally in Paper 1.21+. Add a test that creates an ItemStack with a custom data component, serializes it, deserializes it, and verifies the component is preserved. Also verify that material, amount, display name, enchantments, and lore survive the round-trip.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/ItemStackSerializer.kt:35`, `src/test/kotlin/net/badgersmc/em/application/ItemStackSerializerTest.kt`
+
+- [x] **TDD-301** — Trade execution delivers container items not templates
+  References: REQ-301
+  Tag: TDD
+  Description: Change `executeSellTransaction`, `executeBarterTransaction`, and `executeSlotTradeTransfer` to collect the items removed by `removeSimilar` and add THOSE to the player inventory, instead of `sellStack.clone()`. Add a test that verifies a SELL trade delivers items with the same NBT/display name as the items in the container (not the deserialized template).
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt:206-229,393-408,538-545`, `src/test/kotlin/net/badgersmc/em/application/ContainerTradeServiceTest.kt`
+
 ## Sign item display names & truncation (REQ-299)
 
 Reported: Netherite_Ingot (15 chars) doesn't show on sign. Custom anvil names lost.
