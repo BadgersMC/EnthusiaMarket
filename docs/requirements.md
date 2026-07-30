@@ -407,6 +407,14 @@ return the stall to UNOWNED.
 
 **Ubiquitous.** THE SYSTEM SHALL display the traded item's custom display name (from an anvil rename) on shop signs when one exists, preserving its color formatting, and fall back to the Material name when no custom name is set. Item names longer than 14 characters SHALL be truncated to 14 characters followed by an ellipsis ("…") in plain text while preserving the original Component style (color, decorations).
 
+### REQ-300 — Item data component preservation through serialization
+
+**Ubiquitous.** THE SYSTEM SHALL preserve all item data components (including modern Paper 1.21+ component types such as `minecraft:ominous`, `minecraft:item_model`, custom data, enchantments, and display properties) through the full serialize → store → deserialize pipeline without loss or alteration.
+
+### REQ-301 — Trade delivers actual container items
+
+**Unwanted.** IF a trade delivers items to a player (SELL direction or barter) THEN THE SYSTEM SHALL deliver items cloned from the actual container inventory rather than from the deserialized serialization template.
+
 ---
 
 ## Acceptance
