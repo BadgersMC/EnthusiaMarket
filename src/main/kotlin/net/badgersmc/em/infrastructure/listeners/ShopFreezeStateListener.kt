@@ -48,15 +48,19 @@ open class ShopFreezeStateListener(
 
     @EventHandler
     fun onStallStateChanged(event: StallStateChangedEvent) {
-        // Unfreeze only when the DESTINATION is a non-penalty state
-        // (OWNED / UNOWNED). GRACE → EMERGENCY_AUCTIONING must keep shops
-        // frozen — the stall is still under rent enforcement.
-        val landsOnNonPenalty = event.current == StallState.OWNED ||
-            event.current == StallState.UNOWNED
-        val leavingPenalty = event.previous == StallState.GRACE ||
-            event.previous == StallState.EMERGENCY_AUCTIONING
-        if (!landsOnNonPenalty) return
-        if (!leavingPenalty && event.previous != StallState.UNOWNED) return
+        if (!shouldUnfreeze(event.previous, event.current)) return
         shops.freezeByStall(event.stallId, frozen = false)
+    }
+
+    /**
+     * Shops are unfrozen when a stall lands on a non-penalty state after
+     * leaving GRACE / EMERGENCY_AUCTIONING, or when an UNOWNED stall is
+     * bought out (it may carry leftover frozen shops from a pre-fix revert).
+     */
+    private fun shouldUnfreeze(previous: StallState, current: StallState): Boolean {
+        if (current != StallState.OWNED && current != StallState.UNOWNED) return false
+        return previous == StallState.GRACE ||
+            previous == StallState.EMERGENCY_AUCTIONING ||
+            previous == StallState.UNOWNED
     }
 }
