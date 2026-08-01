@@ -965,8 +965,8 @@ Audit of PR #186 (2026-08-01) produced three in-scope findings converted to requ
   Description: In `MaintenanceFreezeRepositorySql.begin()`, check the UPDATE affected-row count; when zero rows matched (V026 seed row deleted), fall back to an INSERT of the (1, frozen=1, started_at) row. Portable across SQLite + MariaDB — no `INSERT OR REPLACE` (SQLite-only), no `ON DUPLICATE KEY` (MariaDB-only). Add a repo test: delete the row, call begin(), assert frozenSince() returns the start instant and the row is recreated.
   Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/MaintenanceFreezeRepositorySql.kt:35-44`, `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/MaintenanceFreezeRepositorySqlTest.kt` — 8/8 green after UPDATE→INSERT fallback; `begin recreates the state row when it was deleted` red before, green after.
 
-- [ ] **DOC-304** — Document the freeze-window transaction contract
+- [x] **DOC-304** — Document the freeze-window transaction contract
   References: REQ-304
   Tag: DOC
   Description: Add a wiki admin page (or extend the existing maintenance-freeze documentation) stating that rent payments and stall buyouts remain live during a maintenance freeze and their timers receive both the interval credit and the unfreeze shift. Reference REQ-304 as the contract source.
-  Evidence: `wiki/docs/admins/` (maintenance page), `docs/requirements.md` REQ-304
+  Evidence: `wiki/docs/admins/maintenance.md` (created 2026-08-01, frontmatter-validated against lint_frontmatter schema), `docs/requirements.md` REQ-304
