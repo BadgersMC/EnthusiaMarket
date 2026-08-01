@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.listeners
 
+import net.badgersmc.em.application.MaintenanceFreezeService
 import net.badgersmc.em.application.PurchaseSignRenderer
 import net.badgersmc.em.domain.sign.PurchaseSign
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
@@ -27,6 +28,7 @@ import org.bukkit.event.block.SignChangeEvent
 open class PurchaseSignRefreshListener(
     private val signs: PurchaseSignRepository,
     private val renderer: PurchaseSignRenderer,
+    private val maintenanceFreeze: MaintenanceFreezeService,
 ) : Listener {
 
     /** Cached sign list — invalidated on state changes (sign placement,
@@ -59,8 +61,14 @@ open class PurchaseSignRefreshListener(
      * countdown ticks down visibly instead of freezing between state changes. Called on a fixed
      * timer from onEnable. NEVER force-loads a chunk — signs in unloaded chunks are skipped and
      * refresh naturally on their next state change or when their chunk loads.
+     *
+     * While a maintenance freeze is active the periodic refresh is skipped entirely — the rent
+     * countdown display literally freezes (timestamps are static and shifted forward on unfreeze).
+     * Event-driven refreshes ([onStallStateChanged]) are NOT gated, so a rent payment made during
+     * the freeze still updates its sign.
      */
     fun refreshLoaded() {
+        if (maintenanceFreeze.isFrozen()) return
         renderer.refreshAuctionCache()
         val list = cachedSigns ?: signs.all().also { cachedSigns = it }
         for (sign in list) {

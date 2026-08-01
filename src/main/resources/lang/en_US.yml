@@ -51,6 +51,16 @@ admin:
     success: "<prefix><shadow:#000000:1><green>Evicted</green> <aqua><stall></aqua> <green>— reset to unowned and WG cleared.</shadow>"
     not_found: "<prefix><shadow:#000000:1><red>Stall not found:</red> <stall></shadow>"
     not_owned: "<prefix><shadow:#000000:1><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is not currently owned.</shadow>"
+  maintenance:
+    freeze:
+      activated: "<prefix><shadow:#000000:1><green>Maintenance freeze ACTIVE</green> — all rent and auction timers are paused. Run <white>/em maintenance unfreeze</white> when the server is back.</shadow>"
+      already_active: "<prefix><shadow:#000000:1><yellow>Maintenance freeze is already active</yellow> <gray>(since</gray> <gold><since></gold><gray>)</gray>.</shadow>"
+    unfreeze:
+      done: "<prefix><shadow:#000000:1><green>Maintenance freeze lifted.</green> <gray>Shifted</gray> <gold><stalls></gold> <gray>stall rent deadline(s) and</gray> <gold><auctions></gold> <gray>auction(s) forward by</gray> <white><duration></white><gray>.</gray></shadow>"
+      not_frozen: "<prefix><shadow:#000000:1><yellow>No maintenance freeze is active.</yellow></shadow>"
+    status:
+      active: "<prefix><shadow:#000000:1>Maintenance freeze: <green>ACTIVE</green> <gray>since</gray> <gold><since></gold> <gray>(frozen for</gray> <white><duration></white><gray>)</gray>.</shadow>"
+      inactive: "<prefix><shadow:#000000:1>Maintenance freeze: <gray>inactive</gray>.</shadow>"
   limit:
     header: "<shadow:#000000:1><gold>Your stall limits</shadow>"
     total: "<shadow:#000000:1><gray>Total: <white><used></white> / <yellow><cap></shadow>"
