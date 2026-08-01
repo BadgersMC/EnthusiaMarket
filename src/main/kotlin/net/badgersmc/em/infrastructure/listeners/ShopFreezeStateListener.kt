@@ -24,10 +24,11 @@ import org.bukkit.event.Listener
  * countdown on its purchase sign while every shop silently rejected trades
  * with "frozen". The stall state and the shop-freeze flag had drifted apart.
  *
- * This listener unfreezes shops when a stall transitions OUT of a penalty
- * state onto a non-penalty state:
+ * This listener unfreezes shops when a stall transitions onto a non-penalty
+ * state (OWNED / UNOWNED) from any state other than OWNED (REQ-302):
  *   GRACE / EMERGENCY_AUCTIONING → OWNED   (rent paid, auction won)
  *   GRACE / EMERGENCY_AUCTIONING → UNOWNED (revert, eviction, no-bid)
+ *   AUCTIONING / RE_AUCTIONING → OWNED/UNOWNED (force-auction settle/revert)
  *   UNOWNED → OWNED                        (buyout of a stall with leftover
  *                                           frozen shops from a pre-fix revert)
  *
@@ -53,14 +54,16 @@ open class ShopFreezeStateListener(
     }
 
     /**
-     * Shops are unfrozen when a stall lands on a non-penalty state after
-     * leaving GRACE / EMERGENCY_AUCTIONING, or when an UNOWNED stall is
-     * bought out (it may carry leftover frozen shops from a pre-fix revert).
+     * Shops are unfrozen when a stall lands on a non-penalty state
+     * (OWNED / UNOWNED) from any state other than OWNED — REQ-302.
+     * Source-agnostic on purpose: GRACE/EMERGENCY_AUCTIONING (rent paid,
+     * auction won, revert), AUCTIONING/RE_AUCTIONING (admin force-auction
+     * settling or reverting), and UNOWNED (buyout) all must clear the
+     * rent-penalty freeze. OWNED → OWNED is excluded so a manual `/shop
+     * edit` freeze survives a rent-extension re-fire.
      */
     private fun shouldUnfreeze(previous: StallState, current: StallState): Boolean {
         if (current != StallState.OWNED && current != StallState.UNOWNED) return false
-        return previous == StallState.GRACE ||
-            previous == StallState.EMERGENCY_AUCTIONING ||
-            previous == StallState.UNOWNED
+        return previous != StallState.OWNED
     }
 }

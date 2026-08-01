@@ -112,11 +112,27 @@ class MaintenanceFreezeRepositorySqlTest {
         assertEquals(Instant.ofEpochMilli(Long.MAX_VALUE), auctions.findById(AuctionId("auc-sentinel"))!!.endAt)
         assertEquals(real, auctions.findById(AuctionId("auc-closed"))!!.endAt)
     }
-
-    @Test fun `unfreeze clears the freeze flag`() {
+    @Test
+    fun `unfreeze clears the freeze flag`() {
         repo.begin(Instant.parse("2026-06-01T10:00:00Z"))
         repo.unfreeze(Duration.ofHours(1).toMillis())
         assertNull(repo.frozenSince())
+    }
+
+    // REQ-303 — begin() self-heals a missing state row (audit L-2). The V026
+    // seed row can be deleted; begin() must recreate it, not silently update
+    // zero rows and leave the freeze state volatile across restarts.
+
+    @Test
+    fun `begin recreates the state row when it was deleted`() {
+        ds.connection.use { conn ->
+            conn.createStatement().use { st ->
+                st.executeUpdate("DELETE FROM maintenance_freeze WHERE id = 1")
+            }
+        }
+        val start = Instant.parse("2026-06-03T08:00:00Z")
+        repo.begin(start)
+        assertEquals(start, repo.frozenSince())
     }
 
     @Test fun `unfreeze with zero elapsed is a no-op shift but clears the flag`() {

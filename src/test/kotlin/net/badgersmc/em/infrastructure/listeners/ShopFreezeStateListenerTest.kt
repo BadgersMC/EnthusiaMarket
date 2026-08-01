@@ -65,6 +65,35 @@ class ShopFreezeStateListenerTest {
         verify { shops.freezeByStall("stall12", false) }
     }
 
+    // REQ-302 — ANY non-OWNED source landing on OWNED/UNOWNED unfreezes
+    // (audit L-1: AUCTIONING/RE_AUCTIONING sources were missing from the
+    // whitelist, so an admin force-auction of a GRACE stall that settled or
+    // reverted left its shops frozen forever).
+
+    @Test
+    fun `AUCTIONING to OWNED settlement unfreezes shops`() {
+        listener.onStallStateChanged(StallStateChangedEvent("stall10", StallState.AUCTIONING, StallState.OWNED))
+        verify { shops.freezeByStall("stall10", false) }
+    }
+
+    @Test
+    fun `RE_AUCTIONING to OWNED settlement unfreezes shops`() {
+        listener.onStallStateChanged(StallStateChangedEvent("stall11", StallState.RE_AUCTIONING, StallState.OWNED))
+        verify { shops.freezeByStall("stall11", false) }
+    }
+
+    @Test
+    fun `AUCTIONING to UNOWNED revert unfreezes shops`() {
+        listener.onStallStateChanged(StallStateChangedEvent("stall13", StallState.AUCTIONING, StallState.UNOWNED))
+        verify { shops.freezeByStall("stall13", false) }
+    }
+
+    @Test
+    fun `RE_AUCTIONING to UNOWNED revert unfreezes shops`() {
+        listener.onStallStateChanged(StallStateChangedEvent("stall14", StallState.RE_AUCTIONING, StallState.UNOWNED))
+        verify { shops.freezeByStall("stall14", false) }
+    }
+
     // --- same-state / non-penalty transitions → leave shop freeze alone ---
 
     @Test

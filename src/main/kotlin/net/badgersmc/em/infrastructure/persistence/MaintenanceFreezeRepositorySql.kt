@@ -38,7 +38,18 @@ class MaintenanceFreezeRepositorySql(private val ds: DataSource) : MaintenanceFr
                 "UPDATE maintenance_freeze SET frozen = 1, started_at = ? WHERE id = 1"
             ).use { ps ->
                 ps.setLong(1, now.toEpochMilli())
-                ps.executeUpdate()
+                val updated = ps.executeUpdate()
+                // REQ-303 — self-heal a deleted state row (audit L-2). The
+                // UPDATE silently matching zero rows would leave the freeze
+                // volatile across restarts; recreate the seed row instead.
+                if (updated == 0) {
+                    conn.prepareStatement(
+                        "INSERT INTO maintenance_freeze (id, frozen, started_at) VALUES (1, 1, ?)"
+                    ).use { insert ->
+                        insert.setLong(1, now.toEpochMilli())
+                        insert.executeUpdate()
+                    }
+                }
             }
         }
     }
