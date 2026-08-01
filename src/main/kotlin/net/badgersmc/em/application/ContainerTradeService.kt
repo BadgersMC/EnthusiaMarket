@@ -189,7 +189,7 @@ open class ContainerTradeService(
         return SellPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory), sellStack)
     }
 
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     private fun executeSellTransaction(
         shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack
     ): ContainerTradeResult {
@@ -561,7 +561,7 @@ open class ContainerTradeService(
         return policyFailure
     }
 
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     private fun executeSlotTradeTransfer(ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts): ContainerTradeResult {
         val requestedSell = ctx.sellStack.clone().apply { amount = amounts.sell }
         val (collectedItems, sellLeftover) = removeAndCollectSimilar(ctx.container.inventory, ctx.sellStack, amounts.sell)

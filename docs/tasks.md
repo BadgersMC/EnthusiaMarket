@@ -946,3 +946,27 @@ set only at insert (no relocate path), so create + delete fully cover location c
   Tag: INFRA
   Description: Create `.github/workflows/wiki-deploy.yml` (build + deploy to GitHub Pages on push to main touching wiki/**, mkdocs.yml). Create `.github/workflows/wiki-checks.yml` (frontmatter lint, topic parity, markdown lint, mkdocs strict build on PR). Create `tools/wiki/lint_frontmatter.py` (pyyaml-based frontmatter validator). Create `tools/wiki/check_topic_parity.py` (ensure every wiki page topic has a corresponding in-game help topic). Create `.markdownlint.jsonc` (MD013/025/033/034/041/047/060 off, MD031/040 on, MD024 siblings_only). Verify wiki-deploy.yml targets `badgersmc.github.io/EnthusiaMarket`.
   Evidence: `mkdocs.yml site_url: badgersmc.github.io/EnthusiaMarket; wiki-deploy.yml pushes on main; wiki-checks.yml 4 jobs (frontmatter-lint, topic-parity, markdown-lint, mkdocs-strict-build); lint_frontmatter.py adapted from LumaGuilds (SLUG_EXEMPT reduced to index.md only); check_topic_parity.py adapted for EM (frontmatter check only, no HelpTopics yet); .markdownlint.jsonc copied from LumaGuilds`
+
+---
+
+## Maintenance freeze + shop-freeze audit follow-ups (REQ-302..304)
+
+Audit of PR #186 (2026-08-01) produced three in-scope findings converted to requirements. TDD-302 closes the shop-freeze invariant gap; TDD-303 hardens freeze activation; DOC-304 codifies the freeze-window transaction contract.
+
+- [x] **TDD-302** — ShopFreezeStateListener unfreezes on ANY non-OWNED → OWNED/UNOWNED transition
+  References: REQ-302
+  Tag: TDD
+  Description: Replace the source-state whitelist in `ShopFreezeStateListener.shouldUnfreeze` with a source-agnostic predicate: unfreeze when `current ∈ {OWNED, UNOWNED}` AND `previous != OWNED`. This closes the L-1 gap where AUCTIONING/RE_AUCTIONING → OWNED/UNOWNED left shops frozen. Keep OWNED → OWNED excluded (manual /shop edit freeze must survive a rent-extension re-fire). Update `ShopFreezeStateListenerTest` — existing cases must stay green; add cases for AUCTIONING → OWNED, RE_AUCTIONING → OWNED, AUCTIONING → UNOWNED, RE_AUCTIONING → UNOWNED (all unfreeze).
+  Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopFreezeStateListener.kt:60-65`, `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/ShopFreezeStateListenerTest.kt` — 13/13 green after predicate change to `previous != OWNED`; 4 new AUCTIONING/RE_AUCTIONING cases red before, green after.
+
+- [x] **TDD-303** — MaintenanceFreezeRepositorySql.begin() self-heals a missing row
+  References: REQ-303
+  Tag: TDD
+  Description: In `MaintenanceFreezeRepositorySql.begin()`, check the UPDATE affected-row count; when zero rows matched (V026 seed row deleted), fall back to an INSERT of the (1, frozen=1, started_at) row. Portable across SQLite + MariaDB — no `INSERT OR REPLACE` (SQLite-only), no `ON DUPLICATE KEY` (MariaDB-only). Add a repo test: delete the row, call begin(), assert frozenSince() returns the start instant and the row is recreated.
+  Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/MaintenanceFreezeRepositorySql.kt:35-44`, `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/MaintenanceFreezeRepositorySqlTest.kt` — 8/8 green after UPDATE→INSERT fallback; `begin recreates the state row when it was deleted` red before, green after.
+
+- [x] **DOC-304** — Document the freeze-window transaction contract
+  References: REQ-304
+  Tag: DOC
+  Description: Add a wiki admin page (or extend the existing maintenance-freeze documentation) stating that rent payments and stall buyouts remain live during a maintenance freeze and their timers receive both the interval credit and the unfreeze shift. Reference REQ-304 as the contract source.
+  Evidence: `wiki/docs/admins/maintenance.md` (created 2026-08-01, frontmatter-validated against lint_frontmatter schema), `docs/requirements.md` REQ-304
