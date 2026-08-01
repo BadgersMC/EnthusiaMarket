@@ -76,7 +76,8 @@ class MaintenanceFreezeRepositorySql(private val ds: DataSource) : MaintenanceFr
 
     private fun shiftStallRentDeadlines(conn: java.sql.Connection, shiftMs: Long): Int =
         conn.prepareStatement(
-            "UPDATE stalls SET next_rent_at = next_rent_at + ? WHERE next_rent_at IS NOT NULL"
+            "UPDATE stalls SET next_rent_at = next_rent_at + ? " +
+                "WHERE next_rent_at IS NOT NULL AND state IN ('OWNED', 'GRACE')"
         ).use { ps ->
             ps.setLong(1, shiftMs)
             ps.executeUpdate()

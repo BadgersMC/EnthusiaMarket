@@ -37,7 +37,7 @@ Per REQ-304, the freeze gates **timers only** — it does NOT gate player-initia
 
 | System | During freeze |
 |---|---|
-| Rent scheduler | No GRACE / eviction / emergency-auction transitions |
+| Rent scheduler | No scheduler-driven GRACE / eviction / emergency-auction transitions |
 | Auction scheduler | No settlement, no bid reminders |
 | Purchase-sign countdown | Periodic 3s re-render paused (display freezes; corrected on unfreeze) |
 | Rent payments / buyouts / shop trades | **Live** (REQ-304) |

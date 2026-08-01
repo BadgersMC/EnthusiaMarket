@@ -84,8 +84,8 @@ class MaintenanceFreezeRepositorySqlTest {
     }
 
     // --- unfreeze shift ---
-
-    @Test fun `unfreeze shifts stall next_rent_at forward but leaves null untouched`() {
+    @Test
+    fun `unfreeze shifts stall next_rent_at forward but leaves null untouched`() {
         stalls.create(stall("s1", nextRentAt = Instant.parse("2026-06-01T10:00:00Z")))
         stalls.create(stall("s2", nextRentAt = null))
 
@@ -95,6 +95,49 @@ class MaintenanceFreezeRepositorySqlTest {
         assertEquals(1, result.stalls)
         assertEquals(Instant.parse("2026-06-02T10:00:00Z"), stalls.findById(StallId("s1"))!!.nextRentAt)
         assertNull(stalls.findById(StallId("s2"))!!.nextRentAt)
+    }
+
+    @Test
+    fun `unfreeze does not shift stale timestamps on non-OWNED or non-GRACE stalls`() {
+        // CR (3694370401): the shift must only touch live OWNED/GRACE rent
+        // deadlines. UNOWNED / AUCTIONING / EMERGENCY_AUCTIONING stalls can
+        // carry a stale next_rent_at from before a revert; shifting it is
+        // meaningless and inflates the reported count.
+        stalls.create(stall("s-own", nextRentAt = Instant.parse("2026-06-01T10:00:00Z")))
+        stalls.create(
+            stall("s-unowned", state = StallState.UNOWNED, nextRentAt = Instant.parse("2026-06-01T10:00:00Z"))
+        )
+        stalls.create(
+            stall("s-auctioning", state = StallState.AUCTIONING, nextRentAt = Instant.parse("2026-06-01T10:00:00Z"))
+        )
+        stalls.create(
+            stall(
+                "s-emergency",
+                state = StallState.EMERGENCY_AUCTIONING,
+                nextRentAt = Instant.parse("2026-06-01T10:00:00Z")
+            )
+        )
+
+        repo.begin(Instant.parse("2026-06-01T10:00:00Z"))
+        val result = repo.unfreeze(Duration.ofHours(24).toMillis())
+
+        assertEquals(1, result.stalls)
+        assertEquals(
+            Instant.parse("2026-06-02T10:00:00Z"),
+            stalls.findById(StallId("s-own"))!!.nextRentAt
+        )
+        assertEquals(
+            Instant.parse("2026-06-01T10:00:00Z"),
+            stalls.findById(StallId("s-unowned"))!!.nextRentAt
+        )
+        assertEquals(
+            Instant.parse("2026-06-01T10:00:00Z"),
+            stalls.findById(StallId("s-auctioning"))!!.nextRentAt
+        )
+        assertEquals(
+            Instant.parse("2026-06-01T10:00:00Z"),
+            stalls.findById(StallId("s-emergency"))!!.nextRentAt
+        )
     }
 
     @Test fun `unfreeze shifts open auction end times but skips sentinel and closed auctions`() {
