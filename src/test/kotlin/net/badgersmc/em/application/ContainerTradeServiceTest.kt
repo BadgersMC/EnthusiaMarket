@@ -896,6 +896,7 @@ class ContainerTradeServiceTest {
     }
 
     @Test
+    @Suppress("LongMethod")
     fun `executeSell tracks partial delivery correctly with multiple collected items`() {
         // CR: When collectedItems has 2+ entries and both partially fail to fit,
         // the old putAll-based remainder tracking only kept the last leftover.
