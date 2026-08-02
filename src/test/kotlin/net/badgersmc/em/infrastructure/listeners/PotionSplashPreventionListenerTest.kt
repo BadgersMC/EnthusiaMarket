@@ -21,6 +21,7 @@ import kotlin.test.assertTrue
  * WG's POTION_SPLASH flag is provision-time-only and does not cover clouds
  * or tipped arrows; this listener is the runtime invariant for every stall.
  */
+@Suppress("TooManyFunctions")
 class PotionSplashPreventionListenerTest {
 
     private val config = EnthusiaMarketConfig().apply {
