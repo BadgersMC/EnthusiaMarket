@@ -970,3 +970,26 @@ Audit of PR #186 (2026-08-01) produced three in-scope findings converted to requ
   Tag: DOC
   Description: Add a wiki admin page (or extend the existing maintenance-freeze documentation) stating that rent payments and stall buyouts remain live during a maintenance freeze and their timers receive both the interval credit and the unfreeze shift. Reference REQ-304 as the contract source.
   Evidence: `wiki/docs/admins/maintenance.md` (created 2026-08-01, frontmatter-validated against lint_frontmatter schema), `docs/requirements.md` REQ-304
+
+---
+
+## Potion-effect stacking exploit in market stalls (REQ-305)
+
+Critical exploit: MC 1.21 applies splash/cloud potion effects additively, so repeated splashes (or a lingering cloud re-applying each tick) inside a stall stack durations without bound (observed: Resistance IV with ~52-day duration). WG `POTION_SPLASH: DENY` exists in the provisioner but only covers provisioned regions and only the thrown-splash event. Runtime listener enforces the invariant for every stall region.
+
+- [x] **TDD-305** — PotionSplashPreventionListener blocks potion effects inside market regions
+  References: REQ-305
+  Tag: TDD
+  Description: Create `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/PotionSplashPreventionListener.kt` (@Listener + @Component, deps: RegionProvider + EnthusiaMarketConfig) with four handlers, each cancelling when the target entity/cloud is inside a market region (`regions.regionAt(world, x, y, z)?.startsWith(config.market.regionPrefix)`):
+  - `PotionSplashEvent` — cancel when the potion entity's location is in a market region.
+  - `LingeringPotionSplashEvent` — cancel when the potion entity's location is in a market region (prevents area-effect-cloud creation).
+  - `AreaEffectCloudApplyEvent` — cancel when the cloud is in a market region (covers clouds drifting in from outside).
+  - `EntityPotionEffectEvent` — cancel when cause ∈ {POTION_SPLASH, AREA_EFFECT_CLOUD, ARROW} and the affected entity is in a market region (covers tipped arrows + any splash landing on an entity in the region).
+  Test `PotionSplashPreventionListenerTest` with mocked RegionProvider: splash in region cancelled; splash outside region allowed; lingering in region cancelled; cloud apply in region cancelled; arrow effect on entity in region cancelled; same-state/non-potion causes (BEACON, POTION_DRINK, MILK) NOT cancelled.
+  Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt:81-82` (existing flag, insufficient), `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListener.kt:104-105` (regionAt + prefix pattern), `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/GuildShopPolicyEntryListenerTest.kt` (mock RegionProvider pattern) — 14/14 green, detekt clean, ListenerWiringTest 3/3 green.
+
+- [x] **DOC-305** — Document potion-splash prevention in the wiki
+  References: REQ-305
+  Tag: DOC
+  Description: Add a short section to `wiki/docs/admins/` (e.g. in `maintenance.md` or a new `market-protection.md`) stating potion effects (splash/lingering/cloud/tipped arrow) are cancelled for entities inside stall regions; note the WG flag is provision-time-only and the runtime listener enforces the invariant for all regions.
+  Evidence: `wiki/docs/admins/market-protection.md` (created 2026-08-02, frontmatter-validated), `docs/requirements.md` REQ-305

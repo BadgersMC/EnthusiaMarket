@@ -433,6 +433,14 @@ return the stall to UNOWNED.
 
 **Note:** Codifies the design decision behind audit finding M-2 (2026-08-01, PR #186 audit): buyout (`StallBuyoutService`) and rent payment (`StallRentExtensionService.extend`) are deliberately NOT gated by `MaintenanceFreezeService` — the PR's sign-refresh doc already promises rent payments stay live. The consequence is that a transaction performed during the freeze window receives the interval credit AND the unfreeze shift (player-favorable, admin-gated). This REQ makes that a documented contract rather than an accident.
 
+### REQ-305 — No potion effects inside market regions
+
+**Event-driven.** WHEN a splash potion, lingering potion, area-effect cloud, or tipped arrow would apply a potion effect to an entity located inside a market region THE SYSTEM SHALL cancel the effect application.
+
+**Event-driven.** WHEN a splash or lingering potion breaks inside a market region THE SYSTEM SHALL cancel the break so no area-effect cloud is created there.
+
+**Notes (2026-08-02, critical exploit report):** Players stack potion effects in stalls — MC 1.21 applies splash/cloud effects additively, so repeated splashes (or a lingering cloud re-applying each tick) inside a stall stack durations without bound (observed: Resistance IV with a ~52-day duration in a stall). The WorldGuard `POTION_SPLASH: DENY` flag in `WorldGuardRegionProvisioner.applyFlags()` is insufficient on two counts: (a) it is stamped only at provision/resync time, so existing production regions never received it; (b) even when present, WG's flag cancels only the thrown `PotionSplashEvent` — it does not gate lingering clouds (`AreaEffectCloudApplyEvent`), clouds drifting in from outside, or tipped arrows (`EntityPotionEffectEvent` cause `ARROW`). This REQ enforces the invariant at runtime for **every** stall region regardless of flag state: an entity inside a market region must never receive a potion effect from any splash/cloud/arrow source.
+
 ---
 
 ## Acceptance
