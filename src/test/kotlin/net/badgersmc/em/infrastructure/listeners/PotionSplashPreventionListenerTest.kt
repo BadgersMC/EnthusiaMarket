@@ -143,12 +143,17 @@ class PotionSplashPreventionListenerTest {
     private fun effectEvent(
         x: Int, y: Int, z: Int,
         cause: EntityPotionEffectEvent.Cause,
-        action: EntityPotionEffectEvent.Action = EntityPotionEffectEvent.Action.ADDED,
     ): EntityPotionEffectEvent {
         val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
-        return EntityPotionEffectEvent(
-            entity, null, null, cause, action, false
-        )
+        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.ADDED, false)
+    }
+
+    private fun clearingEvent(
+        x: Int, y: Int, z: Int,
+        cause: EntityPotionEffectEvent.Cause,
+    ): EntityPotionEffectEvent {
+        val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
+        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.CLEARED, false)
     }
 
     @Test
@@ -225,11 +230,7 @@ class PotionSplashPreventionListenerTest {
     @Test
     fun `effect removal inside a market region is allowed`() {
         // CLEARED/REMOVED actions must never be blocked — only new applications.
-        val event = effectEvent(
-            100, 64, 200,
-            EntityPotionEffectEvent.Cause.POTION_SPLASH,
-            EntityPotionEffectEvent.Action.CLEARED
-        )
+        val event = clearingEvent(100, 64, 200, EntityPotionEffectEvent.Cause.POTION_SPLASH)
         val listener = PotionSplashPreventionListener(
             regions(Triple(100, 64, 200) to "stall9"), config
         )
