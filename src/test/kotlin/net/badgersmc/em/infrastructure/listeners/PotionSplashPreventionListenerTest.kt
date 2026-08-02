@@ -156,6 +156,22 @@ class PotionSplashPreventionListenerTest {
         return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.CLEARED, false)
     }
 
+    private fun changedEvent(
+        x: Int, y: Int, z: Int,
+        cause: EntityPotionEffectEvent.Cause,
+    ): EntityPotionEffectEvent {
+        val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
+        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.CHANGED, false)
+    }
+
+    private fun removedEvent(
+        x: Int, y: Int, z: Int,
+        cause: EntityPotionEffectEvent.Cause,
+    ): EntityPotionEffectEvent {
+        val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
+        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.REMOVED, false)
+    }
+
     @Test
     fun `tipped arrow effect on entity inside a market region is cancelled`() {
         val event = effectEvent(100, 64, 200, EntityPotionEffectEvent.Cause.ARROW)
@@ -233,6 +249,32 @@ class PotionSplashPreventionListenerTest {
         val event = clearingEvent(100, 64, 200, EntityPotionEffectEvent.Cause.POTION_SPLASH)
         val listener = PotionSplashPreventionListener(
             regions(Triple(100, 64, 200) to "stall9"), config
+        )
+
+        listener.onEntityPotionEffect(event)
+
+        assertFalse(event.isCancelled)
+    }
+
+    @Test
+    fun `changed effect on entity inside a market region is cancelled`() {
+        // CHANGED re-applies an effect (the additive-stacking vector) — same as ADDED.
+        val event = changedEvent(100, 64, 200, EntityPotionEffectEvent.Cause.POTION_SPLASH)
+        val listener = PotionSplashPreventionListener(
+            regions(Triple(100, 64, 200) to "stall10"), config
+        )
+
+        listener.onEntityPotionEffect(event)
+
+        assertTrue(event.isCancelled)
+    }
+
+    @Test
+    fun `effect removal REMOVED inside a market region is allowed`() {
+        // REMOVED (e.g. milk / effect clear) must never be blocked.
+        val event = removedEvent(100, 64, 200, EntityPotionEffectEvent.Cause.ARROW)
+        val listener = PotionSplashPreventionListener(
+            regions(Triple(100, 64, 200) to "stall11"), config
         )
 
         listener.onEntityPotionEffect(event)
