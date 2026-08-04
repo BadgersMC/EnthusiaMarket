@@ -12,7 +12,9 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.World
 import org.bukkit.block.Block
+import org.bukkit.block.Chest
 import org.bukkit.block.Container
+import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.Event
 import org.bukkit.inventory.Inventory
@@ -94,6 +96,7 @@ class ContainerStockListenerTest {
         val sign = mockk<Sign>(relaxed = true)
         val signBlock = mockk<Block>(relaxed = true)
         every { signBlock.state } returns sign
+        every { signBlock.getState(false) } returns sign
         every { world.getBlockAt(100, 64, 200) } returns signBlock
         return sign
     }
@@ -113,6 +116,7 @@ class ContainerStockListenerTest {
         every { containerBlock.type } returns Material.BARREL          // PERF-5: type check
         every { containerBlock.location } returns contLoc
         every { containerBlock.state } returns container
+        every { containerBlock.getState(false) } returns container     // no-snapshot live state
         every { world.getBlockAt(50, 64, 60) } returns containerBlock
     }
 
@@ -409,11 +413,13 @@ class ContainerStockListenerTest {
         val liveInv = mockk<Inventory>(relaxed = true)
         every { liveInv.contents } returns arrayOf(contItem)
         every { liveInv.storageContents } returns arrayOf(contItem)
-        val container = mockk<Container>(relaxed = true)
-        every { container.inventory } returns liveInv
+        val chest = mockk<Chest>(relaxed = true)
+        every { chest.inventory } returns liveInv
+        every { chest.blockInventory } returns liveInv            // live half-inventory
         val chestBlock = mockk<Block>(relaxed = true)
         every { chestBlock.type } returns Material.CHEST
-        every { chestBlock.state } returns container
+        every { chestBlock.state } returns chest
+        every { chestBlock.getState(false) } returns chest
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 
         stubPluginManager()
@@ -449,11 +455,16 @@ class ContainerStockListenerTest {
         every { combinedInv.contents } returns arrayOf(leftItem, rightItem)
         every { combinedInv.storageContents } returns arrayOf(leftItem, rightItem)
 
-        val container = mockk<Container>(relaxed = true)
-        every { container.inventory } returns combinedInv
+        val doubleChest = mockk<DoubleChest>(relaxed = true)
+        every { doubleChest.inventory } returns combinedInv
+        val chest = mockk<Chest>(relaxed = true)
+        every { chest.blockInventory } returns mockk<Inventory>(relaxed = true).also {
+            every { it.holder } returns doubleChest
+        }
         val chestBlock = mockk<Block>(relaxed = true)
         every { chestBlock.type } returns Material.CHEST
-        every { chestBlock.state } returns container
+        every { chestBlock.state } returns chest
+        every { chestBlock.getState(false) } returns chest
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 
         stubPluginManager()
