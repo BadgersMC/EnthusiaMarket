@@ -11,7 +11,9 @@ import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.paper.listeners.Listener
 import org.bukkit.Bukkit
+import org.bukkit.block.Chest
 import org.bukkit.block.Container
+import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -152,8 +154,26 @@ class ContainerStockListener(
         if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
         val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
 
-        // Material pre-check avoids snapshot for non-container blocks.
-        return (block.state as? Container)?.inventory
+        // getState(false) sets DISABLE_SNAPSHOT_TL so the state wraps the LIVE tile
+        // entity — no NBT round-trip (spark: block.state snapshot was ~50% server
+        // thread at ~300 shops; CraftChest.<init> → createSnapshot() → loadAllItems()
+        // decode + saveWithFullMetadata() re-encode).
+        //
+        // Type-check the STATE (not a material allow-list) so EVERY container type
+        // accepted at placement (SignPlaceListener: `attached.state is Container`)
+        // and by ContainerTradeService.getContainer() is covered — chests, barrels,
+        // shulker boxes, crafter, etc. Non-containers resolve to a plain state and
+        // return null cheaply (no snapshot, no NBT).
+        val state = block.getState(false)
+        return when (state) {
+            is Chest -> {
+                val singleInv = state.blockInventory       // Paper API — live
+                val holder = singleInv.holder
+                if (holder is DoubleChest) holder.inventory else singleInv
+            }
+            is Container -> state.inventory
+            else -> null
+        }
     }
 
     private fun rawStockOf(inventory: Inventory, shop: Shop): Int {
@@ -162,12 +182,14 @@ class ContainerStockListener(
     }
 
     /** The shop's sign block state, or null if the sign chunk isn't loaded.
-     *  The [isChunkLoaded] guard is mandatory — [org.bukkit.World.getBlockAt] force-loads. */
+     *  The [isChunkLoaded] guard is mandatory — [org.bukkit.World.getBlockAt] force-loads.
+     *  Uses [Block.getState](false) (live tile entity) — no NBT snapshot per cycle
+     *  (same spark fix as [liveContainerInventory]). */
     private fun loadedSign(shop: Shop): Sign? {
         val world = Bukkit.getWorld(shop.signWorld) ?: return null
         if (!world.isChunkLoaded(shop.signX shr 4, shop.signZ shr 4)) return null
         return world.getBlockAt(shop.signX, shop.signY, shop.signZ)
-            .state as? Sign
+            .getState(false) as? Sign
     }
 
     /** PERF-5: no-physics update — sign text change doesn't need block physics recalculation. */
