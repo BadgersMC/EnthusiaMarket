@@ -95,7 +95,9 @@ class ContainerStockListenerTest {
     private fun mockSignAt(world: World): Sign {
         val sign = mockk<Sign>(relaxed = true)
         val signBlock = mockk<Block>(relaxed = true)
-        every { signBlock.state } returns sign
+        // Deliberately NO `block.state` stub — a regression to the snapshot path
+        // would resolve to a relaxed BlockState mock (not a Sign) and fail the
+        // sign assertions, enforcing the getState(false) performance contract.
         every { signBlock.getState(false) } returns sign
         every { world.getBlockAt(100, 64, 200) } returns signBlock
         return sign
@@ -115,7 +117,7 @@ class ContainerStockListenerTest {
         val containerBlock = mockk<Block>(relaxed = true)
         every { containerBlock.type } returns Material.BARREL          // PERF-5: type check
         every { containerBlock.location } returns contLoc
-        every { containerBlock.state } returns container
+        // Deliberately NO `block.state` stub — see mockSignAt comment.
         every { containerBlock.getState(false) } returns container     // no-snapshot live state
         every { world.getBlockAt(50, 64, 60) } returns containerBlock
     }
@@ -418,7 +420,7 @@ class ContainerStockListenerTest {
         every { chest.blockInventory } returns liveInv            // live half-inventory
         val chestBlock = mockk<Block>(relaxed = true)
         every { chestBlock.type } returns Material.CHEST
-        every { chestBlock.state } returns chest
+        // Deliberately NO `block.state` stub — see mockSignAt comment.
         every { chestBlock.getState(false) } returns chest
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 
@@ -463,7 +465,7 @@ class ContainerStockListenerTest {
         }
         val chestBlock = mockk<Block>(relaxed = true)
         every { chestBlock.type } returns Material.CHEST
-        every { chestBlock.state } returns chest
+        // Deliberately NO `block.state` stub — see mockSignAt comment.
         every { chestBlock.getState(false) } returns chest
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 

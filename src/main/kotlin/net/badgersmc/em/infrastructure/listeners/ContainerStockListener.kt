@@ -17,7 +17,6 @@ import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
-import org.bukkit.Material
 import org.bukkit.inventory.Inventory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Logger
@@ -155,27 +154,24 @@ class ContainerStockListener(
         if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
         val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
 
-        // PERF-5: material pre-check avoids snapshot for non-container blocks.
-        // Spark (Aug 2026): `block.state` created a full CraftBlockEntityState snapshot
-        // for EVERY shop every cycle — CraftChest.<init> → createSnapshot() → loadAllItems()
-        // (decode all items) + saveWithFullMetadata() (re-encode) = ~50% of server thread
-        // at ~300 shops. `getState(false)` sets DISABLE_SNAPSHOT_TL so the state wraps the
-        // LIVE tile entity — no NBT round-trip. `.inventory` on the live state returns the
-        // live container (same path trades already use).
-        return when (block.type) {
-            Material.CHEST, Material.TRAPPED_CHEST -> {
-                val state = block.getState(false)
-                if (state is Chest) {
-                    val singleInv = state.blockInventory       // Paper API — live
-                    val holder = singleInv.holder
-                    if (holder is DoubleChest) holder.inventory else singleInv
-                } else null
+        // getState(false) sets DISABLE_SNAPSHOT_TL so the state wraps the LIVE tile
+        // entity — no NBT round-trip (spark: block.state snapshot was ~50% server
+        // thread at ~300 shops; CraftChest.<init> → createSnapshot() → loadAllItems()
+        // decode + saveWithFullMetadata() re-encode).
+        //
+        // Type-check the STATE (not a material allow-list) so EVERY container type
+        // accepted at placement (SignPlaceListener: `attached.state is Container`)
+        // and by ContainerTradeService.getContainer() is covered — chests, barrels,
+        // shulker boxes, crafter, etc. Non-containers resolve to a plain state and
+        // return null cheaply (no snapshot, no NBT).
+        val state = block.getState(false)
+        return when (state) {
+            is Chest -> {
+                val singleInv = state.blockInventory       // Paper API — live
+                val holder = singleInv.holder
+                if (holder is DoubleChest) holder.inventory else singleInv
             }
-            Material.BARREL, Material.HOPPER, Material.DROPPER,
-            Material.DISPENSER, Material.FURNACE, Material.BLAST_FURNACE,
-            Material.SMOKER, Material.BREWING_STAND -> {
-                (block.getState(false) as? Container)?.inventory
-            }
+            is Container -> state.inventory
             else -> null
         }
     }
