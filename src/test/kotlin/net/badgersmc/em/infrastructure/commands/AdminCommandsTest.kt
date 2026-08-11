@@ -95,6 +95,9 @@ class AdminCommandsTest {
                       null, 0L, RentTerms.formula(1.0))
             )
 
+        val playerNameResolver = mockk<net.badgersmc.em.infrastructure.bedrock.PlayerNameResolver>()
+        every { playerNameResolver.resolve("Alice") } returns stubPlayer
+
         val cmd = AdminCommands(
             mockk(relaxed = true), mockk(relaxed = true), config,
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
@@ -117,10 +120,11 @@ class AdminCommandsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
-            mockk(relaxed = true),
+            playerNameResolver,
         )
         cmd.membersAdd(player, "s1", "Alice")
 
+        verify { playerNameResolver.resolve("Alice") }
         verify { members.addMember(StallId("s1"), actorUuid, any<UUID>()) }
     }
 
@@ -132,6 +136,9 @@ class AdminCommandsTest {
         every { members.addMember(any(), any(), any()) } returns
             StallMemberService.Result.NotAuthorised
 
+        val playerNameResolver = mockk<net.badgersmc.em.infrastructure.bedrock.PlayerNameResolver>()
+        every { playerNameResolver.resolve("Alice") } returns stubPlayer
+
         val cmd = AdminCommands(
             mockk(relaxed = true), mockk(relaxed = true), config,
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
@@ -154,10 +161,11 @@ class AdminCommandsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
-            mockk(relaxed = true),
+            playerNameResolver,
         )
         cmd.membersAdd(player, "s1", "Alice")
 
+        verify { playerNameResolver.resolve("Alice") }
         // i18n migration in flight (handoff #22 — owned by Hermes) means
         // sendMessage takes Component, not String. We just verify a
         // message was sent — content assertion is a lang-key test that
