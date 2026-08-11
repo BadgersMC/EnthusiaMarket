@@ -21,6 +21,7 @@ import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.infrastructure.bedrock.PlayerNameResolver
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.application.GuildTradePolicyService
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -71,6 +72,7 @@ class AdminCommands(
     private val shopRepository: ShopRepository,
     private val signRenderer: ShopSignRenderer,
     private val maintenanceFreeze: net.badgersmc.em.application.MaintenanceFreezeService,
+    private val playerNameResolver: PlayerNameResolver,
     private val websiteSync: WebsiteSyncService? = null,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
@@ -289,12 +291,12 @@ class AdminCommands(
         @Arg("stall") stall: String,
         @Arg("player") player: String,
     ) {
-        val offline = org.bukkit.Bukkit.getOfflinePlayer(player)
-        if (!offline.hasPlayedBefore()) {
+        val target = playerNameResolver.resolve(player)
+        if (target == null) {
             sender.sendMessage(lang.msg("stall.members.unknown_player", "player" to player))
             return
         }
-        val targetUuid = offline.uniqueId
+        val targetUuid = target.uniqueId
         renderMemberMutation(sender, stall, "added") {
             stallMembers.addMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
         }
@@ -307,12 +309,12 @@ class AdminCommands(
         @Arg("stall") stall: String,
         @Arg("player") player: String,
     ) {
-        val offline = org.bukkit.Bukkit.getOfflinePlayer(player)
-        if (!offline.hasPlayedBefore()) {
+        val target = playerNameResolver.resolve(player)
+        if (target == null) {
             sender.sendMessage(lang.msg("stall.members.unknown_player", "player" to player))
             return
         }
-        val targetUuid = offline.uniqueId
+        val targetUuid = target.uniqueId
         renderMemberMutation(sender, stall, "removed") {
             stallMembers.removeMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
         }
