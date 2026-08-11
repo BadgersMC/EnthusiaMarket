@@ -38,6 +38,8 @@ class EnthusiaMarketConfig {
     var store: Store = Store()
     @Comment("IP-based fairness limits: one active auction bid and/or one owned stall per IP")
     var ipLimiter: IpLimiter = IpLimiter()
+    @Comment("Volume-based stall pricing: rent scales with region block volume (width × height × length)")
+    var pricing: Pricing = Pricing()
 
     class Particles {
         @Comment("Master switch for stall boundary particle outlines.")
@@ -175,6 +177,15 @@ class EnthusiaMarketConfig {
         var oneAuctionPerIp: Boolean = true
         @Comment("If true, an IP can only own one stall")
         var oneStallPerIp: Boolean = true
+    }
+
+    class Pricing {
+        @Comment("Master switch for volume-based stall pricing")
+        var enabled: Boolean = false
+        @Comment("Base flat rent every stall pays before volume is added")
+        var baseFlat: Long = 50
+        @Comment("Additional rent per block of region volume (width × height × length)")
+        var perBlock: Double = 0.5
     }
 
     class Shop {

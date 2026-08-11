@@ -73,6 +73,7 @@ class AdminCommands(
     private val signRenderer: ShopSignRenderer,
     private val maintenanceFreeze: net.badgersmc.em.application.MaintenanceFreezeService,
     private val playerNameResolver: PlayerNameResolver,
+    private val pricing: net.badgersmc.em.application.StallVolumePricingService? = null,
     private val websiteSync: WebsiteSyncService? = null,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
@@ -122,6 +123,41 @@ class AdminCommands(
         // rent-config change (e.g. formula → flat) because terms are snapshotted per-stall at import.
         val n = rentResync.resync()
         sender.sendMessage(lang.msg("admin.rent.resync.result", "count" to n))
+    }
+
+    @Subcommand("pricing preview")
+    @Permission("enthusiamarket.admin.reload")
+    fun pricingPreview(@Context sender: CommandSender) {
+        // Dry-run: show each stall's region volume and the rent the current pricing config
+        // would compute, WITHOUT writing anything. Lets operators eyeball the variance before
+        // flipping pricing.enabled or running /em pricing apply.
+        val service = requireNotNull(pricing) { "Volume pricing service is unavailable" }
+        val rows = service.preview(config.market.world, config.market.regionPrefix)
+        if (rows.isEmpty()) {
+            sender.sendMessage(lang.msg("admin.pricing.preview.empty"))
+            return
+        }
+        sender.sendMessage(lang.msg("admin.pricing.preview.header", "count" to rows.size))
+        for (row in rows) {
+            sender.sendMessage(
+                lang.msg(
+                    "admin.pricing.preview.row",
+                    "stall" to row.stallId,
+                    "volume" to row.volume,
+                    "rent" to row.computedRent,
+                )
+            )
+        }
+    }
+
+    @Subcommand("pricing apply")
+    @Permission("enthusiamarket.admin.reload")
+    fun pricingApply(@Context sender: CommandSender) {
+        // Rewrite every stall's stored rent terms to the volume-computed flat amount.
+        // Requires pricing.enabled=true in the config; otherwise a no-op.
+        val service = requireNotNull(pricing) { "Volume pricing service is unavailable" }
+        val n = service.apply(config.market.world, config.market.regionPrefix)
+        sender.sendMessage(lang.msg("admin.pricing.apply.result", "count" to n))
     }
 
     @Suppress("TooGenericExceptionCaught")
