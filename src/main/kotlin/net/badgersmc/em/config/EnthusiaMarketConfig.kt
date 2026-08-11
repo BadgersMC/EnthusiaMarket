@@ -184,8 +184,16 @@ class EnthusiaMarketConfig {
         var enabled: Boolean = false
         @Comment("Base flat rent every stall pays before volume is added")
         var baseFlat: Long = 50
+            set(value) {
+                require(value >= 0) { "pricing.baseFlat must be >= 0" }
+                field = value
+            }
         @Comment("Additional rent per block of region volume (width × height × length)")
         var perBlock: Double = 0.5
+            set(value) {
+                require(value >= 0.0 && value.isFinite()) { "pricing.perBlock must be finite and >= 0" }
+                field = value
+            }
     }
 
     class Shop {

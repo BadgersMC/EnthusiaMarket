@@ -13,6 +13,7 @@ import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -60,7 +61,18 @@ class StallVolumePricingServiceTest {
         val (svc, _, _) = service(
             bounds = mapOf("stall1" to RegionProvider.RegionBounds(0, 0, 0, 5, 3, 4))
         )
-        assertEquals(6 * 4 * 5, svc.volumeOf("world", "stall1"))
+        assertEquals(6L * 4L * 5L, svc.volumeOf("world", "stall1"))
+    }
+
+    @Test
+    fun `volume does not overflow Int for huge regions`() {
+        // 2048 × 512 × 2048 = 2_147_483_648 — overflows Int.MAX_VALUE (2_147_483_647).
+        val (svc, _, _) = service(
+            bounds = mapOf("huge" to RegionProvider.RegionBounds(0, 0, 0, 2047, 511, 2047))
+        )
+        assertEquals(2_147_483_648L, svc.volumeOf("world", "huge"))
+        // And the rent stays positive + sane.
+        assertEquals(1_073_741_874L, svc.rentFor(2_147_483_648L))
     }
 
     @Test
@@ -90,10 +102,10 @@ class StallVolumePricingServiceTest {
         val rows = svc.preview("world", "stall")
         assertEquals(2, rows.size)
         assertEquals("stall1", rows[0].stallId)
-        assertEquals(120, rows[0].volume)
+        assertEquals(120L, rows[0].volume)
         assertEquals(110L, rows[0].computedRent)
         assertEquals("stall2", rows[1].stallId)
-        assertEquals(8, rows[1].volume)
+        assertEquals(8L, rows[1].volume)
         assertEquals(54L, rows[1].computedRent)
         verify(exactly = 0) { repo.save(any()) }
     }
@@ -144,5 +156,13 @@ class StallVolumePricingServiceTest {
 
         val (disabledSvc, _, _) = service(cfg = config(enabled = false), bounds = bounds)
         assertNull(disabledSvc.termsFor("world", "stall1"))
+    }
+
+    @Test
+    fun `config rejects negative or non-finite pricing values`() {
+        assertFailsWith<IllegalArgumentException> { EnthusiaMarketConfig().apply { pricing.baseFlat = -1 } }
+        assertFailsWith<IllegalArgumentException> { EnthusiaMarketConfig().apply { pricing.perBlock = -0.5 } }
+        assertFailsWith<IllegalArgumentException> { EnthusiaMarketConfig().apply { pricing.perBlock = Double.NaN } }
+        assertFailsWith<IllegalArgumentException> { EnthusiaMarketConfig().apply { pricing.perBlock = Double.POSITIVE_INFINITY } }
     }
 }

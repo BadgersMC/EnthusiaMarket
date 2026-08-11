@@ -131,10 +131,19 @@ class AdminCommands(
         // Dry-run: show each stall's region volume and the rent the current pricing config
         // would compute, WITHOUT writing anything. Lets operators eyeball the variance before
         // flipping pricing.enabled or running /em pricing apply.
-        val service = requireNotNull(pricing) { "Volume pricing service is unavailable" }
+        val service = pricing ?: run {
+            sender.sendMessage(lang.msg("admin.pricing.unavailable"))
+            return
+        }
         val rows = service.preview(config.market.world, config.market.regionPrefix)
         if (rows.isEmpty()) {
-            sender.sendMessage(lang.msg("admin.pricing.preview.empty"))
+            sender.sendMessage(
+                lang.msg(
+                    "admin.pricing.preview.empty",
+                    KEY_WORLD to config.market.world,
+                    KEY_REGION_PREFIX to config.market.regionPrefix,
+                )
+            )
             return
         }
         sender.sendMessage(lang.msg("admin.pricing.preview.header", "count" to rows.size))
@@ -155,7 +164,10 @@ class AdminCommands(
     fun pricingApply(@Context sender: CommandSender) {
         // Rewrite every stall's stored rent terms to the volume-computed flat amount.
         // Requires pricing.enabled=true in the config; otherwise a no-op.
-        val service = requireNotNull(pricing) { "Volume pricing service is unavailable" }
+        val service = pricing ?: run {
+            sender.sendMessage(lang.msg("admin.pricing.unavailable"))
+            return
+        }
         val n = service.apply(config.market.world, config.market.regionPrefix)
         sender.sendMessage(lang.msg("admin.pricing.apply.result", "count" to n))
     }

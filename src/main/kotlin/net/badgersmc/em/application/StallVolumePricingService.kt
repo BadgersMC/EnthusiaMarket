@@ -26,18 +26,20 @@ class StallVolumePricingService(
     /** One row of the pricing preview/apply output. */
     data class PricingRow(
         val stallId: String,
-        val volume: Int,
+        val volume: Long,
         val computedRent: Long,
     )
 
     /** Block volume of the region [id] in [world], or null when geometry is unavailable. */
-    fun volumeOf(world: String, id: String): Int? {
+    fun volumeOf(world: String, id: String): Long? {
         val b = regions.bounds(world, id) ?: return null
-        return b.width * b.height * b.length
+        // Convert BEFORE multiplication — Int math overflows at ~2.1B blocks
+        // (e.g. a 2048×512×2048 region) into a negative volume.
+        return b.width.toLong() * b.height.toLong() * b.length.toLong()
     }
 
     /** Rent implied by [volume] under the current pricing config. */
-    fun rentFor(volume: Int): Long =
+    fun rentFor(volume: Long): Long =
         (config.pricing.baseFlat + volume * config.pricing.perBlock).toLong()
 
     /** True when volume pricing is enabled and [world]/[id] has resolvable geometry. */
