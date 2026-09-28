@@ -2,7 +2,7 @@
 
 [![build](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml/badge.svg)](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/f9477623e26341ad9ea58c04fd174815)](https://app.codacy.com/gh/BadgersMC/EnthusiaMarket/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade) [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/f9477623e26341ad9ea58c04fd174815)](https://app.codacy.com/gh/BadgersMC/EnthusiaMarket/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 
-Paper 1.21.x plugin that turns WorldGuard regions into rentable / ownable player- and guild-operated market stalls, with sign-shops and timed item auctions. Bedrock-aware via Floodgate + Cumulus forms.
+Paper 26.2 plugin that turns WorldGuard regions into rentable / ownable player- and guild-operated market stalls, with sign-shops and timed item auctions. Bedrock-aware via Floodgate + Cumulus forms.
 
 Built for the BadgersMC production network. Java + Bedrock clients both supported.
 
@@ -20,13 +20,13 @@ Built for the BadgersMC production network. Java + Bedrock clients both supporte
 
 | Layer | Choice |
 |---|---|
-| Language | Kotlin 2.0.0 on JDK 21 |
-| Server API | Paper 1.21.11 (compileOnly) |
-| Build | Gradle 8.10.2 + Shadow 8.3.6 |
-| DI / config / commands / i18n / persistence / scheduler / vault | [Nexus](https://github.com/BadgersMC/Nexus) v2.1.1 (shaded, relocated under `net.badgersmc.em.libs.nexus.*`) |
+| Language | Kotlin 2.3.20 on JDK 25 |
+| Server API | Paper 26.2 (compileOnly) |
+| Build | Gradle 9.1.0 + Shadow 8.3.11 |
+| DI / config / commands / i18n / persistence / scheduler / vault | [Nexus](https://github.com/BadgersMC/Nexus) v2.3.0 (shaded, relocated under `net.badgersmc.em.libs.nexus.*`) |
 | Persistence | HikariCP + SQLite (default) or MariaDB; migrations in `src/main/resources/migrations/` |
 | Integrations | WorldGuard 7.0.9, VaultAPI 1.7, Floodgate / Cumulus 2.x, LumaGuilds |
-| Tests | JUnit 5, MockK 1.13.11, MockBukkit 4.107.0, Konsist 0.17.3 |
+| Tests | JUnit 5, MockK 1.13.11, MockBukkit 4.116.1 (26.2), Konsist 0.17.3 |
 
 See [`docs/tech-stack.md`](docs/tech-stack.md) for full pin list + rationale.
 
@@ -42,7 +42,7 @@ Produces `build/libs/EnthusiaMarket-0.1.0.jar`.
 
 EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to be wired before a local build:
 
-1. **Nexus v2.1.1** — served via [JitPack](https://jitpack.io) from the public [BadgersMC/Nexus](https://github.com/BadgersMC/Nexus) repo. No token, no credentials. Gradle resolves every `com.github.BadgersMC.Nexus:nexus-*:v2.1.1` artifact directly.
+1. **Nexus v2.3.0** — served via [JitPack](https://jitpack.io) from the public [BadgersMC/Nexus](https://github.com/BadgersMC/Nexus) repo. No token, no credentials. Gradle resolves every `com.github.BadgersMC.Nexus:nexus-*:v2.3.0` artifact directly.
 
    If you're hacking on Nexus locally and want to pick up in-progress changes that aren't tagged yet:
 
@@ -55,10 +55,10 @@ EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to
    Then run EM's Gradle with the same flag: `./gradlew -PuseMavenLocal=true build`. The `mavenLocal()` repo is gated behind that property so CI never picks up stale local jars.
 
 2. **LumaGuilds jar** — point the build at it via either:
-   - `-Plumaguilds.jar=/abs/path/to/LumaGuilds-2.1.0.jar`, or
-   - `LUMAGUILDS_JAR=/abs/path/to/LumaGuilds-2.1.0.jar` env var.
+   - `-Plumaguilds.jar=/abs/path/to/LumaGuilds-3.0.0.jar`, or
+   - `LUMAGUILDS_JAR=/abs/path/to/LumaGuilds-3.0.0.jar` env var.
 
-   Default fallback (the BadgersMC dev VPS path) is `/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar`.
+   Default fallback (the BadgersMC dev VPS path) is `/opt/data/LumaGuilds/build/libs/LumaGuilds-3.0.0.jar`.
 
    LumaGuilds itself needs `libs/RoseChat-RC-2.jar` to compile — build it from [BadgersMC/Enthusia-RoseChat](https://github.com/BadgersMC/Enthusia-RoseChat) (`./gradlew shadowJar`) and drop the resulting jar into `LumaGuilds/libs/`.
 

@@ -1,7 +1,7 @@
 package net.badgersmc.em.infrastructure.lumaguilds
 
 import net.badgersmc.nexus.annotations.Component
-import net.lumalyte.lg.domain.events.GuildDisbandedEvent
+import net.lumalyte.lg.api.events.GuildDisbandedEvent
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 

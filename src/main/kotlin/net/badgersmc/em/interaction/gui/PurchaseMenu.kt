@@ -4,6 +4,7 @@ import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHold
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.ContainerTradeResult
 import net.badgersmc.em.application.ContainerTradeService
 import net.badgersmc.em.application.ItemStackSerializer
@@ -106,7 +107,7 @@ class PurchaseMenu(
         // Shulker box preview button (IS2-12, REQ-298)
         addShulkerPreview(pane, player)
 
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         if (shop.direction == SignDirection.TRADE) {
             gui.blockTopInventoryExcept(15) // slot 15 = cost placement slot
             gui.setOnClose { event ->

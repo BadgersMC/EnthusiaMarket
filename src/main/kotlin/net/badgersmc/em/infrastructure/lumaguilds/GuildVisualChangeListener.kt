@@ -4,8 +4,8 @@ import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.websync.WebsiteSyncService
 import net.badgersmc.nexus.annotations.Component
-import net.lumalyte.lg.domain.events.GuildBannerChangedEvent
-import net.lumalyte.lg.domain.events.GuildOwnershipTransferEvent
+import net.lumalyte.lg.api.events.GuildBannerChangedEvent
+import net.lumalyte.lg.api.events.GuildOwnershipTransferEvent
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
