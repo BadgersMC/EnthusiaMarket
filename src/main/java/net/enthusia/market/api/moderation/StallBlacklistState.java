@@ -41,9 +41,9 @@ public record StallBlacklistState(
         return caseId;
     }
 
-    public boolean activeAt(Instant now) {
+    public boolean activeAt(final Instant now) {
         Objects.requireNonNull(now, "now");
-        return status == Status.ACTIVE && expiresAt.map(value -> now.isBefore(value)).orElse(true);
+        return status == Status.ACTIVE && expiresAt.map(now::isBefore).orElse(true);
     }
 
     public enum Status {
