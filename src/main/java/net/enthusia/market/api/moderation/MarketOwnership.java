@@ -3,19 +3,24 @@ package net.enthusia.market.api.moderation;
 import java.util.Objects;
 import java.util.Optional;
 
-public record MarketOwnership(Type type, Optional<String> id) {
+public record MarketOwnership(Type type, Optional<String> ownerId) {
     public MarketOwnership {
         type = Objects.requireNonNull(type, "type");
-        id = Objects.requireNonNull(id, "id");
-        if (type == Type.NONE && id.isPresent()) {
+        ownerId = Objects.requireNonNull(ownerId, "ownerId");
+        if (type == Type.NONE && ownerId.isPresent()) {
             throw new IllegalArgumentException("unowned market ownership cannot contain an id");
         }
         if (type != Type.NONE) {
-            String value = id.orElseThrow(() -> new IllegalArgumentException(
+            final String value = ownerId.orElseThrow(() -> new IllegalArgumentException(
                     "owned market ownership requires an id"
             ));
             MarketApiValidation.identifier(value, "ownership id", 128);
         }
+    }
+
+    /** Compatibility accessor preserving the original record-style API name. */
+    public Optional<String> id() {
+        return ownerId;
     }
 
     /** Bean-style aliases use nullable values expected by older Staff reflection. */
@@ -24,7 +29,7 @@ public record MarketOwnership(Type type, Optional<String> id) {
     }
 
     public String getId() {
-        return id.orElse(null);
+        return ownerId.orElse(null);
     }
 
     public enum Type {
