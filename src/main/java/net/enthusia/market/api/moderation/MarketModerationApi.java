@@ -15,6 +15,11 @@ public interface MarketModerationApi {
 
     CompletionStage<Optional<StallBlacklistState>> getStallBlacklist(UUID playerId);
 
+    /**
+     * Returns an asynchronous acquisition decision; the boolean-style name is
+     * retained because it is part of the published cross-plugin contract.
+     */
+    @SuppressWarnings("PMD.LinguisticNaming")
     CompletionStage<Boolean> canAcquire(UUID playerId);
 
     CompletionStage<MarketOperationResult> prepare(MarketOperationRequest request);
@@ -25,7 +30,7 @@ public interface MarketModerationApi {
 
     CompletionStage<MarketOperationResult> release(
             UUID operationId,
-            String expectedSnapshotChecksum
+            String snapshotChecksum
     );
 
     CompletionStage<Optional<MarketOperationRecord>> findOperation(UUID operationId);
