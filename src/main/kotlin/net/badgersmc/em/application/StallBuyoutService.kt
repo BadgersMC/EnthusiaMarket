@@ -4,6 +4,9 @@ import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
+import net.badgersmc.em.domain.ports.MarketModerationPolicy
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -45,6 +48,8 @@ class StallBuyoutService(
     private val limits: LimitResolutionService,
     private val ownership: StallOwnershipCounter,
     private val ipLimiter: IpLimiter,
+    private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
+    private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
 ) {
 
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
@@ -174,8 +179,21 @@ class StallBuyoutService(
         return null
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
+        return try {
+            moderationPolicy.withAcquisitionPermit(payer) {
+                buyForOwnerWithPermit(stallId, payer, owner, price, ip)
+            }
+        } catch (blocked: MarketAcquisitionBlockedException) {
+            Result.Rejected(blocked.message ?: "Market acquisitions are restricted")
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    private fun buyForOwnerWithPermit(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
+        if (mutationGate.isStallLocked(stallId.value)) {
+            return Result.Rejected("This stall is temporarily unavailable")
+        }
         val stall = stalls.findById(stallId) ?: return Result.NotFound
 
         validatePurchase(stall, stallId, owner, payer, price)?.let { return it }
