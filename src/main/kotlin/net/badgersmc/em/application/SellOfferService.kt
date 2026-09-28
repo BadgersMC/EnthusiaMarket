@@ -14,6 +14,7 @@ import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.events.SellOfferCompletedEvent
 import net.badgersmc.em.events.SellOfferCreatedEvent
 import net.badgersmc.em.events.StallStateChangedEvent
@@ -181,7 +182,7 @@ class SellOfferService(
         }
     }
 
-    private fun publishStateChange(stallId: StallId, previousState: String, currentState: String) {
+    private fun publishStateChange(stallId: StallId, previousState: StallState, currentState: StallState) {
         try {
             Bukkit.getServer()?.pluginManager?.callEvent(
                 StallStateChangedEvent(stallId.value, previousState, currentState),
