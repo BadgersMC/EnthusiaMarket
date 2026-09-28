@@ -10,7 +10,9 @@ buildscript {
         if (useLocalNexus) mavenLocal()
         maven("https://plugins.gradle.org/m2/")
         mavenCentral()
-        maven("https://jitpack.io")
+        maven("https://jitpack.io") {
+            content { includeGroupByRegex("com\\.github\\..*") }
+        }
     }
     dependencies {
         classpath("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8")
@@ -42,10 +44,13 @@ val nexusGroup = if (useLocalNexus) "net.badgersmc" else "com.github.BadgersMC.N
 val nexusVersion = if (useLocalNexus) "2.3.0" else "057836b"
 
 repositories {
+    if (useLocalNexus) mavenLocal()
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://oss.sonatype.org/content/repositories/snapshots")
-    maven("https://jitpack.io")
+    maven("https://jitpack.io") {
+        content { includeGroupByRegex("com\\.github\\..*") }
+    }
     maven("https://maven.enginehub.org/repo/") // WorldGuard + WorldEdit
     maven("https://repo.fastasyncworldedit.com/releases") // FastAsyncWorldEdit
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
