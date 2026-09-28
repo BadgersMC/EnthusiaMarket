@@ -27,6 +27,7 @@ public record MarketStallRecord(
     }
 
     /** Compatibility accessor preserving the original record-style API name. */
+    @SuppressWarnings("PMD.ShortMethodName")
     public String id() {
         return stallId;
     }
