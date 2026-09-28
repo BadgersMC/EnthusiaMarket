@@ -13,7 +13,7 @@ public record MarketOperationRequest(
         String stallId,
         Instant reviewDueAt,
         Instant recoveryUntil,
-        Optional<Instant> blacklistExpiresAt
+        Optional<Instant> blacklistExpiry
 ) {
     private static final Duration MAXIMUM_RECOVERY = Duration.ofDays(31);
 
@@ -24,10 +24,15 @@ public record MarketOperationRequest(
         MarketApiValidation.identifier(stallId, "stall id", 128);
         reviewDueAt = Objects.requireNonNull(reviewDueAt, "reviewDueAt");
         recoveryUntil = Objects.requireNonNull(recoveryUntil, "recoveryUntil");
-        blacklistExpiresAt = Objects.requireNonNull(blacklistExpiresAt, "blacklistExpiresAt");
+        blacklistExpiry = Objects.requireNonNull(blacklistExpiry, "blacklistExpiry");
         if (!recoveryUntil.isAfter(reviewDueAt)
                 || Duration.between(reviewDueAt, recoveryUntil).compareTo(MAXIMUM_RECOVERY) > 0) {
             throw new IllegalArgumentException("recovery window must be positive and at most 31 days");
         }
+    }
+
+    /** Compatibility accessor preserving the original moderation contract name. */
+    public Optional<Instant> blacklistExpiresAt() {
+        return blacklistExpiry;
     }
 }
