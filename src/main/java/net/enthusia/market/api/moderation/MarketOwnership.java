@@ -19,6 +19,7 @@ public record MarketOwnership(Type type, Optional<String> ownerId) {
     }
 
     /** Compatibility accessor preserving the original record-style API name. */
+    @SuppressWarnings("PMD.ShortMethodName")
     public Optional<String> id() {
         return ownerId;
     }
