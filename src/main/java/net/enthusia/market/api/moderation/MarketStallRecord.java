@@ -5,7 +5,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 public record MarketStallRecord(
-        String id,
+        String stallId,
         String world,
         String state,
         MarketOwnership ownership,
@@ -16,7 +16,7 @@ public record MarketStallRecord(
     private static final long MINIMUM_REVISION = 0L;
 
     public MarketStallRecord {
-        MarketApiValidation.identifier(id, "stall id", 128);
+        MarketApiValidation.identifier(stallId, "stall id", 128);
         MarketApiValidation.identifier(world, "world", 128);
         MarketApiValidation.identifier(state, "stall state", 48);
         ownership = Objects.requireNonNull(ownership, "ownership");
@@ -26,9 +26,14 @@ public record MarketStallRecord(
         reviewDueAt = Objects.requireNonNull(reviewDueAt, "reviewDueAt");
     }
 
+    /** Compatibility accessor preserving the original record-style API name. */
+    public String id() {
+        return stallId;
+    }
+
     /** Bean-style aliases retained for reflection-based Staff integrations. */
     public String getId() {
-        return id;
+        return stallId;
     }
 
     public String getWorld() {
