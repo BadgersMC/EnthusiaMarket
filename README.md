@@ -33,7 +33,7 @@ See [`docs/tech-stack.md`](docs/tech-stack.md) for full pin list + rationale.
 ## Build
 
 ```bash
-./gradlew shadowJar
+./gradlew shadowJar -PuseMavenLocal=true
 ```
 
 Produces `build/libs/EnthusiaMarket-0.1.0.jar`.
@@ -42,34 +42,31 @@ Produces `build/libs/EnthusiaMarket-0.1.0.jar`.
 
 EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to be wired before a local build:
 
-1. **Nexus v2.3.0** — served via [JitPack](https://jitpack.io) from the public [BadgersMC/Nexus](https://github.com/BadgersMC/Nexus) repo. No token, no credentials. Gradle resolves every `com.github.BadgersMC.Nexus:nexus-*:v2.3.0` artifact directly.
-
-   If you're hacking on Nexus locally and want to pick up in-progress changes that aren't tagged yet:
+1. **Nexus v2.3.0** — the Paper 26.2 support is merged at commit `057836befb9e35aa252cf90104030ec86f28b33f`, but v2.3.0 is not tagged/published yet. Build that exact commit to Maven Local before building Market:
 
    ```bash
    git clone https://github.com/BadgersMC/Nexus.git
    cd Nexus
-   ./gradlew -PuseMavenLocal=true publishToMavenLocal
+   git checkout 057836befb9e35aa252cf90104030ec86f28b33f
+   ./gradlew publishToMavenLocal
    ```
 
-   Then run EM's Gradle with the same flag: `./gradlew -PuseMavenLocal=true build`. The `mavenLocal()` repo is gated behind that property so CI never picks up stale local jars.
+   Then build Market with `-PuseMavenLocal=true`. CI and release use the same pinned bootstrap so they do not depend on an unpublished JitPack coordinate.
 
 2. **LumaGuilds jar** — point the build at it via either:
    - `-Plumaguilds.jar=/abs/path/to/LumaGuilds-3.0.0.jar`, or
    - `LUMAGUILDS_JAR=/abs/path/to/LumaGuilds-3.0.0.jar` env var.
 
-   Default fallback (the BadgersMC dev VPS path) is `/opt/data/LumaGuilds/build/libs/LumaGuilds-3.0.0.jar`.
+   Alternatively place a current `LumaGuilds-*.jar` in Market's local `libs/` directory. CI pins the published LumaGuilds 3.0.0 release and does not rebuild LumaGuilds or RoseChat from source.
 
-   LumaGuilds itself needs `libs/RoseChat-RC-2.jar` to compile — build it from [BadgersMC/Enthusia-RoseChat](https://github.com/BadgersMC/Enthusia-RoseChat) (`./gradlew shadowJar`) and drop the resulting jar into `LumaGuilds/libs/`.
-
-CI needs no extra secrets — JitPack is public. See [`.github/workflows/build.yml`](.github/workflows/build.yml) for the full chain.
+CI needs no extra secrets. See [`.github/workflows/build.yml`](.github/workflows/build.yml) for the exact pinned dependency bootstrap.
 
 ## Test
 
 ```bash
-./gradlew test                                                    # full suite (~255 tests)
-./gradlew test --tests "net.badgersmc.em.architecture.*"          # Konsist layer rules only
-./gradlew test --tests "net.badgersmc.em.domain.*"                # domain (fastest)
+./gradlew test -PuseMavenLocal=true                                          # full suite
+./gradlew test -PuseMavenLocal=true --tests "net.badgersmc.em.architecture.*" # Konsist layer rules
+./gradlew test -PuseMavenLocal=true --tests "net.badgersmc.em.domain.*"       # domain (fastest)
 ```
 
 Konsist enforces the hexagonal boundary on every run — domain code must not import Bukkit / Paper / WG / Vault / Koin / Nexus. If layer rules fail, see [`docs/implementation.md`](docs/implementation.md) §2.

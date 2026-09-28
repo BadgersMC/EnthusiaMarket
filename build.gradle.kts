@@ -3,7 +3,7 @@ import net.badgersmc.nexus.permissions.Default
 buildscript {
     val useLocalNexus = gradle.startParameter.projectProperties["useMavenLocal"] == "true"
     val nexusGroup = if (useLocalNexus) "net.badgersmc" else "com.github.BadgersMC.Nexus"
-    val nexusVersion = if (useLocalNexus) "2.3.0" else "v2.3.0"
+    val nexusVersion = if (useLocalNexus) "2.3.0" else "057836b"
 
     repositories {
         if (useLocalNexus) mavenLocal()
@@ -37,7 +37,7 @@ System.getenv("EM_BUILD_DIR")?.let { layout.buildDirectory.set(file(it)) }
 
 val useLocalNexus = providers.gradleProperty("useMavenLocal").orNull == "true"
 val nexusGroup = if (useLocalNexus) "net.badgersmc" else "com.github.BadgersMC.Nexus"
-val nexusVersion = if (useLocalNexus) "2.3.0" else "v2.3.0"
+val nexusVersion = if (useLocalNexus) "2.3.0" else "057836b"
 
 repositories {
     mavenCentral()
@@ -137,12 +137,19 @@ dependencies {
     }
     testImplementation("com.lemonappdev:konsist:0.17.3")
 
-    // LumaGuilds API for real GuildProvider implementation
-    // Path can be overridden via -Plumaguilds.jar=... or LUMAGUILDS_JAR env var
-    val lumaguildsJar = System.getenv("LUMAGUILDS_JAR") ?: project.findProperty("lumaguilds.jar")?.toString()
-        ?: "/opt/data/LumaGuilds/build/libs/LumaGuilds-3.0.0.jar"
-    compileOnly(files(lumaguildsJar))
-    testImplementation(files(lumaguildsJar))
+    // LumaGuilds API for the real GuildProvider implementation.
+    // CI/release should pass LUMAGUILDS_JAR explicitly. For local development,
+    // fall back to any current LumaGuilds jar staged in ./libs instead of a
+    // machine-specific /opt/data path or a version-pinned filename.
+    val lumaguildsJar = System.getenv("LUMAGUILDS_JAR")
+        ?: project.findProperty("lumaguilds.jar")?.toString()
+    val lumaguildsClasspath = if (lumaguildsJar != null) {
+        files(lumaguildsJar)
+    } else {
+        fileTree("libs") { include("LumaGuilds-*.jar") }
+    }
+    compileOnly(lumaguildsClasspath)
+    testImplementation(lumaguildsClasspath)
 }
 
 kotlin {

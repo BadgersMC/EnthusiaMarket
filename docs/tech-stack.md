@@ -34,9 +34,9 @@ Top-level direct dependencies with pinned versions. Transitive pins live in the 
 | com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit | 2.11.0 | Async paste path preferred when present (compileOnly, softdepend; REQ-272) |
 | org.geysermc.floodgate:api | 2.2.5-SNAPSHOT | Detect Bedrock players (compileOnly) |
 | org.geysermc.cumulus:cumulus | 2.0.0-SNAPSHOT | Bedrock UI forms (compileOnly) |
-| com.github.BadgersMC.Nexus:nexus-core | v2.3.0 | DI container, @ConfigFile YAML config, coroutines (shaded, relocated) |
-| com.github.BadgersMC.Nexus:nexus-paper | v2.3.0 | Paper Brigadier @Command/@Subcommand system, BukkitDispatcher (shaded, relocated) |
-| com.github.BadgersMC.Nexus:nexus-worldedit | v2.3.0 | WE/FAWE facade (WorldEditAdapter save/load + isFawePresent) behind the SchematicService port (shaded, relocated) |
+| net.badgersmc:nexus-core | 2.3.0 (pinned source `057836b`, Maven Local until tagged) | DI container, @ConfigFile YAML config, coroutines (shaded, relocated) |
+| net.badgersmc:nexus-paper | 2.3.0 (pinned source `057836b`, Maven Local until tagged) | Paper Brigadier @Command/@Subcommand system, BukkitDispatcher (shaded, relocated) |
+| net.badgersmc:nexus-worldedit | 2.3.0 (pinned source `057836b`, Maven Local until tagged) | WE/FAWE facade (WorldEditAdapter save/load + isFawePresent) behind the SchematicService port (shaded, relocated) |
 | com.zaxxer:HikariCP | 5.1.0 | Connection pool |
 | org.xerial:sqlite-jdbc | 3.45.1.0 | Default embedded DB |
 | org.mariadb.jdbc:mariadb-java-client | 3.3.2 | Production DB option |
