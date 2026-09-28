@@ -51,7 +51,7 @@ EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to
    ./gradlew publishToMavenLocal
    ```
 
-   Then build Market with `-PuseMavenLocal=true`. CI and release use the same pinned bootstrap so they do not depend on an unpublished JitPack coordinate.
+   Then build Market with `-PuseMavenLocal=true`. Composite builds can set `USE_MAVEN_LOCAL_NEXUS=true` instead; environment variables propagate into Gradle included builds whereas root `-P` properties do not. CI and release use the same pinned bootstrap so they do not depend on an unpublished JitPack coordinate.
 
 2. **LumaGuilds jar** — point the build at it via either:
    - `-Plumaguilds.jar=/abs/path/to/LumaGuilds-3.0.0.jar`, or

@@ -1,7 +1,8 @@
 import net.badgersmc.nexus.permissions.Default
 
 buildscript {
-    val useLocalNexus = gradle.startParameter.projectProperties["useMavenLocal"] == "true"
+    val useLocalNexus = gradle.startParameter.projectProperties["useMavenLocal"] == "true" ||
+        System.getenv("USE_MAVEN_LOCAL_NEXUS").equals("true", ignoreCase = true)
     val nexusGroup = if (useLocalNexus) "net.badgersmc" else "com.github.BadgersMC.Nexus"
     val nexusVersion = if (useLocalNexus) "2.3.0" else "057836b"
 
@@ -35,7 +36,8 @@ group = "net.badgersmc.em"
 version = findProperty("releaseVersion")?.toString() ?: "1.0.0"
 System.getenv("EM_BUILD_DIR")?.let { layout.buildDirectory.set(file(it)) }
 
-val useLocalNexus = providers.gradleProperty("useMavenLocal").orNull == "true"
+val useLocalNexus = providers.gradleProperty("useMavenLocal").orNull == "true" ||
+    System.getenv("USE_MAVEN_LOCAL_NEXUS").equals("true", ignoreCase = true)
 val nexusGroup = if (useLocalNexus) "net.badgersmc" else "com.github.BadgersMC.Nexus"
 val nexusVersion = if (useLocalNexus) "2.3.0" else "057836b"
 
