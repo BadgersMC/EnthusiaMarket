@@ -118,30 +118,41 @@ internal class MarketModerationProvider(
     }
 
     private fun confiscateWithRegionFence(approval: MarketConfiscationApproval): MarketOperationResult {
-        val operation = store.findOperation(approval.operationId()).orElse(null)
-        val shouldClear = operation != null &&
-            operation.snapshotChecksum() == approval.expectedSnapshotChecksum() &&
-            operation.state() in setOf(
+        val snapshot = regionSnapshotForConfiscation(approval) ?: return store.confiscate(approval)
+        regionAccess.clear(snapshot)
+        return persistConfiscation(approval, snapshot)
+    }
+
+    private fun regionSnapshotForConfiscation(
+        approval: MarketConfiscationApproval,
+    ): MarketRegionAccessSnapshot? {
+        val operation = store.findOperation(approval.operationId()).orElse(null) ?: return null
+        if (!operation.canClearRegionFor(approval)) return null
+        return try {
+            store.regionAccess(approval.operationId())
+        } catch (_: MarketModerationConflict) {
+            null
+        }
+    }
+
+    private fun MarketOperationRecord.canClearRegionFor(approval: MarketConfiscationApproval): Boolean =
+        snapshotChecksum() == approval.expectedSnapshotChecksum() &&
+            state() in setOf(
                 MarketOperationRecord.State.PREPARED,
                 MarketOperationRecord.State.MODERATION_HOLD,
             )
-        if (!shouldClear) return store.confiscate(approval)
 
-        val snapshot = try {
-            checkNotNull(store.regionAccess(approval.operationId()))
-        } catch (_: MarketModerationConflict) {
-            return store.confiscate(approval)
-        }
-        regionAccess.clear(snapshot)
+    private fun persistConfiscation(
+        approval: MarketConfiscationApproval,
+        snapshot: MarketRegionAccessSnapshot,
+    ): MarketOperationResult {
         val result = try {
             store.confiscate(approval)
         } catch (failure: Exception) {
             compensateFailedConfiscation(approval.operationId(), snapshot, failure)
             throw failure
         }
-        if (!result.isHeldOrReplay()) {
-            regionAccess.restore(snapshot)
-        }
+        if (!result.isHeldOrReplay()) regionAccess.restore(snapshot)
         return result
     }
 
