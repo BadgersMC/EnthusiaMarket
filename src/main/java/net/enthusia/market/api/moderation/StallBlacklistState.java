@@ -14,6 +14,7 @@ public record StallBlacklistState(
         long revision,
         Instant updatedAt
 ) {
+    /** Smallest valid persisted blacklist revision. */
     private static final long MINIMUM_REVISION = 1L;
 
     public StallBlacklistState {
@@ -41,11 +42,13 @@ public record StallBlacklistState(
         return caseId;
     }
 
+    /** Returns whether this blacklist is active at the supplied instant. */
     public boolean activeAt(final Instant now) {
         Objects.requireNonNull(now, "now");
         return status == Status.ACTIVE && expiresAt.map(now::isBefore).orElse(true);
     }
 
+    /** Lifecycle state of a persisted stall blacklist. */
     public enum Status {
         ACTIVE,
         REMOVED
