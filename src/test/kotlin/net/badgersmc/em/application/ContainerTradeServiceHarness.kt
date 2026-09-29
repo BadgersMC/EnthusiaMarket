@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import io.mockk.every
 import io.mockk.mockk
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -33,6 +34,18 @@ open class ContainerTradeServiceHarness(
     private val hasAtLeast: InventoryPredicate = inventoryAlwaysHas,
     private val canFit: InventoryPredicate = inventoryFitsWhenPositive,
 ) : ContainerTradeService(stallRepo, economy, guildProvider, tradePolicy, shopVault) {
+    init {
+        // Batch trades clone and resize the deserialized stack before publishing events.
+        // MockK ItemStack mocks do not retain mutable `amount` state unless explicitly
+        // modelled, so make the shared harness behave like Bukkit's real ItemStack.
+        runCatching {
+            var amount = mockItemStack.amount
+            every { mockItemStack.clone() } returns mockItemStack
+            every { mockItemStack.amount } answers { amount }
+            every { mockItemStack.amount = any() } answers { amount = firstArg<Int>() }
+        }
+    }
+
     override fun deserializeStack(base64: String): ItemStack? =
         stacks[base64] ?: mockItemStack
     override fun getContainer(shop: Shop): Container? = mockContainer
