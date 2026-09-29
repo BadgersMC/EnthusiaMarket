@@ -13,7 +13,8 @@ import org.junit.jupiter.api.Test;
 @SuppressWarnings({"PMD.AtLeastOneConstructor", "PMD.TooManyMethods"})
 class StaffMarketApiCompatibilityTest {
     /* JUnit 5 intentionally uses its implicit package-private constructor. */
-    /* Focused single-assert compatibility tests intentionally exceed the method-count threshold. */
+    /* Focused single-assert compatibility tests intentionally exceed */
+    /* the configured method-count threshold. */
 
     /** Shared blacklist timestamp fixture. */
     private static final Instant EXPIRY = Instant.parse("2026-10-01T00:00:00Z");
