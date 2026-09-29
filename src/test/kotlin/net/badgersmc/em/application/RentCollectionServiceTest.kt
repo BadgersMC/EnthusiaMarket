@@ -119,12 +119,59 @@ class RentCollectionServiceTest {
 
     // --- Emergency auction on grace expiry ---
 
-    private fun shop(id: Long, stallId: String) = net.badgersmc.em.domain.shop.Shop(
+    private fun shop(
+        id: Long,
+        stallId: String,
+        adminShop: Boolean = false,
+    ) = net.badgersmc.em.domain.shop.Shop(
         id = id, stallId = stallId, owner = playerUuid,
         signWorld = "world", signX = 0, signY = 64, signZ = 0,
         containerWorld = "world", containerX = 0, containerY = 63, containerZ = 0,
         sellItem = "item", sellAmount = 1, costItem = "item", costAmount = 1,
+        adminShop = adminShop,
     )
+
+    @Test
+    fun `orphaned emergency auction recovery clears stale ownership and non admin shops idempotently`() {
+        val staleMember = UUID.fromString("00000000-0000-0000-0000-000000000004")
+        val orphan = ownedStall.copy(
+            state = StallState.EMERGENCY_AUCTIONING,
+            ownerSince = now.minus(Duration.ofDays(30)),
+            winningBid = 2_500L,
+            members = setOf(staleMember),
+            nextRentAt = now.minus(Duration.ofDays(3)),
+        )
+        val normalShop = shop(21L, orphan.id.value)
+        val adminShop = shop(22L, orphan.id.value, adminShop = true)
+        val svc = buildService(stalls = listOf(orphan))
+        every { svc.auctionRepo.findOpenByStall(orphan.id) } returns null
+        every { svc.shopRepo.findByStall(orphan.id.value) } returns listOf(normalShop, adminShop)
+
+        svc.service.tick(now)
+
+        verify(exactly = 1) {
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED &&
+                    it.owner == OwnerRef.unowned() &&
+                    it.ownerSince == null &&
+                    it.winningBid == 0L &&
+                    it.members.isEmpty() &&
+                    it.nextRentAt == null
+            })
+        }
+        verify(exactly = 1) { svc.shopRepo.delete(21L) }
+        verify(exactly = 0) { svc.shopRepo.delete(22L) }
+
+        every { svc.stallRepo.all() } returns listOf(orphan.releaseOwnership())
+        svc.service.tick(now)
+
+        verify(exactly = 1) {
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED && it.owner == OwnerRef.unowned()
+            })
+        }
+        verify(exactly = 1) { svc.shopRepo.delete(21L) }
+    }
 
     @Test
     fun `tick past grace starts emergency auction, does NOT wipe shops`() {

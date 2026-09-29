@@ -1,4 +1,4 @@
-# EnthusiaMarket 26.2 Ownership Integrity — SPEAR Implementation Plan
+# EnthusiaMarket 26.2 Ownership Integrity â€” SPEAR Implementation Plan
 
 **Date:** 2026-09-29  
 **Baseline:** `main@8d04bd9`  
@@ -12,7 +12,7 @@ Eliminate ownership overlap and ghost ownership without regressing PR #194 Staff
 
 ## Standing rules
 
-- Use one SPEAR cycle per task: spec → prove → engine → arch → refine.
+- Use one SPEAR cycle per task: spec â†’ prove â†’ engine â†’ arch â†’ refine.
 - Characterize PR #194 before changing ownership code.
 - No implementation may bypass moderation acquisition permits, mutation gates, durable locks, or optimistic revisions.
 - Never edit V001..V028; schema repair uses a forward migration only.
@@ -20,9 +20,9 @@ Eliminate ownership overlap and ghost ownership without regressing PR #194 Staff
 - Preserve admin shops during ordinary ownership cleanup.
 - Run focused tests first, then full test + detekt + architecture/Konsist + shadowJar before merge.
 - Test migration/reconciliation against disposable databases and a copied production snapshot before production.
-## Workstream A — Protect the #194 baseline
+## Workstream A â€” Protect the #194 baseline
 
-### A1 — TDD-320 moderation characterization
+### A1 â€” TDD-320 moderation characterization
 
 Add/extend tests around:
 
@@ -38,9 +38,9 @@ Do not refactor production code in this task except test seams required to obser
 
 **Gate:** focused #194 tests green on unmodified baseline.
 
-## Workstream B — Domain ownership invariants
+## Workstream B â€” Domain ownership invariants
 
-### B1 — TDD-314 active ownership counting
+### B1 â€” TDD-314 active ownership counting
 
 Files:
 - `application/StallOwnershipCounter.kt`
@@ -48,7 +48,7 @@ Files:
 
 Red test: same SOLO owner across all lifecycle states; only OWNED and GRACE count.
 
-### B2 — TDD-315 successor and release state
+### B2 â€” TDD-315 successor and release state
 
 Files:
 - `domain/stall/Stall.kt`
@@ -57,9 +57,9 @@ Files:
 Red tests:
 - `awardTo` clears previous delegated members;
 - canonical release to UNOWNED clears owner, ownerSince, winningBid, members, and nextRentAt.
-## Workstream C — Ordinary transfer cleanup
+## Workstream C â€” Ordinary transfer cleanup
 
-### C1 — TDD-316 direct sell offer
+### C1 â€” TDD-316 direct sell offer
 
 Files likely touched:
 - `application/SellOfferService.kt`
@@ -75,7 +75,7 @@ Required sequence:
 5. synchronize region ownership for the buyer;
 6. delete completed offer and preserve existing payout/tax semantics.
 
-### C2 — TDD-317 auction settlement
+### C2 â€” TDD-317 auction settlement
 
 Cover both owner-created and emergency auction awards.
 
@@ -83,11 +83,11 @@ Keep existing close-first/charge-exactly-once/refund behavior intact. Add the sa
 
 **Important:** `WorldGuardRegionMemberSync.setOwner` already clears previous owners/members. Use it; do not replace it.
 
-## Workstream D — Emergency auction lifecycle
+## Workstream D â€” Emergency auction lifecycle
 
-### D1 — TDD-319 clean forfeiture at GRACE expiry
+### D1 â€” TDD-319 clean forfeiture at GRACE expiry
 
-On GRACE → EMERGENCY_AUCTIONING:
+On GRACE â†’ EMERGENCY_AUCTIONING:
 
 - remove previous non-admin shops;
 - remove delegated region/member access;
@@ -95,13 +95,17 @@ On GRACE → EMERGENCY_AUCTIONING:
 - retain former-owner identity only if settlement/recovery requires provenance;
 - ensure ownership counting excludes the stall.
 
-### D2 — TDD-318 canonical auction-driven release
+### D2 â€” TDD-318 canonical auction-driven release
 
 Route auction no-bid settlement, `closeWithoutAward`, system-auction cancellation/revert, and failed-award recovery through one canonical auction release behavior instead of partial copies.
 
-### D3 — TDD-324 canonical rent-orphan recovery
+### D3 â€” TDD-326 canonical rent-orphan stall/shop recovery
 
-Route `RentCollectionService.recoverOrphanedEmergencyStalls` through the same domain release semantics while keeping its scheduler recovery isolated and idempotent.
+Route `RentCollectionService.recoverOrphanedEmergencyStalls` through `Stall.releaseOwnership()`, remove stale non-admin shops while preserving admin shops, and prove repeated recovery is idempotent using only its current collaborators.
+
+### D4 â€” TDD-325 rent-orphan access/IP/moderation cleanup
+
+Add the lifecycle collaborators missing from `RentCollectionService`: moderation mutation gate, region access synchronization, and IP ownership release. Prove locked stalls are skipped and successful recovery clears WG/IP projections without altering Staff Market semantics.
 
 Canonical UNOWNED result:
 
@@ -116,9 +120,9 @@ Canonical UNOWNED result:
 - schematic restored where the transition requires it;
 - state-change event emitted consistently.
 
-## Workstream E — Legacy reconciliation
+## Workstream E â€” Legacy reconciliation
 
-### E1 — TDD-321 forward repair
+### E1 â€” TDD-321 forward repair
 
 Create a forward migration/reconciliation after V028.
 
@@ -134,9 +138,9 @@ Test cases must include:
 
 Ambiguous rows are retained and reported. The migration must not need production credentials or network services.
 
-## Workstream F — Bulk rent extension
+## Workstream F â€” Bulk rent extension
 
-### F1 — TDD-322 application service
+### F1 â€” TDD-322 application service
 
 Add `BulkRentExtensionService` with a structured result containing updated, recovered, skipped, and failed counts.
 
@@ -148,12 +152,12 @@ Rules:
 - GRACE returns to OWNED only when the new deadline is future;
 - one bad stall does not abort the batch.
 
-### F2 — TDD-323 command wiring
+### F2 â€” TDD-323 command wiring
 
 Add `/em rent extendall <duration>` under existing admin authorization. Support concise durations such as `7d`, `12h`, and `30m`; reject zero/negative/invalid inputs.
-## Workstream G — Documentation and release validation
+## Workstream G â€” Documentation and release validation
 
-### G1 — DOC-322
+### G1 â€” DOC-322
 
 After code is complete, update operator/developer docs with:
 
@@ -163,7 +167,7 @@ After code is complete, update operator/developer docs with:
 - reconciliation behavior;
 - bulk rent extension usage.
 
-### G2 — Full verification
+### G2 â€” Full verification
 
 Run the repository's current Java/Gradle toolchain from the 26.2 baseline:
 
@@ -181,7 +185,7 @@ Then validate on a disposable/copy database and a test server:
 4. confirm previous owner can buy another stall after emergency forfeiture;
 5. settle normal and emergency auctions;
 6. exercise no-bid/orphan recovery;
-7. run moderation prepare → hold → restore and compare exact snapshot state;
+7. run moderation prepare â†’ hold â†’ restore and compare exact snapshot state;
 8. run `/em rent extendall 7d` and verify no balances change.
 
 ## Merge strategy

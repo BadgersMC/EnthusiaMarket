@@ -5,7 +5,6 @@ import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
-import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -215,14 +214,8 @@ class RentCollectionService(
             try {
                 val openAuction = auctionRepository.findOpenByStall(stall.id)
                 if (openAuction != null) continue // has active auction, skip
-                // Unfreeze shops frozen by the grace/emergency path before
-                // reverting. UNOWNED stalls are skipped by all other paths, so
-                // frozen shops would remain frozen forever otherwise.
-                shops.freezeByStall(stall.id.value, frozen = false)
-                stallRepository.save(stall.copy(
-                    state = StallState.UNOWNED,
-                    owner = OwnerRef.unowned(),
-                ))
+                cleanupOrphanedEmergencyShops(stall)
+                stallRepository.save(stall.releaseOwnership())
                 recovered++
             } catch (e: Exception) {
                 log.warning(
@@ -232,6 +225,17 @@ class RentCollectionService(
             }
         }
         return recovered
+    }
+
+    private fun cleanupOrphanedEmergencyShops(stall: Stall) {
+        for (shop in shops.findByStall(stall.id.value)) {
+            if (!shop.adminShop) {
+                shops.delete(shop.id)
+            }
+        }
+        // Preserved admin shops may have been frozen while the previous
+        // ownership context was in GRACE / emergency auction.
+        shops.freezeByStall(stall.id.value, frozen = false)
     }
 
     private sealed class ProcessResult {
