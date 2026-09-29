@@ -5,14 +5,28 @@ on:
     branches: [main]
 
 jobs:
-  lizard:
+  diagnostics:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
       - name: Report Codacy Lizard candidates
         run: |
           python -m pip install --disable-pip-version-check lizard==1.22.2
           lizard -C 10 -T nloc=20 -a 4 -w src/main src/test || true
+      - name: Report PMD findings in moderation API
+        run: |
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$RUNNER_TEMP/pmd.zip" \
+            "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.11.0/pmd-dist-7.11.0-bin.zip"
+          unzip -q "$RUNNER_TEMP/pmd.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/pmd-bin-7.11.0/bin/pmd" check \
+            -d src/main/java/net/enthusia/market/api/moderation \
+            -R category/java/bestpractices.xml,category/java/codestyle.xml,category/java/design.xml,category/java/documentation.xml,category/java/errorprone.xml,category/java/multithreading.xml,category/java/performance.xml,category/java/security.xml \
+            -f text || true
