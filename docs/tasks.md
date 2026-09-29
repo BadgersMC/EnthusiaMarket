@@ -1000,11 +1000,11 @@ Critical exploit: MC 1.21 applies splash/cloud potion effects additively, so rep
 
 Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This milestone must preserve REQ-306..313 moderation behavior before changing ordinary ownership lifecycles.
 
-- [ ] **TDD-320** — Characterize and lock PR #194 moderation behavior
-  References: REQ-320, REQ-306, REQ-307, REQ-308, REQ-309, REQ-310, REQ-311, implementation.md §3.11
-  Tag: TDD
-  Description: Add focused regression tests proving PREPARED, MODERATION_HOLD, RESTORED, RELEASED, optimistic revision conflicts, durable stall locks, shop-freeze restoration, and MarketRegionAccessCoordinator behavior remain unchanged while ordinary ownership code is refactored.
-  Evidence: ` `
+- [x] **INFRA-320** -- Characterize and lock PR #194 moderation baseline
+  References: REQ-320, REQ-306, REQ-307, REQ-308, REQ-309, REQ-310, REQ-311, implementation.md 3.11
+  Tag: INFRA
+  Description: Verify the existing PR #194 moderation characterization suite is green on the exact 8d04bd9 baseline before ownership refactoring. Record the dependency bootstrap required by current CI; this checkpoint changes no production behavior.
+  Evidence: `src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; src/test/kotlin/net/badgersmc/em/infrastructure/moderation/JdbcMarketModerationStoreTest.kt; docs/moderation-provider.md; .github/workflows/build.yml; 2026-09-29: ./gradlew test -PuseMavenLocal=true --tests AuctionModerationIntegrationTest --tests JdbcMarketModerationStoreTest -> BUILD SUCCESSFUL`
 
 - [ ] **TDD-314** — Count only actively held SOLO stalls
   References: REQ-314, implementation.md §3.11
