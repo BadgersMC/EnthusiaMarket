@@ -9,11 +9,14 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Verifies the bean-style value shapes consumed by EnthusiaStaff reflection. */
+/** Verifies bean-style value shapes consumed by EnthusiaStaff reflection. */
+@SuppressWarnings({"PMD.AtLeastOneConstructor", "PMD.TooManyMethods"})
 class StaffMarketApiCompatibilityTest {
+    /* JUnit 5 intentionally uses its implicit package-private constructor. */
+    /* Focused single-assert compatibility tests intentionally exceed the method-count threshold. */
 
-    StaffMarketApiCompatibilityTest() {
-    }
+    /** Shared blacklist timestamp fixture. */
+    private static final Instant EXPIRY = Instant.parse("2026-10-01T00:00:00Z");
 
     @Test
     void stallIdBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
@@ -49,8 +52,7 @@ class StaffMarketApiCompatibilityTest {
 
     @Test
     void blacklistExpirationBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
-        final Instant expiry = Instant.parse("2026-10-01T00:00:00Z");
-        assertEquals(expiry, invoke(activeBlacklist(), "getExpiresAt"));
+        assertEquals(EXPIRY, invoke(activeBlacklist(), "getExpiresAt"));
     }
 
     @Test
@@ -66,8 +68,7 @@ class StaffMarketApiCompatibilityTest {
 
     @Test
     void recordStyleBlacklistExpirationRemainsOptional() {
-        final Instant expiry = Instant.parse("2026-10-01T00:00:00Z");
-        assertEquals(Optional.of(expiry), activeBlacklist().expiresAt());
+        assertEquals(Optional.of(EXPIRY), activeBlacklist().expiresAt());
     }
 
     @Test
@@ -98,20 +99,18 @@ class StaffMarketApiCompatibilityTest {
     }
 
     private static StallBlacklistState activeBlacklist() {
-        final Instant expiry = Instant.parse("2026-10-01T00:00:00Z");
         return new StallBlacklistState(
                 UUID.randomUUID(),
                 StallBlacklistState.Status.ACTIVE,
-                Optional.of(expiry),
+                Optional.of(EXPIRY),
                 "ES-CASE-1",
                 UUID.randomUUID(),
                 1L,
-                expiry.minusSeconds(60L)
+                EXPIRY.minusSeconds(60L)
         );
     }
 
     private static StallBlacklistState removedBlacklist() {
-        final Instant updated = Instant.parse("2026-10-01T00:00:00Z");
         return new StallBlacklistState(
                 UUID.randomUUID(),
                 StallBlacklistState.Status.REMOVED,
@@ -119,7 +118,7 @@ class StaffMarketApiCompatibilityTest {
                 "ES-CASE-2",
                 UUID.randomUUID(),
                 1L,
-                updated
+                EXPIRY
         );
     }
 
