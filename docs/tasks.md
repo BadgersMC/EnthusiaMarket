@@ -993,3 +993,75 @@ Critical exploit: MC 1.21 applies splash/cloud potion effects additively, so rep
   Tag: DOC
   Description: Add a short section to `wiki/docs/admins/` (e.g. in `maintenance.md` or a new `market-protection.md`) stating potion effects (splash/lingering/cloud/tipped arrow) are cancelled for entities inside stall regions; note the WG flag is provision-time-only and the runtime listener enforces the invariant for all regions.
   Evidence: `wiki/docs/admins/market-protection.md` (created 2026-08-02, frontmatter-validated), `docs/requirements.md` REQ-305
+
+---
+
+## 26.2 ownership-integrity hardening (REQ-314..322)
+
+Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This milestone must preserve REQ-306..313 moderation behavior before changing ordinary ownership lifecycles.
+
+- [ ] **TDD-320** — Characterize and lock PR #194 moderation behavior
+  References: REQ-320, REQ-306, REQ-307, REQ-308, REQ-309, REQ-310, REQ-311, implementation.md §3.11
+  Tag: TDD
+  Description: Add focused regression tests proving PREPARED, MODERATION_HOLD, RESTORED, RELEASED, optimistic revision conflicts, durable stall locks, shop-freeze restoration, and MarketRegionAccessCoordinator behavior remain unchanged while ordinary ownership code is refactored.
+  Evidence: ` `
+
+- [ ] **TDD-314** — Count only actively held SOLO stalls
+  References: REQ-314, implementation.md §3.11
+  Tag: TDD
+  Description: Write a failing StallOwnershipCounter test with the same SOLO owner across OWNED, GRACE, AUCTIONING, RE_AUCTIONING, EMERGENCY_AUCTIONING, UNOWNED, and MODERATION_HOLD rows; assert only OWNED and GRACE contribute to total and per-kind limits, then implement the minimum state filter.
+  Evidence: ` `
+
+- [ ] **TDD-315** — Clear delegated members on ownership replacement
+  References: REQ-315, REQ-318, implementation.md §3.11
+  Tag: TDD
+  Description: Prove Stall.awardTo does not carry the previous owner member set into a successor ownership context and add one canonical domain release operation that clears owner, ownerSince, winningBid, members, and nextRentAt when returning to UNOWNED.
+  Evidence: ` `
+
+- [ ] **TDD-316** — Direct sell-offer transfer cleans previous-owner state
+  References: REQ-316, REQ-317, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Prove SellOfferService.purchase currently transfers the Stall row without removing the prior owner's non-admin shops or resynchronizing region access; implement cleanup and RegionMemberSync while retaining the PR #194 acquisition permit and moderation-lock fencing.
+  Evidence: ` `
+
+- [ ] **TDD-317** — Auction award cleans previous-owner state
+  References: REQ-316, REQ-317, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Prove normal and emergency auction settlement do not leave prior non-admin shops or delegated members attached to the awarded stall; implement the minimum shared ownership-transition behavior while preserving bid charging/refund and moderation conflict semantics.
+  Evidence: ` `
+
+- [ ] **TDD-318** — No-bid and orphan recovery use canonical UNOWNED cleanup
+  References: REQ-318, REQ-319, implementation.md §3.11
+  Tag: TDD
+  Description: Add failing tests for closeWithoutAward and recoverOrphanedEmergencyStalls showing stale ownerSince, winningBid, members, nextRentAt, shops, or region access survive today; route both through the canonical release behavior and keep recovery idempotent.
+  Evidence: ` `
+
+- [ ] **TDD-319** — Emergency auction begins from a clean forfeited stall
+  References: REQ-319, REQ-280, REQ-271, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Characterize GRACE → EMERGENCY_AUCTIONING, then require previous-owner non-admin shops and delegated region/member access to be removed and the stored schematic restored when enabled while retaining only settlement/recovery provenance needed by the auction path.
+  Evidence: ` `
+
+- [ ] **TDD-321** — Conservative legacy ownership reconciliation
+  References: REQ-321, REQ-316, REQ-318, REQ-320, docs/db-schema.md
+  Tag: TDD
+  Description: Add a forward migration/reconciliation path after V028 with disposable SQLite coverage for stale SOLO ownership artifacts. It must be idempotent, preserve admin shops, avoid treating guild owner IDs as player UUIDs, skip live moderation reservations/holds, and only repair rows whose staleness is provable.
+  Evidence: ` `
+
+- [ ] **TDD-322** — Bulk rent extension service
+  References: REQ-322, implementation.md §3.12
+  Tag: TDD
+  Description: Add failing application tests for a positive-duration bulk deadline shift across OWNED and GRACE stalls, no economy withdrawals, auction/moderation/unowned skips, per-stall failure isolation, and GRACE → OWNED recovery only when the shifted deadline is in the future.
+  Evidence: ` `
+
+- [ ] **TDD-323** — Wire /em rent extendall <duration>
+  References: REQ-322, implementation.md §3.12
+  Tag: TDD
+  Description: Add command parsing and admin authorization for human durations such as 7d, 12h, and 30m, call BulkRentExtensionService, and render updated/recovered/skipped/failed counts without exposing stack traces or changing owner balances.
+  Evidence: ` `
+
+- [ ] **DOC-322** — Document ownership invariants and bulk rent extension
+  References: REQ-314, REQ-315, REQ-316, REQ-317, REQ-318, REQ-319, REQ-320, REQ-321, REQ-322
+  Tag: DOC
+  Description: Update operator/developer docs after implementation with the authoritative active-owner states, transfer cleanup rules, moderation boundary, reconciliation behavior, and /em rent extendall usage.
+  Evidence: ` `
