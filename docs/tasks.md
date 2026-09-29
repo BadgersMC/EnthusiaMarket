@@ -1006,11 +1006,11 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Verify the existing PR #194 moderation characterization suite is green on the exact 8d04bd9 baseline before ownership refactoring. Record the dependency bootstrap required by current CI; this checkpoint changes no production behavior.
   Evidence: `src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; src/test/kotlin/net/badgersmc/em/infrastructure/moderation/JdbcMarketModerationStoreTest.kt; docs/moderation-provider.md; .github/workflows/build.yml; 2026-09-29: ./gradlew test -PuseMavenLocal=true --tests AuctionModerationIntegrationTest --tests JdbcMarketModerationStoreTest -> BUILD SUCCESSFUL`
 
-- [ ] **TDD-314** — Count only actively held SOLO stalls
+- [x] **TDD-314** — Count only actively held SOLO stalls
   References: REQ-314, implementation.md §3.11
   Tag: TDD
   Description: Write a failing StallOwnershipCounter test with the same SOLO owner across OWNED, GRACE, AUCTIONING, RE_AUCTIONING, EMERGENCY_AUCTIONING, UNOWNED, and MODERATION_HOLD rows; assert only OWNED and GRACE contribute to total and per-kind limits, then implement the minimum state filter.
-  Evidence: ` `
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/StallOwnershipCounter.kt:14-18; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-92; src/main/kotlin/net/badgersmc/em/domain/stall/StallState.kt; src/test/kotlin/net/badgersmc/em/application/StallOwnershipCounterTest.kt; docs/requirements.md REQ-314`
 
 - [ ] **TDD-315** — Clear delegated members on ownership replacement
   References: REQ-315, REQ-318, implementation.md §3.11
