@@ -1036,11 +1036,17 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Prove a successful normal or emergency auction award removes every non-admin shop bound to the previous ownership context while preserving admin shops. Run cleanup only after the stall award save has succeeded; cleanup failure must not reopen the auction, refund the winner, or undo the committed ownership award. Preserve the existing RegionMemberSync.setOwner path, close-first/charge-exactly-once/refund ordering, ownership-limit checks, MarketMutationGate skips, and winner acquisition permit.
   Evidence: `src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt:549-823; src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; net.badgersmc.em.domain.shop.ShopRepository; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionMemberSync.kt:35-45; src/test/kotlin/net/badgersmc/em/application/AuctionLifecycleServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/AuctionLifecycleSchematicTest.kt; src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; 2026-09-29 focused red -> green; full suite 762 tests, 0 failures/errors, 7 skipped`
 
-- [ ] **TDD-318** — No-bid and orphan recovery use canonical UNOWNED cleanup
-  References: REQ-318, REQ-319, implementation.md §3.11
+- [x] **TDD-318** — Auction-driven release uses canonical UNOWNED cleanup
+  References: REQ-318, REQ-320, implementation.md §3.11
   Tag: TDD
-  Description: Add failing tests for closeWithoutAward and recoverOrphanedEmergencyStalls showing stale ownerSince, winningBid, members, nextRentAt, shops, or region access survive today; route both through the canonical release behavior and keep recovery idempotent.
-  Evidence: ` `
+  Description: Add a failing emergency-auction no-bid test proving every auction-driven release path clears owner, ownerSince, winningBid, delegated members, and nextRentAt, removes prior non-admin shops while preserving admin shops, clears WorldGuard access, and releases the previous owner's stall IP reservation. Route no-bid settlement, closeWithoutAward, system-auction cancellation/revert, and failed-award recovery through one canonical auction release helper while preserving moderation gates, auction close/refund ordering, and best-effort cleanup semantics.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt:420-914; src/main/kotlin/net/badgersmc/em/application/StallEvictionService.kt:43-88; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-117; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/application/IpLimiter.kt:63-103; src/test/kotlin/net/badgersmc/em/application/AuctionLifecycleServiceTest.kt; docs/requirements.md REQ-318, REQ-320; 2026-09-29 focused red -> green; Konsist LayerRulesTest green; full suite 763 tests, 0 failures/errors, 7 skipped`
+
+- [ ] **TDD-324** — Rent orphan recovery uses canonical UNOWNED cleanup
+  References: REQ-318, REQ-319, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Add a failing RentCollectionService test proving orphaned EMERGENCY_AUCTIONING recovery clears all previous ownership fields, non-admin shops, WorldGuard access, and IP ownership while preserving admin shops and remaining idempotent. Reuse the canonical domain release semantics established by TDD-318 without bypassing moderation fencing.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt:208-235; src/main/kotlin/net/badgersmc/em/application/StallEvictionService.kt:43-88; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/application/IpLimiter.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; docs/requirements.md REQ-318, REQ-319, REQ-320`
 
 - [ ] **TDD-319** — Emergency auction begins from a clean forfeited stall
   References: REQ-319, REQ-280, REQ-271, REQ-320, implementation.md §3.11

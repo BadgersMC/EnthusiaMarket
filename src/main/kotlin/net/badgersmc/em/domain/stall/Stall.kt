@@ -104,6 +104,16 @@ data class Stall(
         )
     }
 
+    /** Return this stall to the canonical vacant ownership state. */
+    fun releaseOwnership(): Stall = copy(
+        state = StallState.UNOWNED,
+        owner = OwnerRef.unowned(),
+        ownerSince = null,
+        winningBid = 0L,
+        members = emptySet(),
+        nextRentAt = null,
+    )
+
     /**
      * Checks whether [playerUuid] has management authority over this stall.
      *

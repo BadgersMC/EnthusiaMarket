@@ -95,9 +95,14 @@ On GRACE → EMERGENCY_AUCTIONING:
 - retain former-owner identity only if settlement/recovery requires provenance;
 - ensure ownership counting excludes the stall.
 
-### D2 — TDD-318 canonical no-bid/orphan release
+### D2 — TDD-318 canonical auction-driven release
 
-Route `closeWithoutAward` and `recoverOrphanedEmergencyStalls` through one canonical release behavior instead of partial copies.
+Route auction no-bid settlement, `closeWithoutAward`, system-auction cancellation/revert, and failed-award recovery through one canonical auction release behavior instead of partial copies.
+
+### D3 — TDD-324 canonical rent-orphan recovery
+
+Route `RentCollectionService.recoverOrphanedEmergencyStalls` through the same domain release semantics while keeping its scheduler recovery isolated and idempotent.
+
 Canonical UNOWNED result:
 
 - owner NONE;
