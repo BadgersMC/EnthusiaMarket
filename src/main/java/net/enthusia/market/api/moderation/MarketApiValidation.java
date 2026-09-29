@@ -3,6 +3,7 @@ package net.enthusia.market.api.moderation;
 import java.util.Locale;
 import java.util.Objects;
 
+/** Shared validation helpers for values crossing the moderation API boundary. */
 final class MarketApiValidation {
     private MarketApiValidation() {
     }
