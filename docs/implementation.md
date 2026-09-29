@@ -165,9 +165,11 @@ The Staff moderation provider added in PR #194 is a protected boundary, not anot
 
 The implementation sequence therefore begins with characterization tests around PR #194 before changing ownership code. Ordinary ownership services must continue to pass through `MarketMutationGate` / acquisition fencing before money or state changes, and repository writes must retain the optimistic moderation revision checks introduced by V028.
 
-### 3.12 BulkRentExtensionService (planned)
+### 3.12 BulkRentExtensionService
 
-Administrative deadline credit is an application service, not a synthetic rent payment. `/em rent extendall <duration>` parses a strictly positive duration, selects actively held `OWNED` and `GRACE` stalls, shifts `nextRentAt`, charges nobody, and reports per-stall failures without aborting the remaining batch. A GRACE stall whose shifted deadline is again in the future returns to `OWNED` through the normal state-change event so frozen shops are released consistently.
+Administrative deadline credit is an application service, not a synthetic rent payment. `/em rent extendall <duration>` accepts strict positive whole-number `m`, `h`, or `d` durations, selects unlocked `OWNED` and `GRACE` stalls, shifts `nextRentAt`, charges nobody, and isolates per-stall failures. When a deadline is absent, the command-time `Instant` is the baseline. A GRACE stall whose shifted deadline is again in the future returns to `OWNED` through the normal state-change event so frozen shops are released consistently. The command requires `enthusiamarket.admin.rent` and reports updated, recovered, skipped, and failed counts.
+
+The V029 reconciliation is the release-time companion to the runtime invariants above. It repairs only provably stale database state, skips live moderation reservations/holds, preserves guild/admin data, is idempotent, and deliberately leaves WorldGuard to `/em rg resync`. Operator rollout details live in [ownership-integrity-26.2.md](ownership-integrity-26.2.md).
 
 ## 4. Data flows
 

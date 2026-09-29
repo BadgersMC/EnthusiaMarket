@@ -1084,8 +1084,8 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Wire /em rent extendall <duration> to BulkRentExtensionService under a dedicated enthusiamarket.admin.rent permission. Accept strict positive whole-number durations with m, h, or d suffixes (for example 30m, 12h, 7d), reject zero/negative/malformed values before invoking the service, and return localized updated/recovered/skipped/failed counts. Add the permission beneath enthusiamarket.admin and keep the command free of economy mutations because the application service is a deadline credit only.
   Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/test/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommandsTest.kt; src/main/resources/lang/en_US.yml; src/main/resources/paper-plugin.yml; src/main/kotlin/net/badgersmc/em/application/BulkRentExtensionService.kt; net.badgersmc.nexus.paper.commands.annotations.Permission; net.badgersmc.nexus.paper.commands.annotations.Subcommand; net.badgersmc.nexus.commands.annotations.Arg; java.time.Duration; java.time.Instant; docs/requirements.md REQ-322; docs/implementation.md §3.12; 2026-09-29 focused red -> green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 772 tests, 0 failures/errors, 7 skipped`
 
-- [ ] **DOC-322** — Document ownership invariants and bulk rent extension
+- [x] **DOC-322** — Document ownership invariants and bulk rent extension
   References: REQ-314, REQ-315, REQ-316, REQ-317, REQ-318, REQ-319, REQ-320, REQ-321, REQ-322
   Tag: DOC
   Description: Update operator/developer docs after implementation with the authoritative active-owner states, transfer cleanup rules, moderation boundary, reconciliation behavior, and /em rent extendall usage.
-  Evidence: ` `
+  Evidence: `docs/ownership-integrity-26.2.md; docs/implementation.md §3.11-3.12; docs/db-schema.md V029; src/main/resources/migrations/V029__ownership_integrity_reconciliation.sql; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/main/resources/paper-plugin.yml; src/main/resources/lang/en_US.yml`
