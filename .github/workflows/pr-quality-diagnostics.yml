@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  checks: read
+  contents: read
+
 jobs:
   diagnostics:
     runs-on: ubuntu-latest
@@ -85,3 +89,26 @@ jobs:
             -d "$(cat "$RUNNER_TEMP/pmd-paths.txt")" \
             -R category/java/bestpractices.xml,category/java/codestyle.xml,category/java/design.xml,category/java/documentation.xml,category/java/errorprone.xml,category/java/multithreading.xml,category/java/performance.xml,category/java/security.xml \
             -f text || true
+
+      - name: Report exact Codacy annotations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          for attempt in {1..24}; do
+            CHECK_ID=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
+              --jq '.check_runs[] | select(.name == "Codacy Static Code Analysis") | .id' \
+              | head -1)
+            if [[ -n "$CHECK_ID" ]]; then
+              STATUS=$(gh api "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID" --jq '.status')
+              if [[ "$STATUS" == "completed" ]]; then
+                echo "=== CODACY ANNOTATIONS ==="
+                gh api --paginate "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID/annotations" \
+                  --jq '.[] | [.annotation_level, .path, .start_line, .title, .message] | @tsv'
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "Codacy check did not complete during diagnostics; inspect the hosted check separately."
