@@ -1006,6 +1006,12 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Verify the existing PR #194 moderation characterization suite is green on the exact 8d04bd9 baseline before ownership refactoring. Record the dependency bootstrap required by current CI; this checkpoint changes no production behavior.
   Evidence: `src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; src/test/kotlin/net/badgersmc/em/infrastructure/moderation/JdbcMarketModerationStoreTest.kt; docs/moderation-provider.md; .github/workflows/build.yml; 2026-09-29: ./gradlew test -PuseMavenLocal=true --tests AuctionModerationIntegrationTest --tests JdbcMarketModerationStoreTest -> BUILD SUCCESSFUL`
 
+- [x] **TDD-324** -- Eviction rejects moderation-reserved stalls before mutation
+  References: REQ-320, REQ-306, REQ-307, REQ-311, implementation.md 3.11
+  Tag: TDD
+  Description: Add a failing StallEvictionService test proving a moderation-reserved stall is rejected before StallRepository.save, shop deletion, WorldGuard cleanup, or IP-release side effects. Implement the minimum MarketMutationGate check and a controlled Blocked result; preserve the existing durable repository fence as defense in depth.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/StallEvictionService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/MarketMutationGate.kt; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/test/kotlin/net/badgersmc/em/application/StallEvictionServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; src/test/kotlin/net/badgersmc/em/infrastructure/moderation/JdbcMarketModerationStoreTest.kt; docs/moderation-provider.md; 2026-09-29 focused red -> green; full suite 757 tests, 0 failures/errors, 7 skipped; local JdbcMarketModerationMariaDbTest 6/6 skipped, CI non-skip gate still authoritative`
+
 - [x] **TDD-314** — Count only actively held SOLO stalls
   References: REQ-314, implementation.md §3.11
   Tag: TDD

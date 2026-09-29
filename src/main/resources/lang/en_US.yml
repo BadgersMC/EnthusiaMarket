@@ -59,6 +59,7 @@ admin:
     success: "<prefix><shadow:#000000:1><green>Evicted</green> <aqua><stall></aqua> <green>— reset to unowned and WG cleared.</shadow>"
     not_found: "<prefix><shadow:#000000:1><red>Stall not found:</red> <stall></shadow>"
     not_owned: "<prefix><shadow:#000000:1><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is not currently owned.</shadow>"
+    blocked: "<prefix><shadow:#000000:1><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is temporarily unavailable while moderation is active.</shadow>"
   maintenance:
     freeze:
       activated: "<prefix><shadow:#000000:1><green>Maintenance freeze ACTIVE</green> — all rent and auction timers are paused. Run <white>/em maintenance unfreeze</white> when the server is back.</shadow>"

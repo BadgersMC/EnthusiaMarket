@@ -829,6 +829,8 @@ class AdminCommands(
                 lang.msg("admin.evict.not_found", "stall" to stall)
             is StallEvictionService.Result.NotOwned ->
                 lang.msg("admin.evict.not_owned", "stall" to stall)
+            is StallEvictionService.Result.Blocked ->
+                lang.msg("admin.evict.blocked", "stall" to stall)
         }
         sender.sendMessage(msg)
     }
