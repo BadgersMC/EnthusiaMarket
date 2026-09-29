@@ -11,6 +11,7 @@ import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
 import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.domain.ports.MarketMutationGate
+import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -79,6 +80,7 @@ class AuctionLifecycleService(
     private val config: EnthusiaMarketConfig,
     private val limits: LimitResolutionService,
     private val sellOffers: SellOfferRepository,
+    private val shops: ShopRepository,
     private val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync,
     private val ownership: StallOwnershipCounter,
     private val ipLimiter: IpLimiter,
@@ -765,6 +767,7 @@ class AuctionLifecycleService(
             }
             throw e
         }
+        cleanupPreviousOwnershipShops(updatedStall)
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
         // Notify the winner if online
@@ -795,6 +798,27 @@ class AuctionLifecycleService(
             logger.warning(
                 "Auction ${auction.id}: seller payment failed. " +
                     "Winner charged ${bid.amount}, seller proceeds $sellerProceeds pending."
+            )
+        }
+    }
+
+    private fun cleanupPreviousOwnershipShops(stall: Stall) {
+        try {
+            for (shop in shops.findByStall(stall.id.value)) {
+                if (shop.adminShop) continue
+                try {
+                    shops.delete(shop.id)
+                } catch (failure: Exception) {
+                    logger.warning(
+                        "settleWithWinner: failed to remove previous shop ${shop.id} from " +
+                            "stall ${stall.id.value} after ownership award. cause=${failure.message}"
+                    )
+                }
+            }
+        } catch (failure: Exception) {
+            logger.warning(
+                "settleWithWinner: failed to enumerate previous shops for stall ${stall.id.value} " +
+                    "after ownership award. cause=${failure.message}"
             )
         }
     }
