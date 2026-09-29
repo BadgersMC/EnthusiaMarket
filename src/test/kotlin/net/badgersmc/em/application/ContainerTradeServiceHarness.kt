@@ -1,6 +1,7 @@
 package net.badgersmc.em.application
 
 import io.mockk.every
+import io.mockk.isMockKMock
 import io.mockk.mockk
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -36,9 +37,9 @@ open class ContainerTradeServiceHarness(
 ) : ContainerTradeService(stallRepo, economy, guildProvider, tradePolicy, shopVault) {
     init {
         // Batch trades clone and resize the deserialized stack before publishing events.
-        // MockK ItemStack mocks do not retain mutable `amount` state unless explicitly
-        // modelled, so make the shared harness behave like Bukkit's real ItemStack.
-        runCatching {
+        // Only MockK ItemStacks need synthetic mutable amount state; real Bukkit
+        // ItemStacks already implement clone/amount and must not be passed to every {}.
+        if (isMockKMock(mockItemStack)) {
             var amount = mockItemStack.amount
             every { mockItemStack.clone() } returns mockItemStack
             every { mockItemStack.amount } answers { amount }

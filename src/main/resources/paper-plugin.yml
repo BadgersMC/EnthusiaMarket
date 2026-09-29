@@ -2,7 +2,7 @@ name: EnthusiaMarket
 version: ${version}
 main: net.badgersmc.em.EnthusiaMarket
 loader: net.badgersmc.em.EnthusiaMarketPluginLoader
-api-version: '1.21'
+api-version: '26.2'
 
 # Runtime library declarations live in EnthusiaMarketPluginLoader, NOT here.
 # That loader points at repo1.maven.org directly, bypassing whatever Maven
