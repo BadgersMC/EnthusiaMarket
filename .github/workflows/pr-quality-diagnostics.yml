@@ -22,7 +22,6 @@ jobs:
           java-version: 21
 
       - name: Collect changed source files
-        id: changed
         shell: bash
         run: |
           git fetch origin main --depth=1
@@ -32,14 +31,42 @@ jobs:
           echo "Changed source files:"
           cat "$RUNNER_TEMP/changed-source-files.txt"
 
-      - name: Report Lizard findings on changed files
+      - name: Compare Lizard findings with upstream main
         shell: bash
         run: |
           python -m pip install --disable-pip-version-check lizard==1.22.2
-          if [[ -s "$RUNNER_TEMP/changed-source-files.txt" ]]; then
-            xargs -a "$RUNNER_TEMP/changed-source-files.txt" \
-              lizard -C 10 -T nloc=20 -a 4 -w || true
+          if [[ ! -s "$RUNNER_TEMP/changed-source-files.txt" ]]; then
+            exit 0
           fi
+
+          xargs -a "$RUNNER_TEMP/changed-source-files.txt" \
+            lizard -C 10 -T nloc=20 -a 4 -w 2>&1 \
+            | grep 'warning:' \
+            | sed -E 's#([^:]+):[0-9]+: warning:#\1: warning:#' \
+            | sort -u > "$RUNNER_TEMP/head-lizard.txt" || true
+
+          git worktree add --detach "$RUNNER_TEMP/base" origin/main
+          while IFS= read -r path; do
+            if [[ -f "$RUNNER_TEMP/base/$path" ]]; then
+              printf '%s\n' "$RUNNER_TEMP/base/$path"
+            fi
+          done < "$RUNNER_TEMP/changed-source-files.txt" > "$RUNNER_TEMP/base-source-files.txt"
+
+          if [[ -s "$RUNNER_TEMP/base-source-files.txt" ]]; then
+            xargs -a "$RUNNER_TEMP/base-source-files.txt" \
+              lizard -C 10 -T nloc=20 -a 4 -w 2>&1 \
+              | grep 'warning:' \
+              | sed "s#$RUNNER_TEMP/base/##g" \
+              | sed -E 's#([^:]+):[0-9]+: warning:#\1: warning:#' \
+              | sort -u > "$RUNNER_TEMP/base-lizard.txt" || true
+          else
+            : > "$RUNNER_TEMP/base-lizard.txt"
+          fi
+
+          echo '=== PR HEAD LIZARD WARNINGS ==='
+          cat "$RUNNER_TEMP/head-lizard.txt"
+          echo '=== NEW OR CHANGED VS MAIN ==='
+          comm -13 "$RUNNER_TEMP/base-lizard.txt" "$RUNNER_TEMP/head-lizard.txt" || true
 
       - name: Report PMD findings on changed Java files
         shell: bash
