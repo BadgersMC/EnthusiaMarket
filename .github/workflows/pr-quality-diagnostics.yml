@@ -1,0 +1,60 @@
+name: PR quality diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Collect changed source files
+        id: changed
+        shell: bash
+        run: |
+          git fetch origin main --depth=1
+          git diff --name-only origin/main...HEAD \
+            | grep -E '^src/(main|test)/.*\.(kt|java)$' \
+            > "$RUNNER_TEMP/changed-source-files.txt" || true
+          echo "Changed source files:"
+          cat "$RUNNER_TEMP/changed-source-files.txt"
+
+      - name: Report Lizard findings on changed files
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check lizard==1.22.2
+          if [[ -s "$RUNNER_TEMP/changed-source-files.txt" ]]; then
+            xargs -a "$RUNNER_TEMP/changed-source-files.txt" \
+              lizard -C 10 -T nloc=20 -a 4 -w || true
+          fi
+
+      - name: Report PMD findings on changed Java files
+        shell: bash
+        run: |
+          grep -E '\.java$' "$RUNNER_TEMP/changed-source-files.txt" \
+            > "$RUNNER_TEMP/changed-java-files.txt" || true
+          if [[ ! -s "$RUNNER_TEMP/changed-java-files.txt" ]]; then
+            exit 0
+          fi
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$RUNNER_TEMP/pmd.zip" \
+            "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.11.0/pmd-dist-7.11.0-bin.zip"
+          unzip -q "$RUNNER_TEMP/pmd.zip" -d "$RUNNER_TEMP"
+          paste -sd, "$RUNNER_TEMP/changed-java-files.txt" > "$RUNNER_TEMP/pmd-paths.txt"
+          "$RUNNER_TEMP/pmd-bin-7.11.0/bin/pmd" check \
+            -d "$(cat "$RUNNER_TEMP/pmd-paths.txt")" \
+            -R category/java/bestpractices.xml,category/java/codestyle.xml,category/java/design.xml,category/java/documentation.xml,category/java/errorprone.xml,category/java/multithreading.xml,category/java/performance.xml,category/java/security.xml \
+            -f text || true
