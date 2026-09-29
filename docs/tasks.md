@@ -1012,11 +1012,11 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Write a failing StallOwnershipCounter test with the same SOLO owner across OWNED, GRACE, AUCTIONING, RE_AUCTIONING, EMERGENCY_AUCTIONING, UNOWNED, and MODERATION_HOLD rows; assert only OWNED and GRACE contribute to total and per-kind limits, then implement the minimum state filter.
   Evidence: `src/main/kotlin/net/badgersmc/em/application/StallOwnershipCounter.kt:14-18; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-92; src/main/kotlin/net/badgersmc/em/domain/stall/StallState.kt; src/test/kotlin/net/badgersmc/em/application/StallOwnershipCounterTest.kt; docs/requirements.md REQ-314`
 
-- [ ] **TDD-315** — Clear delegated members on ownership replacement
-  References: REQ-315, REQ-318, implementation.md §3.11
+- [x] **TDD-315** -- Clear delegated members on ownership replacement
+  References: REQ-315, implementation.md 3.11
   Tag: TDD
-  Description: Prove Stall.awardTo does not carry the previous owner member set into a successor ownership context and add one canonical domain release operation that clears owner, ownerSince, winningBid, members, and nextRentAt when returning to UNOWNED.
-  Evidence: ` `
+  Description: Write a failing Stall domain test proving awardTo starts the successor ownership context with an empty delegated-member roster, then implement only that invariant. Canonical release-to-UNOWNED behavior is deferred to TDD-318.
+  Evidence: `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-104; src/test/kotlin/net/badgersmc/em/domain/stall/StallTest.kt; docs/requirements.md REQ-315`
 
 - [ ] **TDD-316** — Direct sell-offer transfer cleans previous-owner state
   References: REQ-316, REQ-317, REQ-320, implementation.md §3.11

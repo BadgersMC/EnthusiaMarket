@@ -99,6 +99,7 @@ data class Stall(
             owner = newOwner,
             ownerSince = at,
             winningBid = winningBid,
+            members = emptySet(),
             nextRentAt = nextRentAt,
         )
     }
