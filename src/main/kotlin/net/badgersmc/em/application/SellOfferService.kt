@@ -28,6 +28,7 @@ import java.util.logging.Logger
 
 /** Orchestrates the ARM-style sell-offer flow (REQ-260..264). */
 @Service
+@Suppress("LongParameterList")
 class SellOfferService(
     private val offers: SellOfferRepository,
     private val stalls: StallRepository,

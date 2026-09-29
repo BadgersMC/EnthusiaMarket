@@ -350,6 +350,7 @@ class SellOfferServiceTest {
         verify(exactly = 1) { regions.setOwner("world", "s1", buyer) }
     }
 
+    @Suppress("LongMethod")
     @Test fun `purchase completes and alerts when committed transfer cleanup fails`() {
         val offers = mockk<SellOfferRepository>(relaxed = true)
         val stalls = mockk<StallRepository>(relaxed = true)

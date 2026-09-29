@@ -285,6 +285,7 @@ class RentCollectionServiceTest {
         val schematics: SchematicService,
     )
 
+    @Suppress("CyclomaticComplexMethod")
     private fun buildEmergencyForfeitureFixture(
         stalls: List<Stall>,
         regions: RegionMemberSync = mockk(relaxed = true),

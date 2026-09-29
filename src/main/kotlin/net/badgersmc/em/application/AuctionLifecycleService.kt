@@ -72,7 +72,7 @@ sealed class MassAuctionResult {
  * Handles creation, bidding, cancellation, and settlement of expired auctions.
  */
 @Service
-@Suppress("TooManyFunctions", "LongParameterList")
+@Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 class AuctionLifecycleService(
     private val auctionRepository: AuctionRepository,
     private val stallRepository: StallRepository,

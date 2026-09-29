@@ -271,12 +271,20 @@ class RentCollectionService(
     private fun recoverOrphanedEmergencyStalls(): Int {
         var recovered = 0
         for (stall in stallRepository.all()) {
-            if (stall.state != StallState.EMERGENCY_AUCTIONING) continue
-            if (mutationGate.isStallLocked(stall.id.value)) continue
-            try {
-                val openAuction = auctionRepository.findOpenByStall(stall.id)
-                if (openAuction != null) continue // has active auction, skip
+            val eligible = stall.state == StallState.EMERGENCY_AUCTIONING &&
+                !mutationGate.isStallLocked(stall.id.value)
+            if (eligible && recoverOrphanedEmergencyStall(stall)) {
+                recovered++
+            }
+        }
+        return recovered
+    }
 
+    private fun recoverOrphanedEmergencyStall(stall: Stall): Boolean {
+        return try {
+            if (auctionRepository.findOpenByStall(stall.id) != null) {
+                false
+            } else {
                 // Persist the authoritative state first. PR #194's repository
                 // fence can still reject a moderation race after the fast gate;
                 // no destructive projection cleanup may happen before this save.
@@ -287,23 +295,27 @@ class RentCollectionService(
 
                 previousOwnerId?.let(ipLimiter::releaseStallByOwnerId)
                 cleanupOrphanedEmergencyShops(stall)
-                try {
-                    regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                } catch (regionFailure: Exception) {
-                    log.warning(
-                        "RentCollectionService: failed to clear region access for recovered orphan " +
-                            "${stall.id.value}: ${regionFailure.message}"
-                    )
-                }
-                recovered++
-            } catch (e: Exception) {
-                log.warning(
-                    "RentCollectionService: failed to recover orphaned emergency stall " +
-                        "${stall.id.value}: ${e.message}"
-                )
+                clearRecoveredRegionAccess(stall)
+                true
             }
+        } catch (e: Exception) {
+            log.warning(
+                "RentCollectionService: failed to recover orphaned emergency stall " +
+                    "${stall.id.value}: ${e.message}"
+            )
+            false
         }
-        return recovered
+    }
+
+    private fun clearRecoveredRegionAccess(stall: Stall) {
+        try {
+            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        } catch (regionFailure: Exception) {
+            log.warning(
+                "RentCollectionService: failed to clear region access for recovered orphan " +
+                    "${stall.id.value}: ${regionFailure.message}"
+            )
+        }
     }
 
     private fun cleanupOrphanedEmergencyShops(stall: Stall) {
