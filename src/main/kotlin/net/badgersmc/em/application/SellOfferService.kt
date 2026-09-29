@@ -9,6 +9,8 @@ import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
 import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.domain.ports.MarketMutationGate
+import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
@@ -36,6 +38,8 @@ class SellOfferService(
     private val limits: LimitResolutionService,
     private val ownership: StallOwnershipCounter,
     private val alerter: CompensationAlertService,
+    private val shops: ShopRepository,
+    private val regionMembers: RegionMemberSync,
     private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
     private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
 ) {
@@ -106,6 +110,7 @@ class SellOfferService(
         } catch (failure: Exception) {
             return rejectAndRefundBuyer(stallId, buyer, context.total, failure)
         }
+        cleanupPreviousOwnership(context, buyer)
         cleanupCompletedOffer(stallId, buyer, context.total)
         publishStateChange(stallId, context.stall.state, updated.state)
         paySeller(context, buyer)
@@ -163,6 +168,54 @@ class SellOfferService(
         )
         stalls.save(updated)
         return updated
+    }
+
+    private fun cleanupPreviousOwnership(context: PurchaseContext, buyer: UUID) {
+        try {
+            for (shop in shops.findByStall(context.stall.id.value)) {
+                if (shop.adminShop) continue
+                try {
+                    shops.delete(shop.id)
+                } catch (failure: Exception) {
+                    log.warning(
+                        "SellOfferService.purchase: failed to remove previous shop ${shop.id} from " +
+                            "stall ${context.stall.id.value} after transfer to $buyer. cause=${failure.message}",
+                    )
+                    alerter.alert(
+                        context = "sell-offer:shop-cleanup",
+                        detail = "stall ${context.stall.id.value} transferred to $buyer but shop ${shop.id} remains",
+                        affected = buyer,
+                        amount = context.offer.price,
+                    )
+                }
+            }
+        } catch (failure: Exception) {
+            log.warning(
+                "SellOfferService.purchase: failed to enumerate previous shops for stall " +
+                    "${context.stall.id.value} after transfer to $buyer. cause=${failure.message}",
+            )
+            alerter.alert(
+                context = "sell-offer:shop-cleanup",
+                detail = "stall ${context.stall.id.value} transferred to $buyer but shop cleanup could not be completed",
+                affected = buyer,
+                amount = context.offer.price,
+            )
+        }
+
+        try {
+            regionMembers.setOwner(context.stall.world, context.stall.regionId, buyer)
+        } catch (failure: Exception) {
+            log.warning(
+                "SellOfferService.purchase: failed to sync region ownership for stall " +
+                    "${context.stall.id.value} after transfer to $buyer. cause=${failure.message}",
+            )
+            alerter.alert(
+                context = "sell-offer:region-sync",
+                detail = "stall ${context.stall.id.value} transferred to $buyer but region ownership sync failed",
+                affected = buyer,
+                amount = context.offer.price,
+            )
+        }
     }
 
     private fun cleanupCompletedOffer(stallId: StallId, buyer: UUID, total: Long) {

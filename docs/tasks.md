@@ -1024,11 +1024,11 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Write a failing Stall domain test proving awardTo starts the successor ownership context with an empty delegated-member roster, then implement only that invariant. Canonical release-to-UNOWNED behavior is deferred to TDD-318.
   Evidence: `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-104; src/test/kotlin/net/badgersmc/em/domain/stall/StallTest.kt; docs/requirements.md REQ-315`
 
-- [ ] **TDD-316** — Direct sell-offer transfer cleans previous-owner state
+- [x] **TDD-316** — Direct sell-offer transfer cleans previous-owner state
   References: REQ-316, REQ-317, REQ-320, implementation.md §3.11
   Tag: TDD
-  Description: Prove SellOfferService.purchase currently transfers the Stall row without removing the prior owner's non-admin shops or resynchronizing region access; implement cleanup and RegionMemberSync while retaining the PR #194 acquisition permit and moderation-lock fencing.
-  Evidence: ` `
+  Description: Prove SellOfferService.purchase currently transfers the Stall row without removing non-admin shops from the previous ownership context or resynchronizing region access. On a successful sale, delete every bound shop with adminShop=false, preserve admin shops, and replace WorldGuard ownership through RegionMemberSync.setOwner while retaining PR #194 acquisition-permit and mutation-gate fencing. Cleanup runs only after the ownership save; cleanup or WG-sync failures must not refund or roll back an already-committed transfer and must emit a compensation alert for operator repair.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/SellOfferService.kt:90-165; src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; net.badgersmc.em.domain.shop.ShopRepository; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; net.badgersmc.em.domain.ports.RegionMemberSync; src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionMemberSync.kt:35-45; src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt:35-104; src/test/kotlin/net/badgersmc/em/application/SellOfferServiceTest.kt; 2026-09-29 focused red -> green; full suite 759 tests, 0 failures/errors, 7 skipped; local JdbcMarketModerationMariaDbTest 6/6 skipped, CI non-skip gate remains authoritative`
 
 - [ ] **TDD-317** — Auction award cleans previous-owner state
   References: REQ-316, REQ-317, REQ-320, implementation.md §3.11
