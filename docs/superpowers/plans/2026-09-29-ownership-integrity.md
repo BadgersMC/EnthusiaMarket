@@ -105,7 +105,7 @@ Route `RentCollectionService.recoverOrphanedEmergencyStalls` through `Stall.rele
 
 ### D4 â€” TDD-325 rent-orphan access/IP/moderation cleanup
 
-Add the lifecycle collaborators missing from `RentCollectionService`: moderation mutation gate, region access synchronization, and IP ownership release. Prove locked stalls are skipped and successful recovery clears WG/IP projections without altering Staff Market semantics.
+Add the lifecycle collaborators missing from `RentCollectionService`: moderation mutation gate, region access synchronization, and IP ownership release. Prove locked stalls are skipped, persist the canonical UNOWNED row before destructive cleanup so repository fencing wins races safely, and clear WG/IP projections only after the authoritative save succeeds without altering Staff Market semantics.
 
 Canonical UNOWNED result:
 

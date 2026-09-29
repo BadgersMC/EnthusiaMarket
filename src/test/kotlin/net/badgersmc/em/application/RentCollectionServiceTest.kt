@@ -6,6 +6,8 @@ import io.mockk.slot
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionRepository
+import net.badgersmc.em.domain.ports.MarketMutationGate
+import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -17,6 +19,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class RentCollectionServiceTest {
 
@@ -107,13 +110,122 @@ class RentCollectionServiceTest {
         every { shopRepo.findByStall(any()) } returns emptyList()
 
         val auctionRepo = mockk<AuctionRepository>(relaxed = true)
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
+        val regions = mockk<RegionMemberSync>(relaxed = true)
+        val ipLimiter = mockk<IpLimiter>(relaxed = true)
 
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, shopRepo, cfg, auctionRepo, mockk()),
+            service = constructRentCollectionService(
+                stallRepo = stallRepo,
+                shopRepo = shopRepo,
+                cfg = cfg,
+                auctionRepo = auctionRepo,
+                lang = lang,
+                regions = regions,
+                ipLimiter = ipLimiter,
+                mutationGate = MarketMutationGate.Open,
+            ),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             config = cfg,
             auctionRepo = auctionRepo
+        )
+    }
+
+    private fun constructRentCollectionService(
+        stallRepo: StallRepository,
+        shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
+        cfg: EnthusiaMarketConfig,
+        auctionRepo: AuctionRepository,
+        lang: net.badgersmc.nexus.i18n.LangService,
+        regions: RegionMemberSync,
+        ipLimiter: IpLimiter,
+        mutationGate: MarketMutationGate,
+    ): RentCollectionService {
+        val constructors = RentCollectionService::class.java.declaredConstructors.filter { candidate ->
+            candidate.parameterTypes.none { it.name == "kotlin.jvm.internal.DefaultConstructorMarker" }
+        }
+        val extended = constructors.firstOrNull { candidate ->
+            val types = candidate.parameterTypes.toSet()
+            MarketMutationGate::class.java in types &&
+                RegionMemberSync::class.java in types &&
+                IpLimiter::class.java in types
+        }
+        val constructor = extended ?: constructors.first { it.parameterCount == 5 }
+        constructor.isAccessible = true
+        val args = constructor.parameterTypes.map { type ->
+            when (type) {
+                StallRepository::class.java -> stallRepo
+                net.badgersmc.em.domain.shop.ShopRepository::class.java -> shopRepo
+                EnthusiaMarketConfig::class.java -> cfg
+                AuctionRepository::class.java -> auctionRepo
+                net.badgersmc.nexus.i18n.LangService::class.java -> lang
+                MarketMutationGate::class.java -> mutationGate
+                RegionMemberSync::class.java -> regions
+                IpLimiter::class.java -> ipLimiter
+                else -> error("Unexpected RentCollectionService dependency: ${type.name}")
+            }
+        }.toTypedArray()
+        return constructor.newInstance(*args) as RentCollectionService
+    }
+
+    private data class RecoveryLifecycleFixture(
+        val service: RentCollectionService,
+        val stallRepo: StallRepository,
+        val shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
+        val auctionRepo: AuctionRepository,
+        val regions: RegionMemberSync,
+        val ipLimiter: IpLimiter,
+    )
+
+    private fun buildRecoveryLifecycleFixture(
+        stalls: List<Stall>,
+        mutationGate: MarketMutationGate,
+        regions: RegionMemberSync = mockk(relaxed = true),
+        ipLimiter: IpLimiter = mockk(relaxed = true),
+    ): RecoveryLifecycleFixture {
+        val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
+        every { stallRepo.all() } returns stalls
+        val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        every { shopRepo.findByStall(any()) } returns emptyList()
+        val auctionRepo = mockk<AuctionRepository>(relaxed = true)
+        val cfg = config()
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
+
+        val constructor = assertNotNull(
+            RentCollectionService::class.java.declaredConstructors.firstOrNull { candidate ->
+                val types = candidate.parameterTypes.toSet()
+                MarketMutationGate::class.java in types &&
+                    RegionMemberSync::class.java in types &&
+                    IpLimiter::class.java in types &&
+                    candidate.parameterTypes.none {
+                        it.name == "kotlin.jvm.internal.DefaultConstructorMarker"
+                    }
+            },
+            "RentCollectionService must expose moderation, region, and IP lifecycle collaborators",
+        )
+        constructor.isAccessible = true
+        val args = constructor.parameterTypes.map { type ->
+            when (type) {
+                StallRepository::class.java -> stallRepo
+                net.badgersmc.em.domain.shop.ShopRepository::class.java -> shopRepo
+                EnthusiaMarketConfig::class.java -> cfg
+                AuctionRepository::class.java -> auctionRepo
+                net.badgersmc.nexus.i18n.LangService::class.java -> lang
+                MarketMutationGate::class.java -> mutationGate
+                RegionMemberSync::class.java -> regions
+                IpLimiter::class.java -> ipLimiter
+                else -> error("Unexpected RentCollectionService dependency: ${type.name}")
+            }
+        }.toTypedArray()
+
+        return RecoveryLifecycleFixture(
+            service = constructor.newInstance(*args) as RentCollectionService,
+            stallRepo = stallRepo,
+            shopRepo = shopRepo,
+            auctionRepo = auctionRepo,
+            regions = regions,
+            ipLimiter = ipLimiter,
         )
     }
 
@@ -130,6 +242,69 @@ class RentCollectionServiceTest {
         sellItem = "item", sellAmount = 1, costItem = "item", costAmount = 1,
         adminShop = adminShop,
     )
+
+    @Test
+    fun `orphan recovery clears projections and respects moderation fencing`() {
+        val orphan = ownedStall.copy(
+            state = StallState.EMERGENCY_AUCTIONING,
+            ownerSince = now.minus(Duration.ofDays(30)),
+            winningBid = 2_500L,
+            nextRentAt = now.minus(Duration.ofDays(3)),
+        )
+
+        val unlocked = buildRecoveryLifecycleFixture(
+            stalls = listOf(orphan),
+            mutationGate = MarketMutationGate.Open,
+        )
+        every { unlocked.auctionRepo.findOpenByStall(orphan.id) } returns null
+
+        unlocked.service.tick(now)
+
+        verify(exactly = 1) {
+            unlocked.regions.clearOwnersAndMembers(orphan.world, orphan.regionId)
+        }
+        verify(exactly = 1) {
+            unlocked.ipLimiter.releaseStallByOwnerId(playerUuid.toString())
+        }
+
+        val lockedGate = object : MarketMutationGate {
+            override fun isStallLocked(stallId: String): Boolean = stallId == orphan.id.value
+        }
+        val locked = buildRecoveryLifecycleFixture(
+            stalls = listOf(orphan),
+            mutationGate = lockedGate,
+        )
+        every { locked.auctionRepo.findOpenByStall(orphan.id) } returns null
+
+        locked.service.tick(now)
+
+        verify(exactly = 0) { locked.stallRepo.save(any()) }
+        verify(exactly = 0) { locked.shopRepo.findByStall(any()) }
+        verify(exactly = 0) {
+            locked.regions.clearOwnersAndMembers(any(), any())
+        }
+        verify(exactly = 0) {
+            locked.ipLimiter.releaseStallByOwnerId(any())
+        }
+
+        val raced = buildRecoveryLifecycleFixture(
+            stalls = listOf(orphan),
+            mutationGate = MarketMutationGate.Open,
+        )
+        every { raced.auctionRepo.findOpenByStall(orphan.id) } returns null
+        every { raced.stallRepo.save(any()) } throws IllegalStateException("moderation fence won the race")
+        every { raced.shopRepo.findByStall(orphan.id.value) } returns listOf(shop(31L, orphan.id.value))
+
+        raced.service.tick(now)
+
+        verify(exactly = 0) { raced.shopRepo.delete(any()) }
+        verify(exactly = 0) {
+            raced.regions.clearOwnersAndMembers(any(), any())
+        }
+        verify(exactly = 0) {
+            raced.ipLimiter.releaseStallByOwnerId(any())
+        }
+    }
 
     @Test
     fun `orphaned emergency auction recovery clears stale ownership and non admin shops idempotently`() {

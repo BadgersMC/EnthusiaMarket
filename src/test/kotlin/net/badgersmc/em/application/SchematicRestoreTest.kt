@@ -65,6 +65,7 @@ class SchematicRestoreTest {
 
         val service = RentCollectionService(
             stallRepo, shopRepo, config(), auctionRepo, mockk(),
+            mockk(relaxed = true), mockk(relaxed = true),
         )
 
         val report = service.tick(now)

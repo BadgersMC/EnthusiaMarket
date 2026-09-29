@@ -5,6 +5,8 @@ import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
+import net.badgersmc.em.domain.ports.MarketMutationGate
+import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -37,6 +39,9 @@ class RentCollectionService(
     private val config: EnthusiaMarketConfig,
     private val auctionRepository: AuctionRepository,
     private val lang: LangService,
+    private val regionMembers: RegionMemberSync,
+    private val ipLimiter: IpLimiter,
+    private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
 ) {
 
     private val log = Logger.getLogger(RentCollectionService::class.java.name)
@@ -211,11 +216,29 @@ class RentCollectionService(
         var recovered = 0
         for (stall in stallRepository.all()) {
             if (stall.state != StallState.EMERGENCY_AUCTIONING) continue
+            if (mutationGate.isStallLocked(stall.id.value)) continue
             try {
                 val openAuction = auctionRepository.findOpenByStall(stall.id)
                 if (openAuction != null) continue // has active auction, skip
-                cleanupOrphanedEmergencyShops(stall)
+
+                // Persist the authoritative state first. PR #194's repository
+                // fence can still reject a moderation race after the fast gate;
+                // no destructive projection cleanup may happen before this save.
+                val previousOwnerId = stall.owner.id.takeIf {
+                    stall.owner.type != OwnerType.NONE && it.isNotBlank()
+                }
                 stallRepository.save(stall.releaseOwnership())
+
+                previousOwnerId?.let(ipLimiter::releaseStallByOwnerId)
+                cleanupOrphanedEmergencyShops(stall)
+                try {
+                    regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                } catch (regionFailure: Exception) {
+                    log.warning(
+                        "RentCollectionService: failed to clear region access for recovered orphan " +
+                            "${stall.id.value}: ${regionFailure.message}"
+                    )
+                }
                 recovered++
             } catch (e: Exception) {
                 log.warning(
