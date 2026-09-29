@@ -13,6 +13,7 @@ public record MarketStallRecord(
         boolean moderationLocked,
         Optional<Instant> reviewDueAt
 ) {
+    /** Smallest valid stall revision exposed through the moderation API. */
     private static final long MINIMUM_REVISION = 0L;
 
     public MarketStallRecord {
