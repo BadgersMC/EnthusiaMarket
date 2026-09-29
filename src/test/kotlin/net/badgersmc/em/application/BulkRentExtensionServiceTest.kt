@@ -2,6 +2,8 @@ package net.badgersmc.em.application
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
@@ -15,24 +17,26 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 class BulkRentExtensionServiceTest {
 
     private val now = Instant.parse("2026-09-29T18:00:00Z")
     private val owner = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
+    private val config = EnthusiaMarketConfig()
+
     private fun stall(
         id: String,
         state: StallState,
         nextRentAt: Instant?,
+        ownerSince: Instant = now.minus(Duration.ofDays(30)),
     ) = Stall(
         id = StallId(id),
         regionId = id,
         world = "world",
         state = state,
         owner = if (state == StallState.UNOWNED) OwnerRef.unowned() else OwnerRef.solo(owner),
-        ownerSince = now.minus(Duration.ofDays(30)),
+        ownerSince = ownerSince,
         winningBid = if (state == StallState.UNOWNED) 0L else 1000L,
         rentTerms = RentTerms.flat(50L),
         nextRentAt = nextRentAt,
@@ -41,7 +45,12 @@ class BulkRentExtensionServiceTest {
     @Test
     fun `bulk credit extends only unlocked active stalls and isolates failures`() {
         val ownedFuture = stall("owned-future", StallState.OWNED, now.plus(Duration.ofDays(2)))
-        val ownedNull = stall("owned-null", StallState.OWNED, null)
+        val ownedNull = stall(
+            "owned-null",
+            StallState.OWNED,
+            nextRentAt = null,
+            ownerSince = now.minus(Duration.ofDays(2)),
+        )
         val graceRecover = stall("grace-recover", StallState.GRACE, now.minus(Duration.ofDays(1)))
         val graceStillLate = stall("grace-late", StallState.GRACE, now.minus(Duration.ofDays(10)))
         val failed = stall("failed", StallState.OWNED, now.plus(Duration.ofDays(1)))
@@ -65,21 +74,18 @@ class BulkRentExtensionServiceTest {
             override fun isStallLocked(stallId: String): Boolean = stallId == "locked"
         }
 
-        val clazz = Class.forName("net.badgersmc.em.application.BulkRentExtensionService")
-        val constructor = clazz.getConstructor(StallRepository::class.java, MarketMutationGate::class.java)
-        val service = constructor.newInstance(repo, gate)
-        val method = clazz.getMethod("extendAll", Duration::class.java, Instant::class.java)
+        val service = BulkRentExtensionService(repo, config, gate)
 
-        val result = method.invoke(service, Duration.ofDays(7), now)
+        val result = service.extendAll(Duration.ofDays(7), now)
 
-        assertEquals(4, result.javaClass.getMethod("getUpdated").invoke(result))
-        assertEquals(1, result.javaClass.getMethod("getRecovered").invoke(result))
-        assertEquals(4, result.javaClass.getMethod("getSkipped").invoke(result))
-        assertEquals(1, result.javaClass.getMethod("getFailed").invoke(result))
+        assertEquals(4, result.updated)
+        assertEquals(1, result.recovered)
+        assertEquals(4, result.skipped)
+        assertEquals(1, result.failed)
 
         val byId = saved.associateBy { it.id.value }
         assertEquals(now.plus(Duration.ofDays(9)), byId.getValue("owned-future").nextRentAt)
-        assertEquals(now.plus(Duration.ofDays(7)), byId.getValue("owned-null").nextRentAt)
+        assertEquals(now.plus(Duration.ofDays(6)), byId.getValue("owned-null").nextRentAt)
         assertEquals(now.plus(Duration.ofDays(6)), byId.getValue("grace-recover").nextRentAt)
         assertEquals(StallState.OWNED, byId.getValue("grace-recover").state)
         assertEquals(now.minus(Duration.ofDays(3)), byId.getValue("grace-late").nextRentAt)
@@ -88,19 +94,34 @@ class BulkRentExtensionServiceTest {
     }
 
     @Test
+    fun `mutation gate failure is isolated per stall and prevents save`() {
+        val candidate = stall("gate-failed", StallState.OWNED, now.plus(Duration.ofDays(1)))
+        val repo = mockk<StallRepository>(relaxed = true)
+        every { repo.all() } returns listOf(candidate)
+        val gate = object : MarketMutationGate {
+            override fun isStallLocked(stallId: String): Boolean {
+                error("synthetic gate failure")
+            }
+        }
+
+        val result = BulkRentExtensionService(repo, config, gate)
+            .extendAll(Duration.ofDays(7), now)
+
+        assertEquals(0, result.updated)
+        assertEquals(0, result.skipped)
+        assertEquals(1, result.failed)
+        verify(exactly = 0) { repo.save(any()) }
+    }
+
+    @Test
     fun `bulk credit rejects zero and negative durations before loading stalls`() {
         val repo = mockk<StallRepository>()
-        val clazz = Class.forName("net.badgersmc.em.application.BulkRentExtensionService")
-        val service = clazz
-            .getConstructor(StallRepository::class.java, MarketMutationGate::class.java)
-            .newInstance(repo, MarketMutationGate.Open)
-        val method = clazz.getMethod("extendAll", Duration::class.java, Instant::class.java)
+        val service = BulkRentExtensionService(repo, config, MarketMutationGate.Open)
 
         for (duration in listOf(Duration.ZERO, Duration.ofMinutes(-1))) {
-            val thrown = assertFailsWith<java.lang.reflect.InvocationTargetException> {
-                method.invoke(service, duration, now)
+            assertFailsWith<IllegalArgumentException> {
+                service.extendAll(duration, now)
             }
-            assertTrue(thrown.cause is IllegalArgumentException)
         }
     }
 }

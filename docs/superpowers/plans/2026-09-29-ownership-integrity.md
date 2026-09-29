@@ -70,8 +70,8 @@ Files likely touched:
 Required sequence:
 1. preserve `withAcquisitionPermit` and mutation-gate checks;
 2. prove buyer charge compensation still works;
-3. remove previous-context non-admin shops;
-4. save successor stall with empty delegated members;
+3. save the successor stall with empty delegated members so repository moderation fencing remains authoritative;
+4. after the save succeeds, remove previous-context non-admin shops before enabling successor access;
 5. synchronize region ownership for the buyer;
 6. delete completed offer and preserve existing payout/tax semantics.
 
@@ -91,13 +91,14 @@ On GRACE → EMERGENCY_AUCTIONING:
 
 - persist the emergency state first so moderation/revision fencing remains authoritative;
 - retain the former owner only as seller provenance and clear delegated members;
-- release the former owner's stall IP reservation;
+- create the emergency auction before destructive projection cleanup;
+- after the auction insert succeeds, release the former owner's stall IP reservation;
 - remove previous non-admin shops while preserving admin shops;
 - clear delegated WorldGuard owner/member access;
-- attempt schematic restore when enabled before creating the auction;
+- attempt schematic restore when enabled;
 - ensure ownership counting excludes the stall.
 
-Projection cleanup is post-save and best-effort. A failed authoritative save performs no destructive cleanup.
+Projection cleanup is post-save, post-auction-insert, and best-effort. A failed authoritative save or auction insert performs no destructive cleanup; orphan recovery performs the same cleanup only after its canonical UNOWNED save succeeds.
 
 ### D1b — TDD-327 active rent moderation fencing
 

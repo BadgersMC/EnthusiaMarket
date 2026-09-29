@@ -21,7 +21,6 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 
 class RentCollectionServiceTest {
 
@@ -118,7 +117,7 @@ class RentCollectionServiceTest {
         val ipLimiter = mockk<IpLimiter>(relaxed = true)
 
         return ServiceWithMocks(
-            service = constructRentCollectionService(
+            service = newRentCollectionService(
                 stallRepo = stallRepo,
                 shopRepo = shopRepo,
                 cfg = cfg,
@@ -135,7 +134,7 @@ class RentCollectionServiceTest {
         )
     }
 
-    private fun constructRentCollectionService(
+    private fun newRentCollectionService(
         stallRepo: StallRepository,
         shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
         cfg: EnthusiaMarketConfig,
@@ -144,34 +143,18 @@ class RentCollectionServiceTest {
         regions: RegionMemberSync,
         ipLimiter: IpLimiter,
         mutationGate: MarketMutationGate,
-    ): RentCollectionService {
-        val constructors = RentCollectionService::class.java.declaredConstructors.filter { candidate ->
-            candidate.parameterTypes.none { it.name == "kotlin.jvm.internal.DefaultConstructorMarker" }
-        }
-        val extended = constructors.firstOrNull { candidate ->
-            val types = candidate.parameterTypes.toSet()
-            MarketMutationGate::class.java in types &&
-                RegionMemberSync::class.java in types &&
-                IpLimiter::class.java in types
-        }
-        val constructor = extended ?: constructors.first { it.parameterCount == 5 }
-        constructor.isAccessible = true
-        val args = constructor.parameterTypes.map { type ->
-            when (type) {
-                StallRepository::class.java -> stallRepo
-                net.badgersmc.em.domain.shop.ShopRepository::class.java -> shopRepo
-                EnthusiaMarketConfig::class.java -> cfg
-                AuctionRepository::class.java -> auctionRepo
-                net.badgersmc.nexus.i18n.LangService::class.java -> lang
-                MarketMutationGate::class.java -> mutationGate
-                RegionMemberSync::class.java -> regions
-                IpLimiter::class.java -> ipLimiter
-                SchematicService::class.java -> SchematicService.Disabled
-                else -> error("Unexpected RentCollectionService dependency: ${type.name}")
-            }
-        }.toTypedArray()
-        return constructor.newInstance(*args) as RentCollectionService
-    }
+        schematics: SchematicService = SchematicService.Disabled,
+    ) = RentCollectionService(
+        stallRepository = stallRepo,
+        shops = shopRepo,
+        config = cfg,
+        auctionRepository = auctionRepo,
+        lang = lang,
+        regionMembers = regions,
+        ipLimiter = ipLimiter,
+        mutationGate = mutationGate,
+        schematics = schematics,
+    )
 
     private data class RecoveryLifecycleFixture(
         val service: RentCollectionService,
@@ -196,36 +179,17 @@ class RentCollectionServiceTest {
         val cfg = config()
         val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
 
-        val constructor = assertNotNull(
-            RentCollectionService::class.java.declaredConstructors.firstOrNull { candidate ->
-                val types = candidate.parameterTypes.toSet()
-                MarketMutationGate::class.java in types &&
-                    RegionMemberSync::class.java in types &&
-                    IpLimiter::class.java in types &&
-                    candidate.parameterTypes.none {
-                        it.name == "kotlin.jvm.internal.DefaultConstructorMarker"
-                    }
-            },
-            "RentCollectionService must expose moderation, region, and IP lifecycle collaborators",
-        )
-        constructor.isAccessible = true
-        val args = constructor.parameterTypes.map { type ->
-            when (type) {
-                StallRepository::class.java -> stallRepo
-                net.badgersmc.em.domain.shop.ShopRepository::class.java -> shopRepo
-                EnthusiaMarketConfig::class.java -> cfg
-                AuctionRepository::class.java -> auctionRepo
-                net.badgersmc.nexus.i18n.LangService::class.java -> lang
-                MarketMutationGate::class.java -> mutationGate
-                RegionMemberSync::class.java -> regions
-                IpLimiter::class.java -> ipLimiter
-                SchematicService::class.java -> SchematicService.Disabled
-                else -> error("Unexpected RentCollectionService dependency: ${type.name}")
-            }
-        }.toTypedArray()
-
         return RecoveryLifecycleFixture(
-            service = constructor.newInstance(*args) as RentCollectionService,
+            service = newRentCollectionService(
+                stallRepo = stallRepo,
+                shopRepo = shopRepo,
+                cfg = cfg,
+                auctionRepo = auctionRepo,
+                lang = lang,
+                regions = regions,
+                ipLimiter = ipLimiter,
+                mutationGate = mutationGate,
+            ),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             auctionRepo = auctionRepo,
@@ -300,37 +264,18 @@ class RentCollectionServiceTest {
         val cfg = config().apply { this.schematics.enabled = true }
         val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
 
-        val constructor = assertNotNull(
-            RentCollectionService::class.java.declaredConstructors.firstOrNull { candidate ->
-                val types = candidate.parameterTypes.toSet()
-                SchematicService::class.java in types &&
-                    RegionMemberSync::class.java in types &&
-                    IpLimiter::class.java in types &&
-                    MarketMutationGate::class.java in types &&
-                    candidate.parameterTypes.none {
-                        it.name == "kotlin.jvm.internal.DefaultConstructorMarker"
-                    }
-            },
-            "RentCollectionService must expose schematic cleanup for emergency forfeiture",
-        )
-        constructor.isAccessible = true
-        val args = constructor.parameterTypes.map { type ->
-            when (type) {
-                StallRepository::class.java -> stallRepo
-                net.badgersmc.em.domain.shop.ShopRepository::class.java -> shopRepo
-                EnthusiaMarketConfig::class.java -> cfg
-                AuctionRepository::class.java -> auctionRepo
-                net.badgersmc.nexus.i18n.LangService::class.java -> lang
-                RegionMemberSync::class.java -> regions
-                IpLimiter::class.java -> ipLimiter
-                MarketMutationGate::class.java -> MarketMutationGate.Open
-                SchematicService::class.java -> schematics
-                else -> error("Unexpected RentCollectionService dependency: ${type.name}")
-            }
-        }.toTypedArray()
-
         return EmergencyForfeitureFixture(
-            service = constructor.newInstance(*args) as RentCollectionService,
+            service = newRentCollectionService(
+                stallRepo = stallRepo,
+                shopRepo = shopRepo,
+                cfg = cfg,
+                auctionRepo = auctionRepo,
+                lang = lang,
+                regions = regions,
+                ipLimiter = ipLimiter,
+                mutationGate = MarketMutationGate.Open,
+                schematics = schematics,
+            ),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             auctionRepo = auctionRepo,
@@ -365,12 +310,12 @@ class RentCollectionServiceTest {
                     it.owner == forfeited.owner &&
                     it.members.isEmpty()
             })
+            fixture.auctionRepo.create(any())
             fixture.ipLimiter.releaseStallByOwnerId(playerUuid.toString())
             fixture.shopRepo.findByStall(forfeited.id.value)
             fixture.shopRepo.delete(41L)
             fixture.regions.clearOwnersAndMembers(forfeited.world, forfeited.regionId)
             fixture.schematics.restore(forfeited.id.value, forfeited.world, forfeited.regionId)
-            fixture.auctionRepo.create(any())
         }
         verify(exactly = 0) { fixture.shopRepo.delete(42L) }
 
@@ -390,6 +335,32 @@ class RentCollectionServiceTest {
         verify(exactly = 0) { raced.regions.clearOwnersAndMembers(any(), any()) }
         verify(exactly = 0) { raced.schematics.restore(any(), any(), any()) }
         verify(exactly = 0) { raced.auctionRepo.create(any()) }
+    }
+
+    @Test
+    fun `emergency auction creation failure does not destroy previous ownership projections`() {
+        val forfeited = graceStall.copy(
+            members = setOf(UUID.fromString("00000000-0000-0000-0000-000000000005")),
+            nextRentAt = now.minus(Duration.ofDays(4)),
+        )
+        val fixture = buildEmergencyForfeitureFixture(stalls = listOf(forfeited))
+        every { fixture.auctionRepo.create(any()) } throws IllegalStateException("synthetic auction insert failure")
+
+        val report = fixture.service.tick(now)
+
+        assertEquals(0, report.evictions)
+        assertEquals(1, report.errors)
+        verify(exactly = 1) {
+            fixture.stallRepo.save(match {
+                it.state == StallState.EMERGENCY_AUCTIONING &&
+                    it.owner == forfeited.owner &&
+                    it.members.isEmpty()
+            })
+        }
+        verify(exactly = 0) { fixture.ipLimiter.releaseStallByOwnerId(any()) }
+        verify(exactly = 0) { fixture.shopRepo.findByStall(any()) }
+        verify(exactly = 0) { fixture.regions.clearOwnersAndMembers(any(), any()) }
+        verify(exactly = 0) { fixture.schematics.restore(any(), any(), any()) }
     }
 
     @Test

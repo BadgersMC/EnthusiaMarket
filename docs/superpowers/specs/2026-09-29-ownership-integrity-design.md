@@ -3,7 +3,7 @@
 **Date:** 2026-09-29  
 **Baseline:** `main@8d04bd9` — PR #194 Staff Market integration, after PR #193 26.2 compatibility  
 **SPEAR scope:** REQ-314 through REQ-322  
-**Status:** Spec phase; implementation has not started.
+**Status:** Implemented in this PR; completion evidence is tracked in `docs/tasks.md`.
 
 ## Goal
 

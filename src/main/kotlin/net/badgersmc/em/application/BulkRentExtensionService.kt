@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -21,6 +22,7 @@ data class BulkRentExtensionReport(
 @Service
 class BulkRentExtensionService(
     private val stalls: StallRepository,
+    private val config: EnthusiaMarketConfig,
     private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
 ) {
     private val log = Logger.getLogger(BulkRentExtensionService::class.java.name)
@@ -38,22 +40,22 @@ class BulkRentExtensionService(
                 skipped++
                 continue
             }
-            if (mutationGate.isStallLocked(stall.id.value)) {
-                skipped++
-                continue
-            }
-
             try {
-                val shifted = (stall.nextRentAt ?: now).plus(duration)
-                val shouldRecover = stall.state == StallState.GRACE && shifted.isAfter(now)
-                val nextState = if (shouldRecover) StallState.OWNED else stall.state
-                val changed = stall.copy(nextRentAt = shifted, state = nextState)
+                if (mutationGate.isStallLocked(stall.id.value)) {
+                    skipped++
+                } else {
+                    val legacyDue = stall.ownerSince?.plus(RentTimingPolicy.collectionInterval(config))
+                    val shifted = (stall.nextRentAt ?: legacyDue ?: now).plus(duration)
+                    val shouldRecover = stall.state == StallState.GRACE && shifted.isAfter(now)
+                    val nextState = if (shouldRecover) StallState.OWNED else stall.state
+                    val changed = stall.copy(nextRentAt = shifted, state = nextState)
 
-                stalls.save(changed)
-                updated++
-                if (shouldRecover) {
-                    recovered++
-                    fireStateChanged(stall, changed)
+                    stalls.save(changed)
+                    updated++
+                    if (shouldRecover) {
+                        recovered++
+                        fireStateChanged(stall, changed)
+                    }
                 }
             } catch (failure: Exception) {
                 failed++

@@ -190,7 +190,6 @@ class RentCollectionService(
             members = emptySet(),
         )
         stallRepository.save(forfeited)
-        cleanupEmergencyForfeiture(stall)
 
         // Broadcast before auction creation so players still receive the alert
         // if the auction write itself fails after forfeiture was persisted.
@@ -201,6 +200,7 @@ class RentCollectionService(
             log.warning("Emergency auction broadcast failed for stall ${stall.id.value}: ${e.message}")
         }
         auctionRepository.create(auction)
+        cleanupEmergencyForfeiture(stall)
         return ProcessResult.Evicted  // reuse Evicted for counting
     }
 
@@ -288,14 +288,12 @@ class RentCollectionService(
                 // Persist the authoritative state first. PR #194's repository
                 // fence can still reject a moderation race after the fast gate;
                 // no destructive projection cleanup may happen before this save.
-                val previousOwnerId = stall.owner.id.takeIf {
-                    stall.owner.type != OwnerType.NONE && it.isNotBlank()
-                }
                 stallRepository.save(stall.releaseOwnership())
 
-                previousOwnerId?.let(ipLimiter::releaseStallByOwnerId)
-                cleanupOrphanedEmergencyShops(stall)
-                clearRecoveredRegionAccess(stall)
+                cleanupEmergencyForfeiture(stall)
+                // Preserved admin shops may have been frozen while the previous
+                // ownership context was in GRACE / emergency auction.
+                shops.freezeByStall(stall.id.value, frozen = false)
                 true
             }
         } catch (e: Exception) {
@@ -305,28 +303,6 @@ class RentCollectionService(
             )
             false
         }
-    }
-
-    private fun clearRecoveredRegionAccess(stall: Stall) {
-        try {
-            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-        } catch (regionFailure: Exception) {
-            log.warning(
-                "RentCollectionService: failed to clear region access for recovered orphan " +
-                    "${stall.id.value}: ${regionFailure.message}"
-            )
-        }
-    }
-
-    private fun cleanupOrphanedEmergencyShops(stall: Stall) {
-        for (shop in shops.findByStall(stall.id.value)) {
-            if (!shop.adminShop) {
-                shops.delete(shop.id)
-            }
-        }
-        // Preserved admin shops may have been frozen while the previous
-        // ownership context was in GRACE / emergency auction.
-        shops.freezeByStall(stall.id.value, frozen = false)
     }
 
     private sealed class ProcessResult {

@@ -24,7 +24,7 @@ The following rules apply to ordinary market ownership transitions:
    - no previous-owner non-admin shops;
    - no effective WorldGuard owner/member projection.
 6. `EMERGENCY_AUCTIONING` does not consume the former owner's normal stall limit. The former owner may remain on the stall row only as auction/seller provenance and receives no delegated shop or region access.
-7. Emergency forfeiture is clean: after the authoritative state save succeeds, the previous owner's stall IP reservation is released, non-admin shops are removed, WorldGuard ownership/members are cleared, and schematic restore is attempted when enabled.
+7. Emergency forfeiture is clean: after the authoritative state save and emergency-auction insert both succeed, the previous owner's stall IP reservation is released, non-admin shops are removed, WorldGuard ownership/members are cleared, and schematic restore is attempted when enabled.
 8. Destructive projection cleanup happens only after the authoritative database write succeeds. Repository moderation/revision fencing therefore wins a race without shop/WG/IP data being destroyed first.
 
 ## Staff Market / moderation boundary
@@ -49,7 +49,7 @@ V029 repairs only state that can be proven stale from the authoritative stall ro
 
 ### V029 removes or normalizes
 
-- Non-admin shops on active SOLO `OWNED` or `GRACE` stalls when the shop owner UUID differs from the current stall owner UUID.
+- Non-admin shops on active SOLO `OWNED` or `GRACE` stalls only when the shop owner UUID matches neither the current stall owner nor any current delegated stall member.
 - Non-admin shops on true `UNOWNED` stalls.
 - Non-admin shops on `EMERGENCY_AUCTIONING` stalls.
 - Non-admin shops on system `AUCTIONING` / `RE_AUCTIONING` stalls whose owner type is `NONE`.
@@ -67,7 +67,7 @@ V029 repairs only state that can be proven stale from the authoritative stall ro
 
 The migration is idempotent. Reapplying its statements produces the same resulting data.
 
-A copied production database was used for validation before release: 103 provably stale non-admin shops were removed, 69 active guild shops were preserved, 3 stale member rosters were cleared, 2 stale UNOWNED rows were normalized, SQLite integrity remained OK, and a second reconciliation pass made no further changes.
+A copied production database was used for validation before release: 62 provably stale non-admin shops were removed, 41 legitimate delegated-member shops that the earlier owner-only predicate would have removed were preserved, 69 active guild shops were preserved, 3 stale member rosters were cleared, 2 stale UNOWNED rows were normalized, SQLite integrity remained OK, and a second reconciliation pass produced the same data state.
 
 ## WorldGuard reconciliation
 
@@ -107,7 +107,7 @@ The command is an administrative deadline credit, not a rent payment:
 - only `OWNED` and `GRACE` stalls are eligible;
 - moderation-locked stalls and every other lifecycle state are skipped;
 - the duration is added to the current `nextRentAt`;
-- when `nextRentAt` is null, the supplied current time is used as the baseline;
+- when `nextRentAt` is null, the legacy due-date estimate `ownerSince + collection interval` is used when available, falling back to the supplied current time only when no owner timestamp exists;
 - one stall save failure does not abort the rest of the batch;
 - a GRACE stall whose shifted deadline is now in the future returns to `OWNED` through the normal state-change event, allowing the existing shop-freeze listener to unfreeze its shops.
 

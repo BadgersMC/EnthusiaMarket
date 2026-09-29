@@ -8,7 +8,7 @@
 
 -- 1. Remove non-admin shops that cannot belong to the effective ownership
 -- context anymore:
---   * active SOLO stall, but the shop still belongs to another player;
+--   * active SOLO stall, but the shop belongs to neither the owner nor a current delegated member;
 --   * true vacant or emergency-auction stall;
 --   * system auction/re-auction with no owner.
 DELETE FROM shop_items
@@ -28,6 +28,10 @@ WHERE admin_shop = 0
                 stalls.owner_type = 'SOLO'
                 AND stalls.state IN ('OWNED', 'GRACE')
                 AND shop_items.owner <> stalls.owner_id
+                -- Both values are canonical UUID strings. UUID tokens have
+                -- fixed length, so INSTR cannot confuse one complete member UUID
+                -- with another while remaining portable across SQLite/MariaDB.
+                AND instr(stalls.members, shop_items.owner) = 0
             )
             OR stalls.state IN ('UNOWNED', 'EMERGENCY_AUCTIONING')
             OR (

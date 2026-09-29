@@ -31,12 +31,14 @@ class LegacyOwnershipReconciliationMigrationTest {
 
     @Test
     fun `V029 reconciles only provably stale ownership data and is idempotent`() {
-        // Build the full current schema. Once V029 exists this first pass is a
-        // no-op for reconciliation because the fixture rows have not been seeded yet.
+        // Build the current schema, then mark only the data-only V029 migration
+        // pending so the populated fixture is upgraded through MigrationRunner.
         runner.runAll()
+        markMigrationPending(29)
         seedLegacyRows()
 
-        executeV029()
+        val applied = runner.runAll()
+        assertEquals(listOf(29), applied.map { it.version })
         assertReconciledState()
 
         val firstPassShopIds = shopIds()
@@ -55,6 +57,15 @@ class LegacyOwnershipReconciliationMigrationTest {
         assertTrue(runner.discover().any { it.version == 29 }, "V029 must be discovered on the classpath")
     }
 
+    private fun markMigrationPending(version: Int) {
+        ds.connection.use { conn ->
+            conn.prepareStatement("DELETE FROM schema_migration WHERE version = ?").use { ps ->
+                ps.setInt(1, version)
+                ps.executeUpdate()
+            }
+        }
+    }
+
     private fun seedLegacyRows() {
         ds.connection.use { conn ->
             conn.createStatement().use { st ->
@@ -64,7 +75,7 @@ class LegacyOwnershipReconciliationMigrationTest {
                         (id, region_id, world, state, owner_type, owner_id, owner_since,
                          winning_bid, rent_mode, members, next_rent_at)
                     VALUES
-                        ('solo','solo','world','OWNED','SOLO','00000000-0000-0000-0000-000000000001',100,1000,'FLAT','',200),
+                        ('solo','solo','world','OWNED','SOLO','00000000-0000-0000-0000-000000000001',100,1000,'FLAT','00000000-0000-0000-0000-000000000002',200),
                         ('grace','grace','world','GRACE','SOLO','00000000-0000-0000-0000-000000000011',100,1000,'FLAT','',200),
                         ('guild','guild','world','OWNED','GUILD','guild-alpha',100,1000,'FLAT','00000000-0000-0000-0000-000000000099',200),
                         ('vacant','vacant','world','UNOWNED','SOLO','00000000-0000-0000-0000-000000000004',100,999,'FLAT','00000000-0000-0000-0000-000000000094',200),
@@ -94,6 +105,7 @@ class LegacyOwnershipReconciliationMigrationTest {
                 insertShop(st, 10, "locked", "00000000-0000-0000-0000-000000000010", admin = 0)
                 insertShop(st, 11, "hold", "00000000-0000-0000-0000-000000000011", admin = 0)
                 insertShop(st, 12, "grace", "00000000-0000-0000-0000-000000000012", admin = 0)
+                insertShop(st, 13, "solo", "00000000-0000-0000-0000-000000000013", admin = 0)
             }
         }
     }
@@ -141,9 +153,10 @@ class LegacyOwnershipReconciliationMigrationTest {
     }
 
     private fun assertReconciledState() {
-        // Keep the current SOLO shop, stale admin shop, guild shop, emergency
-        // admin shop, moderation-locked stale shop, and moderation-hold shop.
-        assertEquals(setOf(1L, 3L, 4L, 7L, 10L, 11L), shopIds())
+        // Keep the current-owner SOLO shop, current delegated-member shop,
+        // admin shop, guild shop, emergency admin shop, moderation-locked stale
+        // shop, and moderation-hold shop. The unrelated SOLO shop (13) is stale.
+        assertEquals(setOf(1L, 2L, 3L, 4L, 7L, 10L, 11L), shopIds())
 
         val rows = snapshotStalls()
 
