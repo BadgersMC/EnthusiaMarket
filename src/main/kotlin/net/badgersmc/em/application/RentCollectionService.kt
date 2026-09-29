@@ -80,6 +80,7 @@ class RentCollectionService(
 
         for (stall in stalls) {
             if (stall.state !in activeStates) continue
+            if (mutationGate.isStallLocked(stall.id.value)) continue
 
             try {
                 val result = processStall(stall, now)

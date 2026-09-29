@@ -101,7 +101,8 @@ class RentCollectionServiceTest {
 
     private fun buildService(
         stalls: List<Stall> = listOf(ownedStall),
-        gracePeriod: String = "P3D"
+        gracePeriod: String = "P3D",
+        mutationGate: MarketMutationGate = MarketMutationGate.Open,
     ): ServiceWithMocks {
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
         every { stallRepo.all() } returns stalls
@@ -125,7 +126,7 @@ class RentCollectionServiceTest {
                 lang = lang,
                 regions = regions,
                 ipLimiter = ipLimiter,
-                mutationGate = MarketMutationGate.Open,
+                mutationGate = mutationGate,
             ),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
@@ -231,6 +232,33 @@ class RentCollectionServiceTest {
             regions = regions,
             ipLimiter = ipLimiter,
         )
+    }
+
+    @Test
+    fun `active rent enforcement skips moderation locked owned and grace stalls`() {
+        val overdueOwned = ownedStall.copy(
+            nextRentAt = now.minus(Duration.ofDays(5)),
+        )
+        val overdueGrace = graceStall.copy(
+            nextRentAt = now.minus(Duration.ofDays(5)),
+        )
+        val lockedIds = setOf(overdueOwned.id.value, overdueGrace.id.value)
+        val lockedGate = object : MarketMutationGate {
+            override fun isStallLocked(stallId: String): Boolean = stallId in lockedIds
+        }
+        val svc = buildService(
+            stalls = listOf(overdueOwned, overdueGrace),
+            mutationGate = lockedGate,
+        )
+
+        val report = svc.service.tick(now)
+
+        assertEquals(0, report.defaults)
+        assertEquals(0, report.evictions)
+        assertEquals(0, report.errors)
+        verify(exactly = 0) { svc.shopRepo.freezeByStall(any(), any()) }
+        verify(exactly = 0) { svc.stallRepo.save(any()) }
+        verify(exactly = 0) { svc.auctionRepo.create(any()) }
     }
 
     // --- Emergency auction on grace expiry ---
