@@ -7,6 +7,7 @@ import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -42,6 +43,7 @@ class RentCollectionService(
     private val regionMembers: RegionMemberSync,
     private val ipLimiter: IpLimiter,
     private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
+    private val schematics: SchematicService = SchematicService.Disabled,
 ) {
 
     private val log = Logger.getLogger(RentCollectionService::class.java.name)
@@ -157,10 +159,10 @@ class RentCollectionService(
         }
     }
 
-    /** Start an emergency auction for a stall whose grace period expired.
-     *  Shops stay frozen (already set on GRACE entry). The starting bid
-     *  is the one-period rent due. Does NOT delete shops or clear WG —
-     *  the auction winner inherits the stall with all bound shops. */
+    /** Start a clean emergency auction for a stall whose grace period expired.
+     *  The former owner remains on the stall only as seller provenance for
+     *  settlement; all effective ownership projections are removed after the
+     *  authoritative EMERGENCY_AUCTIONING save succeeds. */
     private fun emergencyAuction(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
         val startingBid = maxOf(rentDue, 1L)
         val duration = auctionDuration()
@@ -180,12 +182,17 @@ class RentCollectionService(
             antiSnipeExtension = config.auction.antiSnipeExtensionDuration,
             auctionDuration = duration,
         )
-        // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
-        // (admin must manually create one). This prevents duplicate auctions on retry — the stall
-        // won't be processed again once it leaves GRACE/OWNED activeStates.
-        stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING))
-        // Broadcast BEFORE auction creation — if the DB write fails the alert
-        // still goes out and players know to expect the auction.
+        // Save FIRST so PR #194's optimistic moderation fence remains
+        // authoritative. Destructive cleanup is forbidden until this succeeds.
+        val forfeited = stall.copy(
+            state = StallState.EMERGENCY_AUCTIONING,
+            members = emptySet(),
+        )
+        stallRepository.save(forfeited)
+        cleanupEmergencyForfeiture(stall)
+
+        // Broadcast before auction creation so players still receive the alert
+        // if the auction write itself fails after forfeiture was persisted.
         try {
             Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
                 "stall" to stall.id.value, "bid" to startingBid))
@@ -194,6 +201,54 @@ class RentCollectionService(
         }
         auctionRepository.create(auction)
         return ProcessResult.Evicted  // reuse Evicted for counting
+    }
+
+    private fun cleanupEmergencyForfeiture(stall: Stall) {
+        if (stall.owner.type != OwnerType.NONE && stall.owner.id.isNotBlank()) {
+            ipLimiter.releaseStallByOwnerId(stall.owner.id)
+        }
+
+        try {
+            for (shop in shops.findByStall(stall.id.value)) {
+                if (shop.adminShop) continue
+                try {
+                    shops.delete(shop.id)
+                } catch (failure: Exception) {
+                    log.warning(
+                        "Emergency auction: failed to delete shop ${shop.id} for ${stall.id.value}: " +
+                            failure.message
+                    )
+                }
+            }
+        } catch (failure: Exception) {
+            log.warning(
+                "Emergency auction: failed to enumerate shops for ${stall.id.value}: ${failure.message}"
+            )
+        }
+
+        try {
+            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        } catch (failure: Exception) {
+            log.warning(
+                "Emergency auction: failed to clear region access for ${stall.id.value}: ${failure.message}"
+            )
+        }
+
+        if (config.schematics.enabled) {
+            try {
+                val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+                if (restore is SchematicService.Result.Failure) {
+                    log.warning(
+                        "Emergency auction: schematic restore failed for ${stall.id.value}: " +
+                            restore.cause.message
+                    )
+                }
+            } catch (failure: Exception) {
+                log.warning(
+                    "Emergency auction: schematic restore threw for ${stall.id.value}: ${failure.message}"
+                )
+            }
+        }
     }
 
     private fun auctionDuration(): Duration = try {

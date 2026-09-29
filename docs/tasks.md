@@ -1054,11 +1054,17 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Extend orphan recovery with the missing lifecycle collaborators after TDD-326: skip a moderation-locked emergency stall without mutation; persist the canonical UNOWNED row before destructive projection cleanup so the durable repository fence can reject a race safely; then clear WorldGuard owners/members and release the previous owner's stall IP reservation. Prove the behavior without changing auction or moderation-provider semantics.
   Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/MarketMutationGate.kt; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/application/IpLimiter.kt; src/main/kotlin/net/badgersmc/em/infrastructure/moderation/DurableMarketMutationGate.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/SchematicRestoreTest.kt; docs/requirements.md REQ-318, REQ-320; 2026-09-29 focused red -> green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 765 tests, 0 failures/errors, 7 skipped`
 
-- [ ] **TDD-319** — Emergency auction begins from a clean forfeited stall
+- [x] **TDD-319** — Emergency auction begins from a clean forfeited stall
   References: REQ-319, REQ-280, REQ-271, REQ-320, implementation.md §3.11
   Tag: TDD
-  Description: Characterize GRACE → EMERGENCY_AUCTIONING, then require previous-owner non-admin shops and delegated region/member access to be removed and the stored schematic restored when enabled while retaining only settlement/recovery provenance needed by the auction path.
-  Evidence: ` `
+  Description: Add a failing GRACE → EMERGENCY_AUCTIONING test proving forfeiture persists the emergency state with the former owner retained only as seller provenance and delegated members cleared, then releases the former owner's stall IP reservation, removes non-admin shops while preserving admin shops, clears WorldGuard owners/members, and attempts schematic restore when enabled before creating the emergency auction. Cleanup must occur only after the authoritative stall save so PR #194 repository fencing can win a moderation race without destructive side effects.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt:115-255; src/main/kotlin/net/badgersmc/em/domain/ports/SchematicService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/application/IpLimiter.kt; src/main/kotlin/net/badgersmc/em/infrastructure/moderation/DurableMarketMutationGate.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/SchematicRestoreTest.kt; docs/requirements.md REQ-319, REQ-320; 2026-09-29 focused red -> green; architecture gate green; full suite 766 tests, 0 failures/errors, 7 skipped`
+
+- [ ] **TDD-327** — Active rent enforcement honors moderation locks
+  References: REQ-320, REQ-306, REQ-307, REQ-311, implementation.md §3.11
+  Tag: TDD
+  Description: Prove RentCollectionService skips moderation-locked OWNED and GRACE stalls before shop freeze, state mutation, or emergency-auction creation. Preserve the durable repository fence as defense in depth and do not alter Staff Market snapshot/restore semantics.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/MarketMutationGate.kt; src/main/kotlin/net/badgersmc/em/infrastructure/moderation/DurableMarketMutationGate.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; docs/requirements.md REQ-320`
 
 - [ ] **TDD-321** — Conservative legacy ownership reconciliation
   References: REQ-321, REQ-316, REQ-318, REQ-320, docs/db-schema.md

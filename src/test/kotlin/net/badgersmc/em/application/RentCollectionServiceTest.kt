@@ -4,10 +4,12 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -163,6 +165,7 @@ class RentCollectionServiceTest {
                 MarketMutationGate::class.java -> mutationGate
                 RegionMemberSync::class.java -> regions
                 IpLimiter::class.java -> ipLimiter
+                SchematicService::class.java -> SchematicService.Disabled
                 else -> error("Unexpected RentCollectionService dependency: ${type.name}")
             }
         }.toTypedArray()
@@ -215,6 +218,7 @@ class RentCollectionServiceTest {
                 MarketMutationGate::class.java -> mutationGate
                 RegionMemberSync::class.java -> regions
                 IpLimiter::class.java -> ipLimiter
+                SchematicService::class.java -> SchematicService.Disabled
                 else -> error("Unexpected RentCollectionService dependency: ${type.name}")
             }
         }.toTypedArray()
@@ -242,6 +246,122 @@ class RentCollectionServiceTest {
         sellItem = "item", sellAmount = 1, costItem = "item", costAmount = 1,
         adminShop = adminShop,
     )
+
+    private data class EmergencyForfeitureFixture(
+        val service: RentCollectionService,
+        val stallRepo: StallRepository,
+        val shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
+        val auctionRepo: AuctionRepository,
+        val regions: RegionMemberSync,
+        val ipLimiter: IpLimiter,
+        val schematics: SchematicService,
+    )
+
+    private fun buildEmergencyForfeitureFixture(
+        stalls: List<Stall>,
+        regions: RegionMemberSync = mockk(relaxed = true),
+        ipLimiter: IpLimiter = mockk(relaxed = true),
+        schematics: SchematicService = mockk(relaxed = true),
+    ): EmergencyForfeitureFixture {
+        val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
+        every { stallRepo.all() } returns stalls
+        val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        every { shopRepo.findByStall(any()) } returns emptyList()
+        val auctionRepo = mockk<AuctionRepository>(relaxed = true)
+        val cfg = config().apply { this.schematics.enabled = true }
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
+
+        val constructor = assertNotNull(
+            RentCollectionService::class.java.declaredConstructors.firstOrNull { candidate ->
+                val types = candidate.parameterTypes.toSet()
+                SchematicService::class.java in types &&
+                    RegionMemberSync::class.java in types &&
+                    IpLimiter::class.java in types &&
+                    MarketMutationGate::class.java in types &&
+                    candidate.parameterTypes.none {
+                        it.name == "kotlin.jvm.internal.DefaultConstructorMarker"
+                    }
+            },
+            "RentCollectionService must expose schematic cleanup for emergency forfeiture",
+        )
+        constructor.isAccessible = true
+        val args = constructor.parameterTypes.map { type ->
+            when (type) {
+                StallRepository::class.java -> stallRepo
+                net.badgersmc.em.domain.shop.ShopRepository::class.java -> shopRepo
+                EnthusiaMarketConfig::class.java -> cfg
+                AuctionRepository::class.java -> auctionRepo
+                net.badgersmc.nexus.i18n.LangService::class.java -> lang
+                RegionMemberSync::class.java -> regions
+                IpLimiter::class.java -> ipLimiter
+                MarketMutationGate::class.java -> MarketMutationGate.Open
+                SchematicService::class.java -> schematics
+                else -> error("Unexpected RentCollectionService dependency: ${type.name}")
+            }
+        }.toTypedArray()
+
+        return EmergencyForfeitureFixture(
+            service = constructor.newInstance(*args) as RentCollectionService,
+            stallRepo = stallRepo,
+            shopRepo = shopRepo,
+            auctionRepo = auctionRepo,
+            regions = regions,
+            ipLimiter = ipLimiter,
+            schematics = schematics,
+        )
+    }
+
+    @Test
+    fun `emergency forfeiture cleans previous ownership only after authoritative save`() {
+        val staleMember = UUID.fromString("00000000-0000-0000-0000-000000000005")
+        val forfeited = graceStall.copy(
+            members = setOf(staleMember),
+            nextRentAt = now.minus(Duration.ofDays(4)),
+        )
+        val normalShop = shop(41L, forfeited.id.value)
+        val adminShop = shop(42L, forfeited.id.value, adminShop = true)
+        val fixture = buildEmergencyForfeitureFixture(stalls = listOf(forfeited))
+        every { fixture.shopRepo.findByStall(forfeited.id.value) } returns listOf(normalShop, adminShop)
+        every {
+            fixture.schematics.restore(forfeited.id.value, forfeited.world, forfeited.regionId)
+        } returns SchematicService.Result.Success
+
+        val report = fixture.service.tick(now)
+
+        assertEquals(1, report.evictions)
+        assertEquals(0, report.errors)
+        verifyOrder {
+            fixture.stallRepo.save(match {
+                it.state == StallState.EMERGENCY_AUCTIONING &&
+                    it.owner == forfeited.owner &&
+                    it.members.isEmpty()
+            })
+            fixture.ipLimiter.releaseStallByOwnerId(playerUuid.toString())
+            fixture.shopRepo.findByStall(forfeited.id.value)
+            fixture.shopRepo.delete(41L)
+            fixture.regions.clearOwnersAndMembers(forfeited.world, forfeited.regionId)
+            fixture.schematics.restore(forfeited.id.value, forfeited.world, forfeited.regionId)
+            fixture.auctionRepo.create(any())
+        }
+        verify(exactly = 0) { fixture.shopRepo.delete(42L) }
+
+        val raced = buildEmergencyForfeitureFixture(stalls = listOf(forfeited))
+        every { raced.stallRepo.save(any()) } throws IllegalStateException("moderation fence won the race")
+        every { raced.shopRepo.findByStall(forfeited.id.value) } returns listOf(normalShop)
+        every {
+            raced.schematics.restore(forfeited.id.value, forfeited.world, forfeited.regionId)
+        } returns SchematicService.Result.Success
+
+        val racedReport = raced.service.tick(now)
+
+        assertEquals(0, racedReport.evictions)
+        assertEquals(1, racedReport.errors)
+        verify(exactly = 0) { raced.ipLimiter.releaseStallByOwnerId(any()) }
+        verify(exactly = 0) { raced.shopRepo.findByStall(any()) }
+        verify(exactly = 0) { raced.regions.clearOwnersAndMembers(any(), any()) }
+        verify(exactly = 0) { raced.schematics.restore(any(), any(), any()) }
+        verify(exactly = 0) { raced.auctionRepo.create(any()) }
+    }
 
     @Test
     fun `orphan recovery clears projections and respects moderation fencing`() {
@@ -349,21 +469,21 @@ class RentCollectionServiceTest {
     }
 
     @Test
-    fun `tick past grace starts emergency auction, does NOT wipe shops`() {
+    fun `tick past grace cleans non admin shops before emergency auction`() {
         val svc = buildService(stalls = listOf(graceStall), gracePeriod = "P3D")
         every { svc.shopRepo.findByStall("stall_02") } returns
-            listOf(shop(11, "stall_02"), shop(12, "stall_02"))
+            listOf(shop(11, "stall_02"), shop(12, "stall_02", adminShop = true))
 
         val report = svc.service.tick()
 
-        assertEquals(1, report.evictions) // still counted as eviction
-        // Shops must NOT be deleted (auction winner inherits them)
-        verify(exactly = 0) { svc.shopRepo.delete(any()) }
-        // An emergency auction must be created
+        assertEquals(1, report.evictions)
+        verify(exactly = 1) { svc.shopRepo.delete(11L) }
+        verify(exactly = 0) { svc.shopRepo.delete(12L) }
         verify { svc.auctionRepo.create(any()) }
-        // Stall must be EMERGENCY_AUCTIONING, not UNOWNED
         verify { svc.stallRepo.save(match {
-            it.state == StallState.EMERGENCY_AUCTIONING
+            it.state == StallState.EMERGENCY_AUCTIONING &&
+                it.owner == graceStall.owner &&
+                it.members.isEmpty()
         }) }
     }
 
