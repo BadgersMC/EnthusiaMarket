@@ -1,8 +1,8 @@
 package net.badgersmc.em.application
 
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import io.mockk.every
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.offer.SellOfferRepository
@@ -56,23 +56,19 @@ class AuctionModerationIntegrationTest {
         moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
     ): Fixture {
         val auctions = mockk<AuctionRepository>(relaxed = true)
-        val stalls = mockk<StallRepository>(relaxed = true)
-        every { stalls.findById(stallId) } returns sampleStall()
-        val service = AuctionLifecycleService(
-            auctionRepository = auctions,
-            stallRepository = stalls,
-            economy = mockk<EconomyProvider>(relaxed = true),
-            config = EnthusiaMarketConfig(),
-            limits = mockk(relaxed = true),
-            sellOffers = mockk<SellOfferRepository>(relaxed = true),
-            regionMembers = mockk(relaxed = true),
-            ownership = mockk(relaxed = true),
-            ipLimiter = mockk(relaxed = true),
-            lang = mockk<LangService>(relaxed = true),
-            moderationPolicy = moderationPolicy,
-            mutationGate = mutationGate,
+        val stalls = mockk<StallRepository>(relaxed = true).also {
+            every { it.findById(stallId) } returns sampleStall()
+        }
+        return Fixture(
+            AuctionLifecycleService(
+                auctions, stalls, mockk<EconomyProvider>(relaxed = true), EnthusiaMarketConfig(),
+                mockk(relaxed = true), mockk<SellOfferRepository>(relaxed = true),
+                mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+                lang = mockk<LangService>(relaxed = true), moderationPolicy = moderationPolicy,
+                mutationGate = mutationGate,
+            ),
+            auctions,
         )
-        return Fixture(service, auctions)
     }
 
     private fun sampleStall() = Stall(
