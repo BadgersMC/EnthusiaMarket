@@ -9,15 +9,84 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
+/** Verifies the bean-style value shapes consumed by EnthusiaStaff reflection. */
 class StaffMarketApiCompatibilityTest {
 
+    StaffMarketApiCompatibilityTest() {
+    }
+
     @Test
-    void beanAccessorsMatchStaffReflectionValueShapes() throws ReflectiveOperationException {
-        MarketOwnership ownership = new MarketOwnership(
+    void stallIdBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        assertEquals("stall-1", invoke(ownedStall(), "getId"));
+    }
+
+    @Test
+    void stallWorldBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        assertEquals("world", invoke(ownedStall(), "getWorld"));
+    }
+
+    @Test
+    void stallStateBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        assertEquals("OWNED", invoke(ownedStall(), "getState"));
+    }
+
+    @Test
+    void ownershipTypeBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        final Object owner = invoke(ownedStall(), "getOwnership");
+        assertEquals(MarketOwnership.Type.SOLO, invoke(owner, "getType"));
+    }
+
+    @Test
+    void ownershipIdBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        final Object owner = invoke(ownedStall(), "getOwnership");
+        assertEquals("owner-1", invoke(owner, "getId"));
+    }
+
+    @Test
+    void blacklistStatusBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        assertEquals(StallBlacklistState.Status.ACTIVE, invoke(activeBlacklist(), "getStatus"));
+    }
+
+    @Test
+    void blacklistExpirationBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        final Instant expiry = Instant.parse("2026-10-01T00:00:00Z");
+        assertEquals(expiry, invoke(activeBlacklist(), "getExpiresAt"));
+    }
+
+    @Test
+    void blacklistCaseBeanAliasMatchesStaffShape() throws ReflectiveOperationException {
+        assertEquals("ES-CASE-1", invoke(activeBlacklist(), "getCaseId"));
+    }
+
+    @Test
+    void recordStyleOwnershipAccessorRemainsOptional() {
+        final MarketOwnership ownership = ownedStall().ownership();
+        assertEquals(Optional.of("owner-1"), ownership.id());
+    }
+
+    @Test
+    void recordStyleBlacklistExpirationRemainsOptional() {
+        final Instant expiry = Instant.parse("2026-10-01T00:00:00Z");
+        assertEquals(Optional.of(expiry), activeBlacklist().expiresAt());
+    }
+
+    @Test
+    void unownedBeanAliasReturnsNullIdentity() {
+        final MarketOwnership ownership = new MarketOwnership(MarketOwnership.Type.NONE, Optional.empty());
+        assertNull(ownership.getId());
+    }
+
+    @Test
+    void removedBlacklistBeanAliasReturnsNullExpiration() {
+        assertNull(removedBlacklist().getExpiresAt());
+    }
+
+    private static MarketStallRecord ownedStall() {
+        final MarketOwnership ownership = new MarketOwnership(
                 MarketOwnership.Type.SOLO,
                 Optional.of("owner-1")
         );
-        MarketStallRecord stall = new MarketStallRecord(
+        return new MarketStallRecord(
                 "stall-1",
                 "world",
                 "OWNED",
@@ -26,8 +95,11 @@ class StaffMarketApiCompatibilityTest {
                 false,
                 Optional.empty()
         );
-        Instant expiry = Instant.parse("2026-10-01T00:00:00Z");
-        StallBlacklistState blacklist = new StallBlacklistState(
+    }
+
+    private static StallBlacklistState activeBlacklist() {
+        final Instant expiry = Instant.parse("2026-10-01T00:00:00Z");
+        return new StallBlacklistState(
                 UUID.randomUUID(),
                 StallBlacklistState.Status.ACTIVE,
                 Optional.of(expiry),
@@ -36,26 +108,11 @@ class StaffMarketApiCompatibilityTest {
                 1L,
                 expiry.minusSeconds(60L)
         );
-
-        assertEquals("stall-1", invoke(stall, "getId"));
-        assertEquals("world", invoke(stall, "getWorld"));
-        assertEquals("OWNED", invoke(stall, "getState"));
-        Object reflectedOwnership = invoke(stall, "getOwnership");
-        assertEquals(MarketOwnership.Type.SOLO, invoke(reflectedOwnership, "getType"));
-        assertEquals("owner-1", invoke(reflectedOwnership, "getId"));
-        assertEquals(StallBlacklistState.Status.ACTIVE, invoke(blacklist, "getStatus"));
-        assertEquals(expiry, invoke(blacklist, "getExpiresAt"));
-        assertEquals("ES-CASE-1", invoke(blacklist, "getCaseId"));
-
-        assertEquals(Optional.of("owner-1"), ownership.id());
-        assertEquals(Optional.of(expiry), blacklist.expiresAt());
     }
 
-    @Test
-    void optionalRecordFieldsRemainNullableThroughBeanAliases() {
-        MarketOwnership ownership = new MarketOwnership(MarketOwnership.Type.NONE, Optional.empty());
-        Instant updated = Instant.parse("2026-10-01T00:00:00Z");
-        StallBlacklistState blacklist = new StallBlacklistState(
+    private static StallBlacklistState removedBlacklist() {
+        final Instant updated = Instant.parse("2026-10-01T00:00:00Z");
+        return new StallBlacklistState(
                 UUID.randomUUID(),
                 StallBlacklistState.Status.REMOVED,
                 Optional.empty(),
@@ -64,13 +121,11 @@ class StaffMarketApiCompatibilityTest {
                 1L,
                 updated
         );
-
-        assertNull(ownership.getId());
-        assertNull(blacklist.getExpiresAt());
     }
 
-    private static Object invoke(Object target, String methodName) throws ReflectiveOperationException {
-        Method method = target.getClass().getMethod(methodName);
+    private static Object invoke(final Object target, final String methodName)
+            throws ReflectiveOperationException {
+        final Method method = target.getClass().getMethod(methodName);
         return method.invoke(target);
     }
 }
