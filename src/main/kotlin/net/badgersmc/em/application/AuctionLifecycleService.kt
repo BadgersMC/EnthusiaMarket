@@ -11,6 +11,7 @@ import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
 import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.domain.ports.MarketMutationGate
+import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -71,7 +72,7 @@ sealed class MassAuctionResult {
  * Handles creation, bidding, cancellation, and settlement of expired auctions.
  */
 @Service
-@Suppress("TooManyFunctions", "LongParameterList")
+@Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 class AuctionLifecycleService(
     private val auctionRepository: AuctionRepository,
     private val stallRepository: StallRepository,
@@ -79,6 +80,7 @@ class AuctionLifecycleService(
     private val config: EnthusiaMarketConfig,
     private val limits: LimitResolutionService,
     private val sellOffers: SellOfferRepository,
+    private val shops: ShopRepository,
     private val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync,
     private val ownership: StallOwnershipCounter,
     private val ipLimiter: IpLimiter,
@@ -449,8 +451,7 @@ class AuctionLifecycleService(
         if (stall.state == StallState.AUCTIONING &&
             stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
         ) {
-            stallRepository.save(stall.copy(state = StallState.UNOWNED))
-            fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+            releaseAuctionedStall(stall, "cancelAuction")
         }
         return AuctionResult.Success(closed)
     }
@@ -572,13 +573,7 @@ class AuctionLifecycleService(
     private fun revertSystemAuctionedStall(auction: Auction, auctioningStates: Set<StallState>) {
         val stall = stallRepository.findById(auction.stallId)
         if (stall != null && canRevertStall(stall, auctioningStates)) {
-            val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
-                stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
-            } else {
-                stall.copy(state = StallState.UNOWNED)
-            }
-            stallRepository.save(reverted)
-            fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+            releaseAuctionedStall(stall, "cancelAllAuctions")
         }
     }
 
@@ -608,12 +603,7 @@ class AuctionLifecycleService(
                     val auctioningStates = setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
                     val stall = stallRepository.findById(auction.stallId)
                     if (stall != null && canRevertStall(stall, auctioningStates)) {
-                        val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
-                            stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
-                        } else {
-                            stall.copy(state = StallState.UNOWNED)
-                        }
-                        stallRepository.save(reverted)
+                        releaseAuctionedStall(stall, "settleExpired no-bid")
                         // M3 — drop any lingering sell offer on the
                         // now-UNOWNED stall so a follow-up click doesn't
                         // trip the offer-mutex check (matches
@@ -629,7 +619,6 @@ class AuctionLifecycleService(
                                 )
                             }
                         }
-                        fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                     }
                     auctionRepository.save(auction.close())
                 }
@@ -748,13 +737,7 @@ class AuctionLifecycleService(
             try {
                 if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
                     (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)) {
-                    val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
-                        stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
-                    } else {
-                        stall.copy(state = StallState.UNOWNED)
-                    }
-                    stallRepository.save(reverted)
-                    fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+                    releaseAuctionedStall(stall, "settleWithWinner rollback")
                 }
             } catch (revert: Exception) {
                 logger.severe(
@@ -765,6 +748,7 @@ class AuctionLifecycleService(
             }
             throw e
         }
+        cleanupPreviousOwnershipShops(updatedStall, "settleWithWinner")
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
         // Notify the winner if online
@@ -799,6 +783,45 @@ class AuctionLifecycleService(
         }
     }
 
+    private fun cleanupPreviousOwnershipShops(stall: Stall, context: String) {
+        try {
+            for (shop in shops.findByStall(stall.id.value)) {
+                if (shop.adminShop) continue
+                try {
+                    shops.delete(shop.id)
+                } catch (failure: Exception) {
+                    logger.warning(
+                        "$context: failed to remove previous shop ${shop.id} from " +
+                            "stall ${stall.id.value}. cause=${failure.message}"
+                    )
+                }
+            }
+        } catch (failure: Exception) {
+            logger.warning(
+                "$context: failed to enumerate previous shops for stall ${stall.id.value}. " +
+                    "cause=${failure.message}"
+            )
+        }
+    }
+
+    private fun releaseAuctionedStall(stall: Stall, context: String) {
+        val previousOwnerId = stall.owner.id.takeIf {
+            stall.owner.type != OwnerType.NONE && it.isNotBlank()
+        }
+        stallRepository.save(stall.releaseOwnership())
+        previousOwnerId?.let(ipLimiter::releaseStallByOwnerId)
+        cleanupPreviousOwnershipShops(stall, context)
+        try {
+            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        } catch (failure: Exception) {
+            logger.warning(
+                "$context: failed to clear region access for stall ${stall.id.value}. " +
+                    "cause=${failure.message}"
+            )
+        }
+        fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+    }
+
     /**
      * Close [auction] without awarding [stall] to anyone. A stall that the
      * system mass-auctioned (AUCTIONING + no owner) is reverted to UNOWNED so
@@ -820,13 +843,7 @@ class AuctionLifecycleService(
         val auctioningStates = setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
         if (canRevertStall(stall, auctioningStates)) {
             try {
-                val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
-                    stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
-                } else {
-                    stall.copy(state = StallState.UNOWNED)
-                }
-                stallRepository.save(reverted)
-                fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+                releaseAuctionedStall(stall, "closeWithoutAward")
             } catch (e: Exception) {
                 logger.severe(
                     "closeWithoutAward: auction ${auction.id} closed but stall ${stall.id.value} " +

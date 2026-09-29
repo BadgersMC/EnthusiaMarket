@@ -49,7 +49,7 @@ class JdbcMarketModerationMariaDbTest {
         })
         createV27UpgradeBaseline()
         val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
-        assertEquals(listOf(28), applied.map { it.version })
+        assertEquals(listOf(28, 29), applied.map { it.version })
         createStallAndShop()
     }
 

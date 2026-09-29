@@ -63,6 +63,7 @@ class AuctionModerationIntegrationTest {
             AuctionLifecycleService(
                 auctions, stalls, mockk<EconomyProvider>(relaxed = true), EnthusiaMarketConfig(),
                 mockk(relaxed = true), mockk<SellOfferRepository>(relaxed = true),
+                mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true),
                 mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
                 lang = mockk<LangService>(relaxed = true), moderationPolicy = moderationPolicy,
                 mutationGate = mutationGate,

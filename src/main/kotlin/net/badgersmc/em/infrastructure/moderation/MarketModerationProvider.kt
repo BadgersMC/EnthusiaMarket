@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Bounded asynchronous Bukkit service facade over the durable JDBC store. */
+@Suppress("TooManyFunctions")
 internal class MarketModerationProvider(
     private val store: JdbcMarketModerationStore,
     private val gate: DurableMarketMutationGate,
