@@ -79,6 +79,7 @@ permissions:
     - enthusiamarket.admin.list
     - enthusiamarket.admin.maintenance
     - enthusiamarket.admin.refund
+    - enthusiamarket.admin.rent
     - enthusiamarket.admin.reload
     - enthusiamarket.admin.setowner
     - enthusiamarket.admin.bypasslimit
@@ -98,6 +99,9 @@ permissions:
     description: Pause and resume all rent/auction timers for maintenance
   enthusiamarket.admin.refund:
     default: op
+  enthusiamarket.admin.rent:
+    default: op
+    description: Apply administrative rent deadline extensions
   enthusiamarket.admin.reload:
     default: op
   enthusiamarket.admin.setowner:
