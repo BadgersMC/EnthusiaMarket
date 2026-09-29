@@ -10,13 +10,16 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Verifies validation and time-bound behavior exposed by the moderation API records. */
+/** Verifies moderation API record validation and time-bound behavior. */
+@SuppressWarnings({"PMD.AtLeastOneConstructor", "PMD.TooManyMethods"})
 class MarketModerationContractTest {
+    /* JUnit 5 intentionally uses its implicit package-private constructor. */
+    /* Focused single-assert tests intentionally exceed PMD's method-count threshold. */
+
     /** Stable SHA-256-shaped fixture used by destructive operation records. */
     private static final String CHECKSUM = "a".repeat(64);
-
-    MarketModerationContractTest() {
-    }
+    /** Shared moderation review instant. */
+    private static final Instant REVIEW = Instant.parse("2026-08-20T00:00:00Z");
 
     @Test
     void unownedOwnershipAcceptsNoIdentity() {
@@ -41,7 +44,6 @@ class MarketModerationContractTest {
 
     @Test
     void operationRequestBoundsRecoveryWindow() {
-        final Instant review = Instant.parse("2026-08-20T00:00:00Z");
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new MarketOperationRequest(
@@ -49,8 +51,8 @@ class MarketModerationContractTest {
                         UUID.randomUUID(),
                         "ES-CASE-1",
                         "stall-1",
-                        review,
-                        review.plusSeconds(32L * 86_400L),
+                        REVIEW,
+                        REVIEW.plusSeconds(32L * 86_400L),
                         Optional.empty()
                 )
         );
@@ -58,28 +60,24 @@ class MarketModerationContractTest {
 
     @Test
     void identifiersRejectAsciiWhitespace() {
-        final Instant review = Instant.parse("2026-08-20T00:00:00Z");
-        assertInvalidIdentifier("CASE 1", review);
+        assertInvalidIdentifier("CASE 1", REVIEW);
     }
 
     @Test
     void identifiersRejectUnicodeWhitespace() {
-        final Instant review = Instant.parse("2026-08-20T00:00:00Z");
-        assertInvalidIdentifier("CASE\u20071", review);
+        assertInvalidIdentifier("CASE\u20071", REVIEW);
     }
 
     @Test
     void blacklistIsActiveBeforeExpiration() {
-        final Instant expiry = Instant.parse("2026-08-20T00:00:00Z");
-        final StallBlacklistState state = activeBlacklist(expiry);
-        assertTrue(state.activeAt(expiry.minusNanos(1L)));
+        final StallBlacklistState state = activeBlacklist(REVIEW);
+        assertTrue(state.activeAt(REVIEW.minusNanos(1L)));
     }
 
     @Test
     void blacklistIsInactiveAtExpiration() {
-        final Instant expiry = Instant.parse("2026-08-20T00:00:00Z");
-        final StallBlacklistState state = activeBlacklist(expiry);
-        assertFalse(state.activeAt(expiry));
+        final StallBlacklistState state = activeBlacklist(REVIEW);
+        assertFalse(state.activeAt(REVIEW));
     }
 
     @Test
