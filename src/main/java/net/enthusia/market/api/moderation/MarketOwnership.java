@@ -24,15 +24,17 @@ public record MarketOwnership(Type type, Optional<String> ownerId) {
         return ownerId;
     }
 
-    /** Bean-style aliases use nullable values expected by older Staff reflection. */
+    /** Returns the ownership category for bean-style reflection consumers. */
     public Type getType() {
         return type;
     }
 
+    /** Returns the nullable owner identifier expected by older Staff reflection. */
     public String getId() {
         return ownerId.orElse(null);
     }
 
+    /** Supported ownership categories exposed across the moderation boundary. */
     public enum Type {
         NONE,
         SOLO,
