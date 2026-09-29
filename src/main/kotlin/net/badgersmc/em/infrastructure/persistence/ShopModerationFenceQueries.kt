@@ -88,6 +88,16 @@ internal object ShopModerationFenceQueries {
         }
     }
 
+    fun rejectLockedContainer(
+        connection: Connection,
+        world: String,
+        x: Int,
+        y: Int,
+        z: Int,
+    ) {
+        rejectLockedContainer(connection, ContainerAddress(world, x, y, z))
+    }
+
     private fun rejectLockedContainer(connection: Connection, container: ContainerAddress) {
         connection.prepareStatement(
             """SELECT 1 FROM shop_items s
