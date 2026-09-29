@@ -15,6 +15,7 @@ public record MarketOperationRequest(
         Instant recoveryUntil,
         Optional<Instant> blacklistExpiry
 ) {
+    /** Longest recovery window accepted by the public moderation contract. */
     private static final Duration MAXIMUM_RECOVERY = Duration.ofDays(31);
 
     public MarketOperationRequest {
