@@ -52,6 +52,27 @@ jobs:
       - name: Test and shadowJar
         run: ./gradlew test shadowJar jacocoTestReport -PuseMavenLocal=true --no-daemon
 
+      - name: Verify MariaDB moderation tests executed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          report = Path(
+              "build/test-results/test/"
+              "TEST-net.badgersmc.em.infrastructure.moderation."
+              "JdbcMarketModerationMariaDbTest.xml"
+          )
+          suite = ElementTree.parse(report).getroot()
+          counts = {
+              name: int(suite.attrib.get(name, "0"))
+              for name in ("tests", "skipped", "failures", "errors")
+          }
+          print("MariaDB moderation tests:", counts)
+          if counts["tests"] < 1 or any(counts[name] for name in ("skipped", "failures", "errors")):
+              raise SystemExit("MariaDB moderation tests did not execute cleanly")
+          PY
+
       - name: Upload coverage to Codacy
         uses: codacy/codacy-coverage-reporter-action@v1
         with:

@@ -125,11 +125,11 @@ open class ContainerTradeService(
             is TransferResult.DestFull -> return ContainerTradeResult.Failure("Container is full")
         }
 
-        return processBuyPayment(shop, ctx, scaledStack, effectiveCost, quantity)
+        return processBuyPayment(shop, ctx, scaledStack, effectiveCost)
     }
 
     /** Handles payment flow: withdraw from shop owner → deposit to player. */
-    private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, cost: Long, quantity: Int = 1): ContainerTradeResult {
+    private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, cost: Long): ContainerTradeResult {
         val guildId = ctx.guildId
         if (cost > 0L) {
             if (!withdrawFromShop(guildId, ctx.ownerUuid, cost)) {
@@ -197,6 +197,11 @@ open class ContainerTradeService(
         val result: ContainerTradeResult.Failure? = null
     )
 
+    private data class DeliveryResult(
+        val leftoverAmount: Int,
+        val addedPerItem: List<Pair<ItemStack, Int>>,
+    )
+
     private fun sellPreconditions(shop: Shop, playerUuid: UUID): SellPreconditions {
         val stall = resolveStall(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
@@ -233,13 +238,8 @@ open class ContainerTradeService(
         }
         if (economy.balance(playerUuid) < cost) return ContainerTradeResult.Failure("Insufficient funds")
 
-        // Remove stock from container *before* charging player — the pre-check
-        // is a snapshot; the container could change in the meantime.
-        // REQ-301: collect the actual container items so they can be delivered
-        // to the player instead of the deserialized template.
         val (collectedItems, removalResult) = removeAndCollectSimilar(ctx.containerInv, sellStack, scaledSell)
         if (removalResult.isNotEmpty()) {
-            // Restore any partially-removed items
             for (item in collectedItems) ctx.containerInv.addItem(item)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
@@ -250,49 +250,46 @@ open class ContainerTradeService(
         }
 
         val guildId = ctx.guildId
-        if (cost > 0L) {
-            val depositSuccess = depositToShop(guildId, ctx.ownerUuid, cost)
-            if (!depositSuccess) {
-                for (item in collectedItems) ctx.containerInv.addItem(item)
-                val playerRefunded = economy.deposit(playerUuid, cost)
-                return ContainerTradeResult.CompensationFailed(
-                    error = guildPaymentFailure(guildId, "Owner deposit failed").reason,
-                    compensation = if (playerRefunded) "Player refunded" else "Partial compensation — player refund failed"
-                )
-            }
+        if (cost > 0L && !depositToShop(guildId, ctx.ownerUuid, cost)) {
+            for (item in collectedItems) ctx.containerInv.addItem(item)
+            val playerRefunded = economy.deposit(playerUuid, cost)
+            return ContainerTradeResult.CompensationFailed(
+                error = guildPaymentFailure(guildId, "Owner deposit failed").reason,
+                compensation = if (playerRefunded) "Player refunded" else "Partial compensation — player refund failed"
+            )
         }
 
-        // Deliver actual container items (REQ-301), not deserialized template
-        var totalLeftoverAmount = 0
-        val addedPerItem = mutableListOf<Pair<ItemStack, Int>>()
-        for (item in collectedItems) {
-            val leftoverAmount = ctx.player.inventory.addItem(item).values.sumOf { it.amount }
-            totalLeftoverAmount += leftoverAmount
-            addedPerItem.add(item to (item.amount - leftoverAmount))
-        }
-        if (totalLeftoverAmount > 0) {
-            // Remove what was actually added using the collected item identities (REQ-301).
-            // Using sellStack (template) would fail isSimilar matching against the
-            // delivered container items, silently leaving duped items with the player.
-            for ((item, added) in addedPerItem) {
-                if (added > 0) {
-                    ctx.player.inventory.removeItem(item.clone().apply { amount = added })
-                }
-            }
+        val delivery = deliverCollectedItems(ctx.player.inventory, collectedItems)
+        if (delivery.leftoverAmount > 0) {
+            removeDeliveredItems(ctx.player.inventory, delivery.addedPerItem)
             val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, collectedItems)
-            val msg = if (rolledBack) {
-                "Trade reversed — check your inventory"
-            } else {
-                "Trade rollback incomplete — contact staff"
-            }
             return ContainerTradeResult.CompensationFailed(
                 error = "Inventory full",
-                compensation = msg
+                compensation = if (rolledBack) "Trade reversed — check your inventory" else "Trade rollback incomplete — contact staff"
             )
         }
 
         fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, scaledSell, cost, shop.id, shop.direction))
         return ContainerTradeResult.Success("Bought ${scaledSell}x for $cost")
+    }
+
+    private fun deliverCollectedItems(inventory: Inventory, collectedItems: List<ItemStack>): DeliveryResult {
+        var leftoverAmount = 0
+        val addedPerItem = mutableListOf<Pair<ItemStack, Int>>()
+        for (item in collectedItems) {
+            val leftover = inventory.addItem(item).values.sumOf { it.amount }
+            leftoverAmount += leftover
+            addedPerItem.add(item to (item.amount - leftover))
+        }
+        return DeliveryResult(leftoverAmount, addedPerItem)
+    }
+
+    private fun removeDeliveredItems(inventory: Inventory, addedPerItem: List<Pair<ItemStack, Int>>) {
+        for ((item, added) in addedPerItem) {
+            if (added > 0) {
+                inventory.removeItem(item.clone().apply { amount = added })
+            }
+        }
     }
 
     private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack) {
