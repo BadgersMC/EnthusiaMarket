@@ -298,7 +298,7 @@ class ContainerTradeServiceTest {
             val container = mockk<Container>(relaxed = true)
             every { container.inventory } returns containerInv
 
-            val mockItem = mockk<ItemStack>(relaxed = true)
+            val mockItem = ItemStack(org.bukkit.Material.DIAMOND, 1)
             val service = buildService(
                 stallRepo = stallRepo,
                 economy = economy,
