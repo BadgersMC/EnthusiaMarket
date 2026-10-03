@@ -138,7 +138,9 @@ dependencies {
     testImplementation("io.papermc.paper:paper-api:26.2.build.129-stable")
     testImplementation("io.mockk:mockk:1.13.11")
     testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.116.1")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.8.1")
+    testImplementation(platform("org.junit:junit-bom:6.0.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
     testImplementation("org.testcontainers:mariadb")
     testImplementation("org.testcontainers:junit-jupiter")
@@ -160,6 +162,9 @@ dependencies {
     }
     compileOnly(lumaguildsClasspath)
     testImplementation(lumaguildsClasspath)
+    // API-only CI builds also exercise the released Bukkit event classes.
+    // Keep the companion API ahead of the runtime fixture on the test classpath.
+    System.getenv("LUMAGUILDS_RUNTIME_JAR")?.let { testRuntimeOnly(files(it)) }
 }
 
 kotlin {
