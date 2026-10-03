@@ -27,6 +27,18 @@ import java.util.UUID
 import kotlin.test.Test
 
 class ContainerStockListenerTest {
+    @Test fun `price and quantity changes redraw with unchanged stock`() {
+        val initial = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(initial)
+        val sign = mockWorld(arrayOf(matchingStock(10)))
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+        every { repo.all() } returns listOf(initial.copy(costAmount = 25, sellAmount = 2))
+        listener.refreshAllSigns()
+        verify(exactly = 2) { sign.line(2, any<Component>()) }
+        verify(exactly = 2) { sign.update(false) }
+    }
 
     @BeforeEach
     fun setupMockBukkit() {

@@ -80,8 +80,6 @@ class StallSellbackService(
     fun quote(stallId: StallId, actor: UUID): QuoteResult {
         val stall = stalls.findById(stallId) ?: return QuoteResult.NotFound
         if (stall.state !in OWNERSHIP_STATES) return QuoteResult.NotOwned
-        // 🔴 Guild-owned stalls: no guild-bank payout target yet → reject.
-        if (stall.owner.type == OwnerType.GUILD) return QuoteResult.NotAuthorised
         if (!stall.canManage(actor, guildProvider)) return QuoteResult.NotAuthorised
 
         val (refund, periods) = computeRefund(stall)
@@ -93,8 +91,6 @@ class StallSellbackService(
     fun execute(stallId: StallId, actor: UUID): ExecuteResult {
         val stall = stalls.findById(stallId) ?: return ExecuteResult.NotFound
         if (stall.state !in OWNERSHIP_STATES) return ExecuteResult.NotOwned
-        // 🔴 Guild-owned stalls: no guild-bank payout target yet → reject.
-        if (stall.owner.type == OwnerType.GUILD) return ExecuteResult.NotAuthorised
         if (!stall.canManage(actor, guildProvider)) return ExecuteResult.NotAuthorised
 
         val (refund, _) = computeRefund(stall)
@@ -112,27 +108,17 @@ class StallSellbackService(
                 nextRentAt = null,
             )
             stalls.save(cleared)
-            ipLimiter.releaseStallByOwnerId(stall.owner.id)
-            // M3 — drop any lingering sell offer on the now-UNOWNED
-            // stall so a follow-up click doesn't trip the
-            // offer-mutex check (matches StallBuyoutService cleanup
-            // pattern: best-effort, logged, never re-thrown).
-            if (offers.findByStall(stallId) != null) {
-                try {
-                    offers.delete(stallId)
-                } catch (cleanupErr: Exception) {
-                    log.warning(
-                        "StallSellbackService.execute: failed to cleanup lingering sell offer for " +
-                            "${stallId.value}. cause=${cleanupErr.message}"
-                    )
-                }
-            }
+
         } catch (e: Exception) {
             return ExecuteResult.Rejected("Stall reset failed; contact an admin")
         }
 
         // Pay refund. If deposit fails, rollback stall to previous state.
-        if (refund > 0 && !economy.deposit(actor, refund)) {
+        val paid = refund == 0L || runCatching {
+            if (stall.owner.type == OwnerType.GUILD) guildProvider.bankDeposit(stall.owner.id, refund)
+            else economy.deposit(UUID.fromString(stall.owner.id), refund)
+        }.getOrDefault(false)
+        if (!paid) {
             try {
                 stalls.save(stall.copy(
                     state = previousState,
@@ -144,6 +130,23 @@ class StallSellbackService(
                 ))
             } catch (_: Exception) { }
             return ExecuteResult.Rejected("Failed to deposit refund of $refund to your account")
+        }
+
+        runCatching { ipLimiter.releaseStallByOwnerId(stall.owner.id) }
+            .onFailure { log.warning("Sellback IP projection cleanup failed: ${it.message}") }
+        // M3 — drop any lingering sell offer on the now-UNOWNED
+        // stall so a follow-up click doesn't trip the
+        // offer-mutex check (matches StallBuyoutService cleanup
+        // pattern: best-effort, logged, never re-thrown).
+        if (runCatching { offers.findByStall(stallId) }.getOrNull() != null) {
+            try {
+                offers.delete(stallId)
+            } catch (cleanupErr: Exception) {
+                log.warning(
+                    "StallSellbackService.execute: failed to cleanup lingering sell offer for " +
+                        "${stallId.value}. cause=${cleanupErr.message}"
+                )
+            }
         }
 
         // Wipe shops bound to the stall.

@@ -298,6 +298,30 @@ class AdminCommands(
         sender.sendMessage(component)
     }
 
+    @Subcommand("bidguild")
+    @Permission("enthusiamarket.auction.bid")
+    fun bidGuild(
+        @Context sender: CommandSender,
+        @Arg("auction") auction: String,
+        @Arg("amount") amount: Long,
+        @Arg("guild") guild: String? = null,
+    ) {
+        val player = sender as? Player ?: return
+        val eligible = auctionService.eligibleGuilds(player.uniqueId)
+        val selected = if (guild == null) eligible.singleOrNull() else eligible.firstOrNull { it.id == guild || it.name.equals(guild, true) }
+        if (selected == null) {
+            sender.sendMessage(lang.msg("admin.bid.failure", "reason" to "Choose an eligible guild by name or ID: ${eligible.joinToString { it.name }}"))
+            return
+        }
+        val result = auctionService.placeBid(AuctionId(auction), player.uniqueId, amount,
+            player.address?.address?.hostAddress ?: "unknown", selected.id)
+        sender.sendMessage(when (result) {
+            is AuctionResult.Success -> lang.msg("admin.bid.success", "amount" to amount, "stall" to result.auction.stallId.value)
+            is AuctionResult.Failure -> lang.msg("admin.bid.failure", "reason" to result.reason)
+            AuctionResult.NotFound -> lang.msg("admin.bid.not_found")
+        })
+    }
+
     @Subcommand("auction startall")
     @Permission("enthusiamarket.admin")
     fun auctionStartAll(
