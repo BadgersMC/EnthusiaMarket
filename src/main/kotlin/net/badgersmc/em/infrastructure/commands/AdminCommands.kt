@@ -308,13 +308,20 @@ class AdminCommands(
     ) {
         val player = sender as? Player ?: return
         val eligible = auctionService.eligibleGuilds(player.uniqueId)
-        val selected = if (guild == null) eligible.singleOrNull() else eligible.firstOrNull { it.id == guild || it.name.equals(guild, true) }
+        val selected = selectBidGuild(eligible, guild)
         if (selected == null) {
             sender.sendMessage(lang.msg("admin.bid.failure", "reason" to "Choose an eligible guild by name or ID: ${eligible.joinToString { it.name }}"))
             return
         }
-        val result = auctionService.placeBid(AuctionId(auction), player.uniqueId, amount,
-            player.address?.address?.hostAddress ?: "unknown", selected.id)
+        val result = auctionService.placeBid(AuctionId(auction), net.badgersmc.em.application.AuctionLifecycleService.BidRequest(player.uniqueId, amount,
+            player.address?.address?.hostAddress ?: "unknown", selected.id))
+        sendGuildBidResult(sender, result, amount)
+    }
+
+    private fun selectBidGuild(eligible: List<net.badgersmc.em.domain.ports.GuildProvider.GuildRef>, name: String?) =
+        if (name == null) eligible.singleOrNull() else eligible.firstOrNull { it.id == name || it.name.equals(name, true) }
+
+    private fun sendGuildBidResult(sender: CommandSender, result: AuctionResult, amount: Long) {
         sender.sendMessage(when (result) {
             is AuctionResult.Success -> lang.msg("admin.bid.success", "amount" to amount, "stall" to result.auction.stallId.value)
             is AuctionResult.Failure -> lang.msg("admin.bid.failure", "reason" to result.reason)

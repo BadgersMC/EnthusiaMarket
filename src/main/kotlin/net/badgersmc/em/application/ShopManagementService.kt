@@ -32,15 +32,7 @@ class ShopManagementService(
     /** Check field-specific authority against the current row when a menu submits. */
     fun saveEdits(actor: UUID, draft: Shop, admin: Boolean = false): Boolean {
         val current = shopRepository.findById(draft.id) ?: return false
-        if (!admin) {
-            if (access?.isGuildShop(current) == true) {
-                val priceChanged = current.costAmount != draft.costAmount || current.costItem != draft.costItem
-                val stockChanged = stockChanged(current, draft)
-                if (priceChanged && !access.allows(current, actor, net.badgersmc.em.domain.ports.GuildProvider.GuildPermission.MODIFY_SHOP_PRICES)) return false
-                if (stockChanged && !access.allows(current, actor, net.badgersmc.em.domain.ports.GuildProvider.GuildPermission.EDIT_SHOP_STOCK)) return false
-                if (!canEdit(current, actor) && !canDelete(current, actor)) return false
-            } else if (!canEdit(current, actor)) return false
-        }
+        if (!admin && !maySaveEdits(actor, current, draft)) return false
         shopRepository.upsert(current.copy(
             sellItem = draft.sellItem, sellAmount = draft.sellAmount, costItem = draft.costItem,
             costAmount = draft.costAmount, hopperAllowIn = draft.hopperAllowIn,
@@ -48,6 +40,16 @@ class ShopManagementService(
         ))
         return true
     }
+
+    private fun maySaveEdits(actor: UUID, current: Shop, draft: Shop): Boolean {
+        if (access?.isGuildShop(current) != true) return canEdit(current, actor)
+        if (priceChanged(current, draft) && !canEdit(current, actor)) return false
+        if (stockChanged(current, draft) && !canDelete(current, actor)) return false
+        return canEdit(current, actor) || canDelete(current, actor)
+    }
+
+    private fun priceChanged(current: Shop, draft: Shop): Boolean =
+        current.costAmount != draft.costAmount || current.costItem != draft.costItem
 
     private fun stockChanged(current: Shop, draft: Shop): Boolean =
         current.sellItem != draft.sellItem || current.sellAmount != draft.sellAmount ||

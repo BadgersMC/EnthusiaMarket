@@ -7,7 +7,6 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.lumalyte.lg.api.GuildLookup
 import net.lumalyte.lg.api.GuildSummary
 import net.lumalyte.lg.api.GuildVisualLookup
-import net.lumalyte.lg.domain.entities.RankPermission
 import org.bukkit.Bukkit
 import java.util.UUID
 
@@ -143,7 +142,7 @@ class LumaGuildsGuildProvider : GuildProvider {
         val guildUuid = parseUuid(guildId) ?: return false
         val lgPermission = permission.toRankPermission() ?: return false
         return try {
-            lookup?.hasShopPermission(player, guildUuid, lgPermission.name) ?: false
+            lookup?.hasShopPermission(player, guildUuid, lgPermission) ?: false
         } catch (e: Exception) {
             // Fail closed, but leave a trace — a thrown check here is unexpected
             // (the GuildLookup impl already fails closed internally).
@@ -199,12 +198,12 @@ class LumaGuildsGuildProvider : GuildProvider {
 }
 
 /**
- * Maps EM's [GuildProvider.GuildPermission] to LumaGuilds [RankPermission].
+ * Maps EM's [GuildProvider.GuildPermission] to LumaGuilds public API permission names.
  * Returns null if no direct mapping exists.
  */
-private fun GuildProvider.GuildPermission.toRankPermission(): RankPermission? = when (this) {
-    GuildProvider.GuildPermission.MANAGE_SHOPS -> RankPermission.EDIT_SHOP_STOCK
-    GuildProvider.GuildPermission.ACCESS_SHOP_CHESTS -> RankPermission.ACCESS_SHOP_CHESTS
-    GuildProvider.GuildPermission.EDIT_SHOP_STOCK -> RankPermission.EDIT_SHOP_STOCK
-    GuildProvider.GuildPermission.MODIFY_SHOP_PRICES -> RankPermission.MODIFY_SHOP_PRICES
+private fun GuildProvider.GuildPermission.toRankPermission(): String? = when (this) {
+    GuildProvider.GuildPermission.MANAGE_SHOPS -> "EDIT_SHOP_STOCK"
+    GuildProvider.GuildPermission.ACCESS_SHOP_CHESTS -> "ACCESS_SHOP_CHESTS"
+    GuildProvider.GuildPermission.EDIT_SHOP_STOCK -> "EDIT_SHOP_STOCK"
+    GuildProvider.GuildPermission.MODIFY_SHOP_PRICES -> "MODIFY_SHOP_PRICES"
 }

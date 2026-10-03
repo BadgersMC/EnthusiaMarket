@@ -39,6 +39,10 @@ class GuildAuctionTest {
         every { guilds.bankWithdraw(guildId, any()) } returns true
         every { guilds.bankDeposit(guildId, any()) } returns true
         every { guilds.memberIds(guildId) } returns setOf(actor, secondActor)
+        setupEconomyAndService()
+    }
+
+    private fun setupEconomyAndService() {
         every { economy.withdraw(any(), any()) } returns true
         every { economy.deposit(any(), any()) } returns true
         every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
@@ -53,7 +57,7 @@ class GuildAuctionTest {
     }
 
     @Test fun `guild escrow and award never use personal funds`() {
-        assertIs<AuctionResult.Success>(service.placeBid(auction.id, actor, 100, "ip", guildId))
+        assertIs<AuctionResult.Success>(service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId)))
         assertEquals(guildId, auction.highBid?.guildId)
         service.settleExpired()
         verify { guilds.bankWithdraw(guildId, 100) }
@@ -63,14 +67,14 @@ class GuildAuctionTest {
     }
 
     @Test fun `different member rebidding for same guild charges delta`() {
-        service.placeBid(auction.id, actor, 100, "ip", guildId)
-        service.placeBid(auction.id, secondActor, 120, "ip", guildId)
+        service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId))
+        service.placeBid(auction.id, AuctionLifecycleService.BidRequest(secondActor, 120, "ip", guildId))
         verify { guilds.bankWithdraw(guildId, 20) }
         verify(exactly = 0) { guilds.bankDeposit(any(), any()) }
     }
 
     @Test fun `switching same actor from guild to personal refunds guild`() {
-        service.placeBid(auction.id, actor, 100, "ip", guildId)
+        service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId))
         service.placeBid(auction.id, actor, 120, "ip")
         verify { economy.withdraw(actor, 120) }
         verify { guilds.bankDeposit(guildId, 100) }
@@ -78,13 +82,13 @@ class GuildAuctionTest {
 
     @Test fun `failed auction save refunds the original guild payer`() {
         every { auctions.save(any()) } throws IllegalStateException("disk")
-        assertIs<AuctionResult.Failure>(service.placeBid(auction.id, actor, 100, "ip", guildId))
+        assertIs<AuctionResult.Failure>(service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId)))
         verify { guilds.bankDeposit(guildId, 100) }
         verify(exactly = 0) { economy.deposit(actor, any()) }
     }
 
     @Test fun `revoked guild authority closes and refunds without award`() {
-        service.placeBid(auction.id, actor, 100, "ip", guildId)
+        service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId))
         every { guilds.isMember(actor, guildId) } returns false
         service.settleExpired()
         assertEquals(AuctionState.CLOSED, auction.state)
@@ -96,7 +100,7 @@ class GuildAuctionTest {
 
     @Test fun `unauthorised guild bids never move money`() {
         every { guilds.hasShopPermission(actor, guildId, any()) } returns false
-        assertIs<AuctionResult.Failure>(service.placeBid(auction.id, actor, 100, "ip", guildId))
+        assertIs<AuctionResult.Failure>(service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId)))
         verify(exactly = 0) { guilds.bankWithdraw(any(), any()) }
     }
 }

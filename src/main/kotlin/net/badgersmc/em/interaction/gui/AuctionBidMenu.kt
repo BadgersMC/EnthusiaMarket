@@ -96,8 +96,8 @@ class AuctionBidMenu(
             return
         }
 
-        val message = when (val result = auctionService.placeBid(auction.id, player.uniqueId, amount,
-            player.address?.address?.hostAddress ?: "unknown", guildTarget)) {
+        val message = when (val result = auctionService.placeBid(auction.id, AuctionLifecycleService.BidRequest(player.uniqueId, amount,
+            player.address?.address?.hostAddress ?: "unknown", guildTarget))) {
             is AuctionResult.Success -> lang.msg(
                 "admin.bid.success",
                 "amount" to (result.auction.highBid?.amount ?: amount),
@@ -153,8 +153,8 @@ class AuctionBidMenu(
                 player.sendMessage(lang.msg("gui.auction_bid.no_permission"))
                 return true
             }
-            val result = auctionService.placeBid(auction.id, player.uniqueId, amount,
-                player.address?.address?.hostAddress ?: "unknown", guild)
+            val result = auctionService.placeBid(auction.id, AuctionLifecycleService.BidRequest(player.uniqueId, amount,
+                player.address?.address?.hostAddress ?: "unknown", guild))
             player.sendMessage(formatBidResult(result, amount, lang))
             return true
         }

@@ -89,32 +89,30 @@ open class ShopCreateListener(
     }
 
     private fun interactionBlock(event: PlayerInteractEvent): org.bukkit.block.Block? {
-        // Must be left-click while sneaking
-        if (event.hand != org.bukkit.inventory.EquipmentSlot.HAND || !event.player.isSneaking) return null
-        val spearAir = event.action == Action.LEFT_CLICK_AIR &&
-            event.player.inventory.itemInMainHand.type.name.endsWith("_SPEAR")
-        if (event.action != Action.LEFT_CLICK_BLOCK && !spearAir) return null
-
-        val block = event.clickedBlock ?: if (spearAir) event.player.getTargetBlockExact(6) else null
-        return block
+        if (event.hand != org.bukkit.inventory.EquipmentSlot.HAND) return null
+        if (!event.player.isSneaking) return null
+        return when (event.action) {
+            Action.LEFT_CLICK_BLOCK -> event.clickedBlock
+            Action.LEFT_CLICK_AIR -> spearTarget(event.player)
+            else -> null
+        }
     }
+
+    private fun spearTarget(player: Player): org.bukkit.block.Block? =
+        if (player.inventory.itemInMainHand.type.name.endsWith("_SPEAR")) player.getTargetBlockExact(6) else null
 
     private fun creationTarget(event: PlayerInteractEvent): Pair<org.bukkit.block.Block, org.bukkit.block.Block>? {
         val block = interactionBlock(event) ?: return null
-        val state = block.state
-
-        // Must be a wall sign
-        if (state !is Sign || block.blockData !is WallSign) return null
+        val wallSignData = wallSign(block) ?: return null
 
         // Must not already be a registered shop
         val loc = block.location
-        if (shopRepository.findBySign(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ) != null) {
+        if (registeredShopAt(loc)) {
             event.player.sendMessage(lang.msg("shop.create.already_shop"))
             return null
         }
 
         // Find attached container via the sign's attached block face
-        val wallSignData = block.blockData as WallSign
         val facing = wallSignData.facing
         val attachedBlock = block.getRelative(facing.oppositeFace)
 
@@ -125,6 +123,12 @@ open class ShopCreateListener(
 
         return block to attachedBlock
     }
+
+    private fun wallSign(block: org.bukkit.block.Block): WallSign? =
+        if (block.state is Sign) block.blockData as? WallSign else null
+
+    private fun registeredShopAt(loc: Location): Boolean =
+        shopRepository.findBySign(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ) != null
 
     companion object {
         /**

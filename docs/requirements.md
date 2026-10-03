@@ -537,29 +537,36 @@ return the stall to UNOWNED.
 2. Use `/spear:spec` to add or revise REQ entries â€” it runs the EARS validator (`plugins/spear/hooks/lib/ears.mjs`) and assigns the next free ID.
 3. Never reuse an ID. When a requirement is obsolete, strike it through and note the deprecation date; do not renumber.
 
-
 ## Discord Market and guild-stall audit (2026-10-03)
 
-### REQ-323 — Current guild authority
+### REQ-323 â€” Current guild authority
+
 **State-driven.** WHILE a shop belongs to an active guild stall THE SYSTEM SHALL check current membership and the field-specific rank permission for every chest read, stock change, price edit, creation and deletion without granting a creator bypass.
 
-### REQ-324 — Guild roster projection
+### REQ-324 â€” Guild roster projection
+
 **Event-driven.** WHEN guild membership changes THE SYSTEM SHALL replace the active guild stalls' WorldGuard rosters including empty rosters and offline members.
 
-### REQ-325 — Guild sellback
+### REQ-325 â€” Guild sellback
+
 **Event-driven.** WHEN an authorised member sells back a guild stall THE SYSTEM SHALL refund the owning guild bank and preserve ownership and projections when payment fails.
 
-### REQ-326 — Guild auction provenance
+### REQ-326 â€” Guild auction provenance
+
 **Event-driven.** WHEN a member bids for a guild THE SYSTEM SHALL persist its funding target, debit and refund that guild, revalidate membership and authority before settlement, and award the stall to that guild.
 
-### REQ-327 — Submitted edit authority and signs
+### REQ-327 â€” Submitted edit authority and signs
+
 **Event-driven.** WHEN a Java or Bedrock shop edit is submitted THE SYSTEM SHALL recheck current field-specific authority and refresh all displayed sign fields even when stock is unchanged.
 
-### REQ-328 — Spear creation
+### REQ-328 â€” Spear creation
+
 **Event-driven.** WHEN a sneaking player holding a spear emits a left-click air interaction aimed at an unregistered shop sign THE SYSTEM SHALL resolve the first target within six blocks and apply normal creation checks.
 
-### REQ-329 — Creature container stock
+### REQ-329 â€” Creature container stock
+
 **Ubiquitous.** THE SYSTEM SHALL ignore incidental creature identity and residence timers when matching bucketed animals and occupied hives while preserving variants, occupancy, custom metadata and actual delivered inventory items.
 
-### REQ-330 — Visitor and hopper boundaries
+### REQ-330 â€” Visitor and hopper boundaries
+
 **Ubiquitous.** THE SYSTEM SHALL permit public workstation use and written lectern-book reading while guarding book removal, decoration mutations, shop inventories and both halves of hopper-connected double chests.

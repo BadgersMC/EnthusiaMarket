@@ -1090,14 +1090,13 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Description: Update operator/developer docs after implementation with the authoritative active-owner states, transfer cleanup rules, moderation boundary, reconciliation behavior, and /em rent extendall usage.
   Evidence: `docs/ownership-integrity-26.2.md; docs/implementation.md Â§3.11-3.12; docs/db-schema.md V029; src/main/resources/migrations/V029__ownership_integrity_reconciliation.sql; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/main/resources/paper-plugin.yml; src/main/resources/lang/en_US.yml`
 
-
 ## Local Discord bug-fix review (2026-10-03)
 
-- [x] **TDD-327** — REQ-323/324: enforce current guild permissions and roster projection; GuildShopAccessTest and GuildStallProtectionTest.
-- [x] **TDD-328** — REQ-325/326: guild-bank API, sellback, durable guild auction escrow/awards; GuildSellbackTest, GuildAuctionTest, AuctionRepositorySqlTest and LumaGuilds GuildLookupImplTest.
-- [x] **TDD-329** — REQ-327/328: Java/Bedrock authority checks, sign redraws and spear creation; ContainerStockListenerTest, ShopCreateListenerTest and editor tests.
-- [x] **TDD-330** — REQ-329/330: creature matching, visitor boundaries and double-chest hopper guard; SpecialItemMatchTest and listener regressions.
-- [x] **DOC-330** — Publish a local review report with test/build evidence and separate remaining live acceptance. No upload or production changes.
+- [x] **TDD-327** â€” REQ-323/324: enforce current guild permissions and roster projection; GuildShopAccessTest and GuildStallProtectionTest.
+- [x] **TDD-328** â€” REQ-325/326: guild-bank API, sellback, durable guild auction escrow/awards; GuildSellbackTest, GuildAuctionTest, AuctionRepositorySqlTest and LumaGuilds GuildLookupImplTest.
+- [x] **TDD-329** â€” REQ-327/328: Java/Bedrock authority checks, sign redraws and spear creation; ContainerStockListenerTest, ShopCreateListenerTest and editor tests.
+- [x] **TDD-330** â€” REQ-329/330: creature matching, visitor boundaries and double-chest hopper guard; SpecialItemMatchTest and listener regressions.
+- [x] **DOC-330** â€” Publish a local review report with test/build evidence and separate remaining live acceptance. No upload or production changes.
 
 Evidence is a brownfield regression review; no historical test-first claim is made for implementation already written during this audit.
 

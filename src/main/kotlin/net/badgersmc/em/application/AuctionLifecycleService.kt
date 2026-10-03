@@ -287,47 +287,46 @@ class AuctionLifecycleService(
             it.hasShopPermission(actor, guildId, net.badgersmc.em.domain.ports.GuildProvider.GuildPermission.MANAGE_SHOPS)
     } ?: false
 
-    fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String, guildId: String? = null): AuctionResult {
-        if (guildId != null && !mayManageGuild(playerUuid, guildId)) return AuctionResult.Failure("You cannot bid for this guild")
+    data class BidRequest(val actor: UUID, val amount: Long, val ip: String, val guildId: String? = null)
+
+    fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult =
+        placeBid(auctionId, BidRequest(playerUuid, amount, ip))
+
+    fun placeBid(auctionId: AuctionId, request: BidRequest): AuctionResult {
+        if (request.guildId != null && !mayManageGuild(request.actor, request.guildId)) return AuctionResult.Failure("You cannot bid for this guild")
         return try {
-            moderationPolicy.withAcquisitionPermit(playerUuid) {
-                placeBidWithPermit(auctionId, playerUuid, amount, ip, guildId)
-            }
+            moderationPolicy.withAcquisitionPermit(request.actor) { placeBidWithPermit(auctionId, request) }
         } catch (blocked: MarketAcquisitionBlockedException) {
             AuctionResult.Failure(blocked.message ?: "Market acquisitions are restricted")
         }
     }
 
-    private fun placeBidWithPermit(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String, guildId: String?): AuctionResult {
+    private fun placeBidWithPermit(auctionId: AuctionId, request: BidRequest): AuctionResult {
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
-        if (mutationGate.isStallLocked(auction.stallId.value)) {
-            return AuctionResult.Failure("This stall is temporarily unavailable")
-        }
-
-        if (auction.state != AuctionState.OPEN) {
-            return AuctionResult.Failure("Auction is not open")
-        }
-
-        val reservation = ipLimiter.acquireAuction(ip, auction.id.value)
-        if (!reservation.allowed) {
-            return AuctionResult.Failure("You already have an active bid on another auction.")
-        }
+        if (mutationGate.isStallLocked(auction.stallId.value)) return AuctionResult.Failure("This stall is temporarily unavailable")
+        if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is not open")
+        val reservation = ipLimiter.acquireAuction(request.ip, auction.id.value)
+        if (!reservation.allowed) return AuctionResult.Failure("You already have an active bid on another auction.")
         var completed = false
         try {
-            val updated = try {
-                val next = auction.placeBid(playerUuid, amount, clock.instant())
-                next.copy(highBid = next.highBid?.copy(guildId = guildId))
-            } catch (e: IllegalArgumentException) {
-                return AuctionResult.Failure(e.message ?: "Bid rejected")
-            } catch (e: IllegalStateException) {
-                return AuctionResult.Failure(e.message ?: "Bid rejected")
-            }
-            val result = finalizeBid(auction, updated, playerUuid, amount)
+            val result = applyBid(auction, request)
             completed = result is AuctionResult.Success
             return result
         } finally {
             if (!completed) ipLimiter.rollback(reservation.reservation)
         }
+    }
+
+    private fun applyBid(auction: Auction, request: BidRequest): AuctionResult {
+        val updated = try {
+            val next = auction.placeBid(request.actor, request.amount, clock.instant())
+            next.copy(highBid = next.highBid?.copy(guildId = request.guildId))
+        } catch (e: IllegalArgumentException) {
+            return AuctionResult.Failure(e.message ?: "Bid rejected")
+        } catch (e: IllegalStateException) {
+            return AuctionResult.Failure(e.message ?: "Bid rejected")
+        }
+        return finalizeBid(auction, updated, request.actor, request.amount)
     }
 
     /**

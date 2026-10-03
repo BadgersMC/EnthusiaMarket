@@ -11,8 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXUS_REF: 057836befb9e35aa252cf90104030ec86f28b33f
-      LUMAGUILDS_VERSION: 3.0.0
-      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.0.jar
+      LUMAGUILDS_REF: 07a599fa1f732d9f4008ec4f8e02a25d0eda54a1 # public bank API, LumaGuilds PR 197
+      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-api.jar
+      LUMAGUILDS_RUNTIME_JAR: ${{ github.workspace }}/libs/LumaGuilds-runtime.jar
     steps:
       - uses: actions/checkout@v4
 
@@ -36,16 +37,27 @@ jobs:
           chmod +x gradlew
           ./gradlew publishToMavenLocal --no-daemon --console=plain
 
-      # Market consumes LumaGuilds as an API/runtime dependency. Do not rebuild the
-      # RoseChat -> LumaGuilds graph here; use the released LumaGuilds artifact.
-      - name: Download LumaGuilds 3 compile dependency
+      # Compile the real public API from the exact companion commit. The API is
+      # JDK-only; its separate build avoids the runtime plugin dependency graph.
+      # This validates the coordinated change before any plugin release is uploaded.
+      - name: Build pinned LumaGuilds public API
         run: |
+          git clone https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
+          git -C "$RUNNER_TEMP/lumaguilds" checkout "$LUMAGUILDS_REF"
+          ./gradlew -p ci/lumaguilds-api jar \
+            -PlumaSourceDir="$RUNNER_TEMP/lumaguilds/src/main/kotlin" --no-daemon
           mkdir -p libs
+          cp ci/lumaguilds-api/build/libs/LumaGuilds-api.jar "$LUMAGUILDS_JAR"
+
+      # Preserve reflection/event discovery coverage against a real released plugin.
+      # The companion API above is first on the test classpath; bank implementation
+      # behavior is covered in the companion LumaGuilds PR, not by this fixture.
+      - name: Download LumaGuilds event runtime fixture
+        run: |
           curl --fail --location --silent --show-error \
-            -o "$LUMAGUILDS_JAR" \
-            "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
-          test -s "$LUMAGUILDS_JAR"
-          ls -lh "$LUMAGUILDS_JAR"
+            -o "$LUMAGUILDS_RUNTIME_JAR" \
+            "https://github.com/BadgersMC/LumaGuilds/releases/download/v3.0.14/LumaGuilds-3.0.14.jar"
+          test -s "$LUMAGUILDS_RUNTIME_JAR"
 
       # detekt 1.23.8 does not support running on JDK 25. Keep the production
       # build green on the required 26.2 toolchain; migrate detekt to 2.x separately.
