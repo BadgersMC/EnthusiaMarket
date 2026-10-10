@@ -40,8 +40,7 @@ class FinderTrailTracker {
         val plans = linkedMapOf<UUID, Frame>()
         val players = active.keys.toList()
         if (players.isEmpty()) return plans
-        val ordered = players.drop(offset % players.size) + players.take(offset % players.size)
-        offset = (offset + 1) % players.size
+        val ordered = order(players)
         val context = RenderContext(now, settings.copy(outline = settings.outline.normalized()))
         var remaining = settings.budget.coerceAtLeast(0)
         for (player in ordered) {
@@ -53,6 +52,12 @@ class FinderTrailTracker {
             remaining -= frame.direction.size + frame.outline.size
         }
         return plans
+    }
+
+    private fun order(players: List<UUID>): List<UUID> {
+        val ordered = players.drop(offset % players.size) + players.take(offset % players.size)
+        offset = (offset + 1) % players.size
+        return ordered
     }
 
     private fun origin(entry: Active, context: RenderContext,

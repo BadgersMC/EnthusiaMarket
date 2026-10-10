@@ -73,19 +73,20 @@ class StallEffectGuard(
             lastAllowed[player.uniqueId] = player.location.clone()
             return
         }
-        val previous = lastAllowed[player.uniqueId]
-        if (previous != null && allowedDestination(player, previous)) {
-            player.teleport(previous)
-            return
-        }
-        val spawn = player.world.spawnLocation
-        if (allowedDestination(player, spawn)) player.teleport(spawn)
+        val candidate = escapeDestination(player) ?: return
+        player.teleport(candidate)
     }
 
-    private fun allowedDestination(player: Player, location: org.bukkit.Location): Boolean {
-        return location.world?.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4) == true &&
-            permissions.allowed(player, location, StallCapability.ENTRY)
+    private fun escapeDestination(player: Player): org.bukkit.Location? {
+        for (location in listOfNotNull(lastAllowed[player.uniqueId], player.world.spawnLocation)) {
+            if (allowedDestination(player, location)) return location
+        }
+        return null
     }
+
+    private fun allowedDestination(player: Player, location: org.bukkit.Location): Boolean =
+        location.world?.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4) == true &&
+            permissions.allowed(player, location, StallCapability.ENTRY)
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onEffect(event: EntityPotionEffectEvent) {

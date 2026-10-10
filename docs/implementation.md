@@ -270,3 +270,17 @@ Both command adapters use the shared parser/matcher/completion/ticker behavior. 
 ## Private finder outline (REQ-381/382)
 
 RegionProvider exposes an optional platform-free Footprint; WorldGuard supplies cuboid outer edges or polygon block-center vertices and returns null for unsupported geometry. FinderTrailService captures it once on selection. FinderOutlinePlanner samples bottom/top footprint edges around shop height, prioritizes corners/marker and widens spacing under caps. FinderTrailTracker owns both direction and bounded arrival phases, replacement and one shared rotating particle budget. The Bukkit adapter normalizes color/size and sends END_ROD direction/DUST outline particles only through the target Player, skipping unloaded chunks. The existing general ParticleBorderService is unchanged. No SQL, terrain load, entity persistence, block mutation, permission or trade changes are introduced.
+
+## Guild-shop XP (REQ-342)
+
+See [guild-shop-xp.md](guild-shop-xp.md) for policy, payment boundary, journal states and SPEAR evidence.
+
+## Guild stall accounting (REQ-343, REQ-344 and REQ-383)
+
+Plain domain values allocate FIFO units and exact integer payment shares. Paper
+adapters capture immutable guild/stall/item/actor observations; the single-worker
+forced-file outbox orders their transactional SQL delivery. Additive migration
+V033 stores receipt IDs, remaining lots, stock events and sale attribution.
+Reporting adapters authorize through the existing GuildProvider and reuse date
+window values. No economic write path or XP policy is added by reporting.
+See [stall-accounting.md](stall-accounting.md) for proof and release boundaries.
