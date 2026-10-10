@@ -12,8 +12,6 @@
 - [x] HISTORY-DURABILITY: REQ-348/349/350; forced local records, bounded delivery and transactional receipts. Combined #197/#198/#200/#201 source passed 869 cases, zero failures/errors, twelve external skips; all eleven DB cases executed separately on isolated MariaDB. Paired companion runtime contract passed. See history-durability-verification.md.
 - [x] HISTORY-REVIEW: #202 published; prior Codacy finding resolved. Prepared guild stack incorporated and migration fixture conflict resolved; merge rehearsal with #199/#203/#204 passed 885 cases and Detekt. Fresh combined-head hosted checks pending. Dependencies #197/#198/#200/#201 plus Guilds #212 release and production/client acceptance remain separate.
 
-- [~] **TDD-340** Guild stall read API (REQ-340/341): API, current-member authority shared with PR #197, ownership filtering, offline roster freshness, denied/failed reads, held stalls and asynchronous boundaries implemented. Evidence: docs/guild-stall-api.md, GuildStallQueryTest and GuildStallReadProviderTest; clean full and focused local checks passed. Deliver as dependent canonical PR; hosted final-head/live acceptance remain separate. No merge or production change. Project-local EARS/state helpers are absent.
-
 **Date:** 2026-05-24
 **Status:** Bootstrap (emitted by `/spear:init`; extend via `/spear:spec`)
 
@@ -1168,5 +1166,5 @@ See [guild-shop-xp.md](guild-shop-xp.md) for policy, payment boundary, journal s
 
 - [x] FINDER-381 - REQ-381/382: configurable private selected-stall outline and arrival phase; manual SPEAR evidence in finder-outline-verification.md. Initial direction-only planning surface ran three new tests with three failures and zero errors/skips; 17 focused checks pass. Clean 925-case build plus final 927-case suite after two Nexus configuration tests passes with zero failures/errors and eight unchanged external skips; architecture and Java 21 Detekt pass. Interactive mobile preview accompanies the change. Hosted approval/review and native Java/Bedrock acceptance remain separate gates; source implementation is complete.
 
-- [x] STALL-ACCOUNTING — REQ-343, REQ-344 and REQ-383: approved FIFO attribution and read-only contributor/gross-sales reports, conservative unknown stock, durable ordered observation delivery, date windows and optional server-local CSV.
+- [x] STALL-ACCOUNTING — REQ-384, REQ-385 and REQ-383: approved FIFO attribution and read-only contributor/gross-sales reports, conservative unknown stock, durable ordered observation delivery, date windows and optional server-local CSV.
   - Tag: TDD; Evidence: docs/stall-accounting.md. Full paired clean suite: 895 tests, zero failures/errors, 12 unrelated skips; new native MariaDB accounting case executed without skips. Detekt passed on analyzer Java 22, bytecode/tests on Java 25/Paper 26.2. No local EARS/state helpers exist; manual records maintained. Exact-head hosted results, canonical dependency integration and real client acceptance remain separate. Payouts, XP and production remain unchanged.

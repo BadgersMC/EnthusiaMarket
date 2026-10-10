@@ -275,7 +275,7 @@ RegionProvider exposes an optional platform-free Footprint; WorldGuard supplies 
 
 See [guild-shop-xp.md](guild-shop-xp.md) for policy, payment boundary, journal states and SPEAR evidence.
 
-## Guild stall accounting (REQ-343, REQ-344 and REQ-383)
+## Guild stall accounting (REQ-384, REQ-385 and REQ-383)
 
 Plain domain values allocate FIFO units and exact integer payment shares. Paper
 adapters capture immutable guild/stall/item/actor observations; the single-worker

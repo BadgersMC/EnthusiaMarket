@@ -679,11 +679,11 @@ WHEN a player selects a shop search result THE SYSTEM SHALL retain its existing 
 
 WHEN a player arrives THE SYSTEM SHALL stop direction particles and retain the private outline for a configurable bounded arrival period (default ten seconds). Cancellation, expiry, disconnect, death, world change and shutdown SHALL clear both. Operators SHALL configure outline enablement, distance, height, spacing, per-player particle limit, color, size and shop marker; existing global finder budgets and limits SHALL apply. Invalid settings SHALL be normalized safely; disabled outlines SHALL retain existing finder behavior.
 
-### REQ-343 — Guild stock attribution
+### REQ-384 — Guild stock attribution
 
 WHEN a currently authorized member manually adds provably identifiable guild-shop stock THE SYSTEM SHALL record the contributor, SHALL attribute completed SELL units FIFO, and SHALL mark existing, drifted, mixed, automated or shared same-item container stock unattributed. BUY trades SHALL NOT count as sales revenue. Taxes, rewards, ownership and payouts SHALL remain unchanged.
 
-### REQ-344 — Read-only accounting reports
+### REQ-385 — Read-only accounting reports
 
 WHEN a current guild shop manager requests a stall report THE SYSTEM SHALL verify active guild ownership, membership and shop authority before query and disclosure, SHALL support all/today/inclusive date ranges, and SHALL label net stocked units and gross customer payment rather than profit. Reports and optional CSV SHALL explicitly use the top 100 contributor/material rows. CSV SHALL neutralize formula cells and remain server-local.
 
