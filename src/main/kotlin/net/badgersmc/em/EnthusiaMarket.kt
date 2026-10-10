@@ -330,6 +330,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // Phase 5b: Register /finditem as a top-level Paper Brigadier command.
         // @Subcommand("") crashes Nexus; we bypass it entirely.
         net.badgersmc.em.infrastructure.commands.FindItemRegistrar.register(this, itemMaterialNames, ctx)
+        net.badgersmc.em.infrastructure.commands.GuildSalesRegistrar.register(this, ctx)
 
         // Phase 6: Discover every @Listener-annotated bean in the scan
         stallEffectGuard = ctx.getBean<net.badgersmc.em.infrastructure.listeners.StallEffectGuard>()

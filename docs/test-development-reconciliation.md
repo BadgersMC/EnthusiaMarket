@@ -28,3 +28,9 @@ Engine/architecture: infrastructure startup wiring registers each concrete servi
 Refine: full check/Detekt/shadow packaging and replacement TEST startup evidence are recorded in the operation receipt. The earlier 14 native financial/database contract checks remain applicable to the unchanged financial engine; the wiring regressions add container proof. Client acceptance and canonical merge remain separate.
 
 Final startup-fix local verification: 981 suite cases, zero failures/errors, 14 optional external skips; both real-container regressions, architecture checks and Detekt passed. Canonical shadow packaging passed with version 1.0.53-dev.reconciled.2.
+
+TEST-DEV-003: When Paper dispatches its command registration lifecycle, Market SHALL register `/guildsales <stall> [period]`, `/stallsales`, exports and ranges without stopping the server, preserving the report permission and existing authorization/persistence semantics.
+
+Prove: TEST version reconciled.2 resolved the DI issue and enabled, then Paper stopped startup because Nexus attempted `last()` on the empty literal path from `@Subcommand("")` in GuildSalesCommand. The existing FindItemRegistrar already documents this unsupported Nexus pattern. Engine/architecture: GuildSalesCommand remains an injected infrastructure service; a Paper lifecycle adapter builds its Brigadier tree directly, including execution at the stall argument when period is omitted. Real Brigadier execution tests cover all six reporting paths and denied permissions. The accounting engine is unchanged. TEST was temporarily restored with its previous working Market jar during verification; all candidates and original data remain preserved.
+
+Final command-fix local verification: 983 suite cases, zero failures/errors, 14 optional external skips; real-container and real-Brigadier regressions, architecture checks and Detekt passed. Canonical shadow packaging passed with version 1.0.53-dev.reconciled.3.

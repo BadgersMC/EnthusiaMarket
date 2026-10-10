@@ -15,9 +15,8 @@ internal class GuildSalesCommandTest {
     @Test fun registeredPathsAndCsvEscaping() {
         WebsiteSyncSecretArgumentRegistration.register()
         MarketSearchArgumentRegistration.register()
-        val command = PaperCommandScanner().scanCommands("net.badgersmc.em.infrastructure.commands", javaClass.classLoader)
-            .single { it.annotation.name == "guildsales" }
-        assertEquals(setOf("", "export", "range", "export range"), command.subcommands.map { it.path.joinToString(" ") }.toSet())
+        val commands = PaperCommandScanner().scanCommands("net.badgersmc.em.infrastructure.commands", javaClass.classLoader)
+        assertFalse(commands.any { it.annotation.name == "guildsales" }, "Root-argument commands must bypass Nexus")
         val service = GuildSalesCommand(mockk(), mockk(), mockk(), mockk(), mockk())
         assertEquals("\"'=SUM(A1)\"", service.csvCell("=SUM(A1)"))
         assertEquals("\"diamond, \"\"named\"\"\"", service.csvCell("diamond, \"named\""))

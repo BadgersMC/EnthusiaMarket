@@ -5,9 +5,7 @@ import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.*
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
-import net.badgersmc.nexus.commands.annotations.*
-import net.badgersmc.nexus.paper.commands.annotations.Subcommand
-import net.badgersmc.nexus.paper.commands.annotations.Permission
+import net.badgersmc.nexus.annotations.Service
 import net.badgersmc.nexus.i18n.LangService
 import org.bukkit.Bukkit
 import org.bukkit.command.CommandSender
@@ -19,27 +17,19 @@ import java.time.ZoneId
 import java.util.UUID
 
 /** Read-only manager reporting with current authority checked before query and disclosure. */
-@Command(name = "guildsales", description = "Guild stall contribution and gross sales report", aliases = ["stallsales"])
+@Service
 class GuildSalesCommand(private val repository: StallAccountingRepository, private val stalls: StallRepository,
     private val guilds: GuildProvider, private val lang: LangService, private val plugin: Plugin) {
     private data class Request(val stall: String, val period: String = "all", val from: String = "", val to: String = "", val csv: Boolean = false)
     private data class Query(val request: Request, val guild: String, val window: ShopHistoryWindow)
 
-    @Subcommand("")
-    @Permission("enthusiamarket.shop.use")
-    fun report(@Context sender: CommandSender, @Arg("stall") stall: String, @Arg("period") period: String = "all") = execute(sender, Request(stall, period))
+    fun report(sender: CommandSender, stall: String, period: String = "all") = execute(sender, Request(stall, period))
 
-    @Subcommand("export")
-    @Permission("enthusiamarket.shop.use")
-    fun exportReport(@Context sender: CommandSender, @Arg("stall") stall: String, @Arg("period") period: String = "all") = execute(sender, Request(stall, period, csv = true))
+    fun exportReport(sender: CommandSender, stall: String, period: String = "all") = execute(sender, Request(stall, period, csv = true))
 
-    @Subcommand("range")
-    @Permission("enthusiamarket.shop.use")
-    fun rangeReport(@Context sender: CommandSender, @Arg("stall") stall: String, @Arg("from") from: String, @Arg("to") to: String) = execute(sender, Request(stall, "range", from, to))
+    fun rangeReport(sender: CommandSender, stall: String, from: String, to: String) = execute(sender, Request(stall, "range", from, to))
 
-    @Subcommand("export range")
-    @Permission("enthusiamarket.shop.use")
-    fun exportRange(@Context sender: CommandSender, @Arg("stall") stall: String, @Arg("from") from: String, @Arg("to") to: String) = execute(sender, Request(stall, "range", from, to, csv = true))
+    fun exportRange(sender: CommandSender, stall: String, from: String, to: String) = execute(sender, Request(stall, "range", from, to, csv = true))
 
     private fun execute(sender: CommandSender, request: Request) {
         val player = sender as? Player ?: return
