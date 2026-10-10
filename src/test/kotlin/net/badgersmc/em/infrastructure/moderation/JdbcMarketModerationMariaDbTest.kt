@@ -54,7 +54,7 @@ class JdbcMarketModerationMariaDbTest {
         })
         createV27UpgradeBaseline()
         val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
-        assertEquals(listOf(28, 29, 30, 31, 32), applied.map { it.version })
+        assertEquals((28..34).toList(), applied.map { it.version })
         createStallAndShop()
     }
 
@@ -312,7 +312,8 @@ class JdbcMarketModerationMariaDbTest {
                 "shop_items",
                 "auctions",
                 "stalls",
-                "guild_sale_xp_journal", "schema_migration",
+                "guild_sale_xp_journal", "guild_stock_lots", "guild_accounting_receipts",
+                "guild_stock_events", "guild_sale_attribution", "stall_access_settings", "schema_migration",
             ).forEach { table -> connection.prepareStatement("DROP TABLE IF EXISTS $table").use { it.executeUpdate() } }
             createStallsBaseline(connection)
             createShopsBaseline(connection)
