@@ -168,7 +168,7 @@ open class EnthusiaMarket : JavaPlugin() {
             net.badgersmc.em.websync.DirtyTrackingStallRepository(stallSqlRepo, websiteDirtyRelay, dirtyFailures)
         val stallRepository = net.badgersmc.em.application.StallAccessIndex(trackedStalls)
         stallRepository.rebuild()
-        ctx.registerBean("stallRepository", net.badgersmc.em.domain.stall.StallRepository::class, stallRepository)
+        net.badgersmc.em.infrastructure.bootstrap.StallAccessBeans.registerIndex(ctx, stallRepository)
         rentWarnings = ctx.getBean<net.badgersmc.em.infrastructure.listeners.RentLoginWarningListener>()
 
         server.servicesManager.register(
@@ -184,13 +184,11 @@ open class EnthusiaMarket : JavaPlugin() {
             this,
             org.bukkit.plugin.ServicePriority.Normal,
         )
-        ctx.registerBean("stallAccessIndex", net.badgersmc.em.application.StallAccessIndex::class, stallRepository)
         val accessSettings = net.badgersmc.em.application.StallAccessSettingsService(
             stallRepository, net.badgersmc.em.infrastructure.persistence.StallAccessSettingsSql(ds),
             ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class), marketMutationGate,
         )
-        ctx.registerBean("stallAccessSettings", net.badgersmc.em.application.StallAccessSettingsService::class, accessSettings)
-        ctx.registerBean("stallAccessPolicy", net.badgersmc.em.domain.ports.StallAccessPolicy::class, accessSettings)
+        net.badgersmc.em.infrastructure.bootstrap.StallAccessBeans.registerSettings(ctx, accessSettings)
         val accessProjection = net.badgersmc.em.infrastructure.listeners.StallAccessProjection()
         ctx.registerBean("stallAccessProjection", net.badgersmc.em.infrastructure.listeners.StallAccessProjection::class, accessProjection)
         applyStallAccessPolicies(trackedStalls, accessSettings, accessProjection)

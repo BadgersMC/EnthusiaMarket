@@ -16,3 +16,15 @@ Task: full checks, source PR, SHA-256 verification, rollback backup, TEST restar
 - [ ] Minecraft player/client acceptance, maintainer merge and production activation: separate gates.
 
 Market command-scanning regressions register the search argument explicitly; production startup already registered it. Documentation requirement IDs distinguish search from accounting. Private artwork is not committed or replaced. Hosted final-head checks are reported independently from these local results.
+
+## TEST startup refinement
+
+TEST-DEV-002: When the combined development build starts, Nexus SHALL resolve the stall repository/index and access settings/policy to their respective singletons without ambiguous interface registrations.
+
+Prove: the authorized TEST startup at 17:45:55 EDT on 2026-10-10 failed with `Multiple beans found of type StallRepository: [stallRepository, stallAccessIndex]` and disabled Market. Both aliases referred to one object; Nexus indexes concrete registrations under implemented interfaces. The settings/policy pair had the same latent ambiguity.
+
+Engine/architecture: infrastructure startup wiring registers each concrete service once under its existing primary name. Domain interfaces, persistence, accounting, permissions and the development feature stacks are unchanged. Two regression tests exercise the exact startup registration helpers against the real Nexus container and resolve both concrete and interface types.
+
+Refine: full check/Detekt/shadow packaging and replacement TEST startup evidence are recorded in the operation receipt. The earlier 14 native financial/database contract checks remain applicable to the unchanged financial engine; the wiring regressions add container proof. Client acceptance and canonical merge remain separate.
+
+Final startup-fix local verification: 981 suite cases, zero failures/errors, 14 optional external skips; both real-container regressions, architecture checks and Detekt passed. Canonical shadow packaging passed with version 1.0.53-dev.reconciled.2.
