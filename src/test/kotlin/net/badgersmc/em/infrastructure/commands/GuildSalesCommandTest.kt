@@ -14,6 +14,7 @@ import kotlin.test.*
 internal class GuildSalesCommandTest {
     @Test fun registeredPathsAndCsvEscaping() {
         WebsiteSyncSecretArgumentRegistration.register()
+        MarketSearchArgumentRegistration.register()
         val command = PaperCommandScanner().scanCommands("net.badgersmc.em.infrastructure.commands", javaClass.classLoader)
             .single { it.annotation.name == "guildsales" }
         assertEquals(setOf("", "export", "range", "export range"), command.subcommands.map { it.path.joinToString(" ") }.toSet())

@@ -7,6 +7,7 @@ import kotlin.test.assertTrue
 class ShopHistoryCommandRegistrationTest {
     @Test fun `history keeps legacy paging and exposes today all and range`() {
         WebsiteSyncSecretArgumentRegistration.register()
+        MarketSearchArgumentRegistration.register()
         val definitions = PaperCommandScanner().scanCommands(
             "net.badgersmc.em.infrastructure.commands", javaClass.classLoader,
         )
