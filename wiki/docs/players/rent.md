@@ -5,7 +5,7 @@ topic: rent
 summary: How stall rent works — formula vs flat, collection, grace period, emergency auction, and extension.
 keywords: [rent, emergency-auction, grace, extension, formula, flat]
 related: [stalls, shop-creation]
-updated: 2026-06-25
+updated: 2026-10-07
 ---
 
 # Rent
@@ -32,13 +32,13 @@ dailyRent = flatAmount
 
 Same amount per period regardless of what the stall cost. Example: $500/day flat.
 
-## When rent is collected
+## When rent is due
 
-Rent is collected automatically once per **collection interval** (default: every 24 hours). The system checks your economy balance and deducts the rent amount.
+Rent is **not charged automatically**. Renew from the stall purchase sign before `nextRentAt`. The rent scheduler checks due stalls on the configured **collection interval** (default: every 24 hours) and enforces grace/auction state; it does not withdraw rent from your balance.
 
 ## What happens if you can't pay
 
-If your balance is too low when rent is collected:
+If the stall reaches its due time without a successful renewal:
 
 1. Your stall enters **GRACE** state — a warning period.
 2. During grace, the stall **and all its shops are frozen**. No trades can happen until rent is paid.
@@ -50,6 +50,8 @@ If your balance is too low when rent is collected:
 ## How to pay or extend rent
 
 **Right-click the purchase sign twice** within 10 seconds (the confirmation window). Each double-click extends rent by one period.
+
+An authorized personal stall member can also renew rent. The person confirming pays from their own balance; insufficient funds or a failed persistence update must not grant an unpaid extension. Check the amount shown before confirming. Guild rent follows the guild's bank and access rules.
 
 You can pre-pay multiple periods ahead — the config option `rent.maxPrepaidPeriods` controls the cap (0 = unlimited).
 
@@ -70,6 +72,6 @@ Or run:
 | `rent.mode` | `formula` | `formula` (percentage) or `flat` (fixed) |
 | `rent.formulaPct` | `1.0` | Percentage of purchase price (1.0 = 1%) |
 | `rent.flatAmount` | `0` | Flat amount per period |
-| `rent.collectionInterval` | `P1D` | How often rent is collected (1 day) |
+| `rent.collectionInterval` | `P1D` | How often the scheduler checks overdue rent (1 day) |
 | `rent.gracePeriod` | `P3D` | Grace period before emergency auction (3 days) |
 | `rent.maxPrepaidPeriods` | `0` | Max periods you can pre-pay (0 = unlimited) |

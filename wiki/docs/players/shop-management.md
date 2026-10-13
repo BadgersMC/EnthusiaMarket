@@ -5,7 +5,7 @@ topic: shop-management
 summary: Manage your shops — list, edit, trust players, and delete.
 keywords: [shop, management, edit, trust, delete, list, commands]
 related: [shop-creation, guild-stalls]
-updated: 2026-06-25
+updated: 2026-10-07
 ---
 
 # Shop management
@@ -108,6 +108,8 @@ are unchanged. These commands do not mark sales as notified or expose other play
 
 View your shop transaction history (paginated, 10 per page).
 
+History is retained according to the server's `shop.historyRetentionDays` setting (default 30 days). Older rows are pruned; this command is not an all-time sales ledger.
+
 ## Tutorial
 
 ```text
@@ -115,6 +117,8 @@ View your shop transaction history (paginated, 10 per page).
 ```
 
 Displays a multi-line tutorial from the language files. Good for new players.
+
+The aliases also need the `show` subcommand: `/shoptutorial show` or `/sht show`. Use `/em help` for clickable topics, including the stall IDs and auction IDs required by the related commands.
 
 ## Admin commands
 

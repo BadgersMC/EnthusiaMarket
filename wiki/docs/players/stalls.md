@@ -19,7 +19,7 @@ Stalls move through these states:
 | State | Meaning |
 |-------|---------|
 | **UNOWNED** | Available. Anyone with permission can buy it. |
-| **AUCTIONING** | Up for auction. Bid with `/em bid`. |
+| **AUCTIONING** | Up for auction. Bid with `/em bid <auctionId> <amount>`. |
 | **OWNED** | Occupied by a player or guild. Rent applies. |
 | **GRACE** | Rent not paid. Shops are frozen. Pay rent to unfreeze. After grace: emergency auction. |
 | **RE_AUCTIONING** | Being re-auctioned (system recovery). |
@@ -39,7 +39,7 @@ Permission: `enthusiamarket.stall.buyout` (default: all players).
 
 ### From a sell offer
 
-If a stall owner listed their stall for sale with `/em stall offer`, you can buy it:
+If a stall owner listed their stall for sale with `/em stall offer <stallId> <price>`, you can buy it:
 
 ```text
 /em stall buy <stallId>
@@ -73,17 +73,19 @@ List your OWNED stall for a fixed price:
 /em stall offer <stallId> <price>
 ```
 
-Anyone can then buy it with `/em stall buy`. Cancel with `/em stall offer cancel <stallId>`.
+Anyone can then buy it with `/em stall buy <stallId>`. Cancel with `/em stall offer cancel <stallId>`.
 
 ### Auction
 
-Start an auction on your stall:
+Administrators can start an auction on a selected stall:
 
 ```text
 /em auction start <stallId> <startingPrice> [duration]
 ```
 
 Duration is optional (default 24h, format: `PT24H` for 24 hours).
+
+This command requires `enthusiamarket.admin`. For an ordinary owner's fixed-price sale, use the sell-offer command above.
 
 ### Sellback (voluntary relinquish)
 
@@ -134,7 +136,7 @@ Render a particle outline of a stall's region:
 | Way | Description |
 |-----|-------------|
 | **Eviction** | Rent unpaid after grace period. Shops wiped, stall back to UNOWNED. |
-| **Sellback** | You chose `/em sellback`. Partial refund, shops wiped. |
+| **Sellback** | You chose `/em sellback <stallId>` and confirmed it. Partial refund, shops wiped. |
 | **Direct sale** | Another player bought via your sell offer. You get the price. |
 | **Auction won** | Your auction resolved. Winner gets the stall, you get bid minus fee. |
 | **Admin eviction** | An admin ran `/em evict`. Force-unclaimed. |
