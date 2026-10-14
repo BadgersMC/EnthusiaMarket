@@ -138,7 +138,9 @@ dependencies {
     testImplementation("io.papermc.paper:paper-api:26.2.build.129-stable")
     testImplementation("io.mockk:mockk:1.13.11")
     testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.116.1")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.8.1")
+    testImplementation(platform("org.junit:junit-bom:6.0.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
     testImplementation("org.testcontainers:mariadb")
     testImplementation("org.testcontainers:junit-jupiter")
@@ -254,6 +256,20 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
 tasks {
     test {
         useJUnitPlatform()
+        val testMariaPort = providers.environmentVariable("GUILD_SHOP_XP_TEST_MARIA_PORT")
+        inputs.property("guildShopXpTestMariaPort", testMariaPort.orElse(""))
+        val accountingMariaPort = providers.environmentVariable("MARKET_ACCOUNTING_TEST_MARIA_PORT")
+        inputs.property("accountingMariaPort", accountingMariaPort.orElse(""))
+        outputs.upToDateWhen { !accountingMariaPort.isPresent }
+        testMariaPort.orNull?.let { environment("GUILD_SHOP_XP_TEST_MARIA_PORT", it) }
+        outputs.upToDateWhen { !testMariaPort.isPresent }
+        // Runtime-contract tests inspect this exact companion artifact through an isolated loader.
+        val companionPath = providers.environmentVariable("LUMAGUILDS_JAR")
+        inputs.property("guildsRuntimePath", companionPath.orElse(""))
+        companionPath.orNull?.let { path ->
+            inputs.file(path).withPropertyName("guildsRuntimeArtifact")
+            environment("LUMAGUILDS_JAR", path)
+        }
     }
     shadowJar {
         archiveClassifier.set("")

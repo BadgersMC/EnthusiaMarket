@@ -5,14 +5,14 @@ loader: net.badgersmc.em.EnthusiaMarketPluginLoader
 api-version: '26.2'
 
 # Runtime library declarations live in EnthusiaMarketPluginLoader, NOT here.
-# That loader points at repo1.maven.org directly, bypassing whatever Maven
-# Central mirror the server happens to be configured with (Leaf forks hardcode
-# maven.aliyun.com, which has had outages).
+# The Nexus loader owns the runtime repository configuration.
 
 dependencies:
   server:
     LumaGuilds:
-      load: BEFORE
+      # Guilds already enables in STARTUP. Ordering it before POSTWORLD Market
+      # closes Staff -> Market -> Guilds -> Staff; keep the required classpath only.
+      load: OMIT
       required: true
       join-classpath: true
     WorldGuard:

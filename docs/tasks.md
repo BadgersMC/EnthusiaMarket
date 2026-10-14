@@ -1,11 +1,31 @@
 
 # Tasks — EnthusiaMarket
 
+- [x] INTEGRATE-380 — Reconcile #215/#213/#214, distinguish direction no-match from stock shortage, preserve inventory and approved controls, prove nine stock regressions and the clean 899/915-case bundles, refine actionable exact-head static findings and refresh the private mobile preview. Evidence: search-stock-integration.md. Hosted workflow approval, maintainer merge, network pins and Minecraft acceptance remain separate gates.
+
+- [~] **TDD-340** Guild stall read API (REQ-340/341): API, current-member authority shared with PR #197, ownership filtering, offline roster freshness, denied/failed reads, held stalls and asynchronous boundaries implemented. Evidence: docs/guild-stall-api.md, GuildStallQueryTest and GuildStallReadProviderTest; clean full and focused local checks passed. Deliver as dependent canonical PR; hosted final-head/live acceptance remain separate. No merge or production change. Project-local EARS/state helpers are absent.
+
+## Storage maintenance (2026-10-07)
+
+- [x] NOTIFY-345 — REQ-345/346/347: reproduce unavailable join storage; isolate SQL on bounded worker, deliver on server thread, acknowledge snapshot watermark, retain unread rows across failure/rejection/disconnect/disable.
+- [x] NOTIFY-REVIEW — PR #201 published; exact-head Codacy passed, no human review findings returned. Hosted workflows require maintainer approval; production/client acceptance remains separate.
+- [x] HISTORY-DURABILITY: REQ-348/349/350; forced local records, bounded delivery and transactional receipts. Combined #197/#198/#200/#201 source passed 869 cases, zero failures/errors, twelve external skips; all eleven DB cases executed separately on isolated MariaDB. Paired companion runtime contract passed. See history-durability-verification.md.
+- [x] HISTORY-REVIEW: #202 published; prior Codacy finding resolved. Prepared guild stack incorporated and migration fixture conflict resolved; merge rehearsal with #199/#203/#204 passed 885 cases and Detekt. Fresh combined-head hosted checks pending. Dependencies #197/#198/#200/#201 plus Guilds #212 release and production/client acceptance remain separate.
+
 **Date:** 2026-05-24
 **Status:** Bootstrap (emitted by `/spear:init`; extend via `/spear:spec`)
 
 Tags: `TDD` (failing test before code), `DOC` (markdown / template authoring), `INFRA` (manifests, CI, repo plumbing).
 State legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[!]` blocked.
+
+## Search stock feedback (REQ-380)
+
+- [x] STOCK-380: reproduce empty-menu inventory replacement, guard the shared
+  search presentation before GUI/stall lookup creation, and preserve complete
+  trades, mixed stock, BUY/admin semantics and explicit out-of-stock display.
+  Evidence: SearchResultsStockFeedbackTest (7 cases; 4 red before guard, all
+  green after); canonical clean 781-case suite, architecture and Detekt pass.
+  See finditem-stock-verification.md for artifact, preview and delivery limits.
 
 ## Item data component preservation (REQ-300, REQ-301)
 
@@ -122,6 +142,13 @@ Reported: Netherite_Ingot (15 chars) doesn't show on sign. Custom anvil names lo
 
 ---
 
+## Search filtering follow-up (2026-10-07)
+
+- [x] **SEARCH-343** — REQ-343: direction/stock regressions reproduced before the fix; actual shared-menu clicks prove mode retention through sort/stock/page changes, reset to page one, and the ANY -> SELL -> BUY -> ANY cycle. Existing command syntax/completion/permissions are unchanged.
+- [x] **SEARCH-344** — REQ-344: generic colored-shulker and nested-bundle regressions reproduced before the fix; all 17 modern shulker materials, exact-color exclusions, nested contents and disabled search passed. Traversal bounds are unchanged. A host-locale regression also passes.
+- [x] **SEARCH-345** — Clean full and final-source tests/build/coverage passed: 783 cases, zero failures/errors, seven existing skips. All 19 service/filter/navigation cases ran without skips; architecture and SQL search tests are included. Java-21 Detekt and diff whitespace checks passed. Local unmerged artifact/version/hash and live/client boundaries are in docs/search-filters-verification.md. Project-local EARS/state helpers remain absent; no validator success is claimed.
+- [ ] **SEARCH-RELEASE** — Inspect exact published-head hosted findings; maintainer workflow approval/review/merge, combined canonical network build and real Java/Bedrock acceptance remain distinct delivery gates. No production change.
+
 ## Milestone M2 — Rent collection (REQ-003, REQ-004, REQ-041)
 
 ### TDD tasks
@@ -235,6 +262,12 @@ Reported: Netherite_Ingot (15 chars) doesn't show on sign. Custom anvil names lo
   Evidence: ``
 
 ---
+
+## History filter delivery (2026-10-08)
+
+- [x] HISTORY-FILTER-356: User accepted feature request 8 only. Preserve /shop history [page]; add today/all/range paging, ISO inclusive dates, server timezone and owner-or-buyer visibility. All means retained rows.
+- [x] HISTORY-FILTER-PROVE: Execute missing-command regression before implementation; verify SQL boundaries before paging, stable ties, privacy, DST, invalid dates and preserved next-page scope.
+- [x] HISTORY-FILTER-REFINE: Clean full suite 788 cases, zero failures/errors, eight external skips; new MariaDB case executed natively without skips. Detekt, architecture and wiki/locale checks passed. Published #205; combined maintenance rehearsal passed 899 cases without failures/errors and merges cleanly. Exact-head review/hosted workflow gates are recorded separately in the PR description. Project-local EARS/state helpers are absent; manual evidence is maintained. No stall resets, export/contributor features, retention change or production action.
 
 ## Milestone M4 — Guild ownership + Bedrock UI (REQ-010, REQ-011)
 
@@ -1089,3 +1122,49 @@ Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This m
   Tag: DOC
   Description: Update operator/developer docs after implementation with the authoritative active-owner states, transfer cleanup rules, moderation boundary, reconciliation behavior, and /em rent extendall usage.
   Evidence: `docs/ownership-integrity-26.2.md; docs/implementation.md §3.11-3.12; docs/db-schema.md V029; src/main/resources/migrations/V029__ownership_integrity_reconciliation.sql; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/main/resources/paper-plugin.yml; src/main/resources/lang/en_US.yml`
+
+## Local Discord bug-fix review (2026-10-03)
+
+- [x] **TDD-327** — REQ-323/324: enforce current guild permissions and roster projection; GuildShopAccessTest and GuildStallProtectionTest.
+- [x] **TDD-328** — REQ-325/326: guild-bank API, sellback, durable guild auction escrow/awards; GuildSellbackTest, GuildAuctionTest, AuctionRepositorySqlTest and LumaGuilds GuildLookupImplTest.
+- [x] **TDD-329** — REQ-327/328: Java/Bedrock authority checks, sign redraws and spear creation; ContainerStockListenerTest, ShopCreateListenerTest and editor tests.
+- [x] **TDD-330** — REQ-329/330: creature matching, visitor boundaries and double-chest hopper guard; SpecialItemMatchTest and listener regressions.
+- [x] **DOC-330** — Publish a local review report with test/build evidence and separate remaining live acceptance. No upload or production changes.
+
+Evidence is a brownfield regression review; no historical test-first claim is made for implementation already written during this audit.
+
+Validation: Market 806 tests, 0 failures/errors, 7 skipped; architecture checks and Detekt passed; local shaded review build succeeded. Companion LumaGuilds API/bank suite: 41 tests, 0 failures/errors/skips, local build passed. See docs/reported-bug-fixes.md for remaining live acceptance.
+
+## SPEAR check refinement (2026-10-04)
+
+- [x] **STALE-335** — REQ-321: investigate ticket bug-0406 stale members after expired-stall repurchase. Existing canonical ownership changes already clear roster/access on forfeiture and award. Added a repurchase regression and passed 92 ownership/lifecycle tests; production build, stall48 data, WorldGuard and intended current members remain unverified. No automatic purge or production repair authorized/performed.
+
+- [x] **CHAT-334** — REQ-334: reproduced the legacy broadcast leak before implementation (5 focused tests, 2 failures), then passed the full 817-test suite (7 skipped) and Detekt. Pending input is claimed before LOW broadcasters, server-thread callbacks and Paper fallback are preserved, and duplicate callbacks are prevented. Exact-head hosted results and live acceptance remain separate; no production changes.
+
+- [x] **SIGN-333** — REQ-327: verified the reported price-only edit from 3 to 5 through management persistence and the production timer refresh, asserting actual sign price text with unchanged stock; all 24 focused management/listener tests passed. The implementation is already pending in PR #197; production adoption/live acceptance remains unverified.
+
+- [x] **FRAME-332** — REQ-332: proved failing defaults and shared-total behavior before implementation; 811 tests passed (7 skipped), architecture checks and Detekt passed. Configurable finite/zero limits and other entity checks are retained; defaults and evidence updated. Exact-head hosted checks and live acceptance remain separately pending; no production configuration was changed.
+
+## Guild-shop XP (REQ-342)
+
+See [guild-shop-xp.md](guild-shop-xp.md) for policy, payment boundary, journal states and SPEAR evidence.
+
+- [x] **SHOP-XP-SPEC-342** — approved configurable limits and excluded purchase paths in docs/guild-shop-xp.md.
+- [x] **SHOP-XP-ENGINE-342** — durable sale journal, pre-payment quote, completed-only replay and atomic companion consumption.
+- [x] **SHOP-XP-ARCH-342** — domain ports and actual companion artifact / isolated classloader contract.
+- [ ] **SHOP-XP-REFINE-342** — final full-suite/Detekt after current #197 authority and MariaDB fixture updates; exact-head hosted checks/review.
+- [ ] **SHOP-XP-RELEASE-342** — merge/release companion; update CI runtime pin/hash and require contract execution; verify canonical combined build/pins, MariaDB/staging/player acceptance. No production changes.
+- [x] **REFINE-331** — REQ-323/326/329: earlier complexity findings resolved; exact published head `52470817` passed Codacy with no annotations. Regression/architecture tests and Java-21 Detekt passed with the released companion runtime. This does not close hosted build approval, MariaDB Docker execution, human review or production acceptance gates.
+
+## Production correctness review (2026-10-07)
+
+- [x] **DB-337** — REQ-326/311: reproduced six MariaDB setup failures caused by the missing auctions baseline, corrected the V027 fixture and expected migrations 28/29/30, and proved personal bid preservation, guild funding reload and migration rerun behavior. Seven native MariaDB 11.8.3 cases passed without skips; clean canonical suite found 821 cases with zero failures/errors and eight skips, including the seven Docker-only cases separately exercised natively. ShadowJar, architecture checks and Java-21 Detekt passed. Hosted Docker execution remains pending. No production schema operation.
+
+- [x] **LOCK-336** — REQ-335: reproduced personal/guild confirmation after a moderation reservation (five focused cases, two failing before the guard); all five pass in the final full suite. Clean full build against checksum-verified released Guilds 3.0.23: 820 tests, zero failures/errors, seven skips; shadowJar and Java-21 Detekt passed. Existing durable repository lock/revision fences remain unchanged. Hosted checks, installed companion provenance, network integration and client acceptance remain separate gates; no merge or production operation performed.
+
+- [x] SEARCH-377 - REQ-377/378/379: implement shared expanded catalog, explicit selectors, compatibility, completions and paired adapters. Three focused tests failed before engine changes, then passed; final 906-case canonical suite, architecture and Detekt passed; interactive lookup proof generated. Hosted review/approval and client acceptance remain separate. See expanded-search-verification.md. EARS/state helpers absent.
+
+- [x] FINDER-381 - REQ-381/382: configurable private selected-stall outline and arrival phase; manual SPEAR evidence in finder-outline-verification.md. Initial direction-only planning surface ran three new tests with three failures and zero errors/skips; 17 focused checks pass. Clean 925-case build plus final 927-case suite after two Nexus configuration tests passes with zero failures/errors and eight unchanged external skips; architecture and Java 21 Detekt pass. Interactive mobile preview accompanies the change. Hosted approval/review and native Java/Bedrock acceptance remain separate gates; source implementation is complete.
+
+- [x] STALL-ACCOUNTING — REQ-384, REQ-385 and REQ-383: approved FIFO attribution and read-only contributor/gross-sales reports, conservative unknown stock, durable ordered observation delivery, date windows and optional server-local CSV.
+  - Tag: TDD; Evidence: docs/stall-accounting.md. Full paired clean suite: 895 tests, zero failures/errors, 12 unrelated skips; new native MariaDB accounting case executed without skips. Detekt passed on analyzer Java 22, bytecode/tests on Java 25/Paper 26.2. No local EARS/state helpers exist; manual records maintained. Exact-head hosted results, canonical dependency integration and real client acceptance remain separate. Payouts, XP and production remain unchanged.

@@ -35,11 +35,13 @@ import java.util.logging.Logger
 @Component
 class ContainerStockListener(
     private val shopRepository: ShopRepository,
-    private val lang: LangService
+    private val lang: LangService,
+    private val accounting: GuildStockAccounting? = null
 ) : org.bukkit.event.Listener {
 
     /** shopId → last-persisted raw stock (dedup: skip sign update if unchanged). */
     private val lastRawStock: MutableMap<Long, Int> = mutableMapOf()
+    private val lastRenderedShop: MutableMap<Long, Shop> = mutableMapOf()
     private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
 
     private val log = Logger.getLogger(ContainerStockListener::class.java.name)
@@ -54,6 +56,8 @@ class ContainerStockListener(
         val shop = shopRepository.findById(event.shopId) ?: return
         val inventory = liveContainerInventory(shop) ?: return
         val rawStock = rawStockOf(inventory, shop)
+        if (event.direction == SignDirection.SELL) accounting?.sale(shop, event, rawStock)
+        else accounting?.stock(shop, rawStock, rawStock, null)
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         lastRawStock[shop.id] = rawStock
         // Defer DB write — flushed in batch on the next timer tick (PERF-5).
@@ -70,6 +74,8 @@ class ContainerStockListener(
      *  DB every tick for the same data. Invalidation is triggered by cursor
      *  wrap (cycle end) so new shops are picked up within one full cycle. */
     private var cachedShops: List<Shop> = emptyList()
+
+    fun accountingCandidates(): List<Shop> = cachedShops
 
     /** Recompute stock for a batch of shops and flush on cycle completion. */
     fun refreshBatch(batchSize: Int = 50) {
@@ -106,12 +112,13 @@ class ContainerStockListener(
     /** Recompute + persist + sign-update for a single shop whose inventory is known to be loaded. */
     private fun refreshOne(shop: Shop, inventory: Inventory) {
         val rawStock = rawStockOf(inventory, shop)
-        if (rawStock == lastRawStock[shop.id]) return                      // unchanged → skip
+        if (rawStock == lastRawStock[shop.id] && lastRenderedShop[shop.id] == shop.copy(stockCount = 0)) return
 
         // Persist stock_count to DB regardless of sign availability —
         // /shop search reads shop.stockCount (V019). This is the whole
         // point of the denormalized column: search results must stay
         // accurate even when the sign chunk happens to be unloaded.
+        accounting?.stock(shop, rawStock, rawStock, null)
         lastRawStock[shop.id] = rawStock
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         dirtyStock[shop.id] = rawStock
@@ -189,6 +196,15 @@ class ContainerStockListener(
 
     /** PERF-5: no-physics update — sign text change doesn't need block physics recalculation. */
     private fun updateSignStock(state: Sign, shop: Shop, trades: Int) {
+        val item = ItemStackSerializer.deserialize(shop.sellItem)
+        val cost = if (shop.direction == SignDirection.TRADE) {
+            val costItem = ItemStackSerializer.deserialize(shop.costItem)
+            "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "item"}"
+        } else shop.costAmount.toString()
+        net.badgersmc.em.application.ShopSignRenderer().lines(
+            shop.direction, item?.type?.name?.lowercase() ?: "item", shop.sellAmount, cost,
+            item?.itemMeta?.displayName(),
+        ).take(3).forEachIndexed { index, line -> state.line(index, line) }
         state.line(3, lang.msg("container_sign.stock_line", "trades" to trades))
         // Red header when SELL shop is out of stock
         if (shop.direction == SignDirection.SELL) {
@@ -196,6 +212,7 @@ class ContainerStockListener(
             state.line(0, lang.msg(headerKey))
         }
         state.update(false)
+        lastRenderedShop[shop.id] = shop.copy(stockCount = 0)
     }
 
     private fun trackDepletion(shop: Shop, trades: Int) {

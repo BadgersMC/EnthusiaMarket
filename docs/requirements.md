@@ -9,6 +9,20 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 ---
 
+## Accepted history filters (8 October 2026)
+
+### REQ-356 - Today and retained history
+
+**Event-driven.** WHEN a player selects today or all in shop history THE SYSTEM SHALL show only their owner-or-buyer transactions in the selected period with stable newest-first pagination and preserve the existing history page command.
+
+### REQ-357 - Inclusive calendar-date range
+
+**Event-driven.** WHEN a player supplies valid ISO start and end dates THE SYSTEM SHALL include both calendar dates in the server timezone using an inclusive start and exclusive next-day boundary before pagination.
+
+### REQ-358 - Validation and retained-data boundary
+
+**Unwanted.** IF dates are malformed or reversed THEN THE SYSTEM SHALL reject the request before querying storage and explain valid syntax without changing retention, permissions, unread notification state or other players' visibility.
+
 ## Product (what the system is for)
 
 ### REQ-001 — Stall marketplace as core product
@@ -246,6 +260,12 @@ Reference: study of `advanced-region-market` (ARM) plugin. Eight features select
 #### REQ-221 — Entity limit enforcement
 
 **Unwanted.** IF a mob/entity spawn or item-frame placement inside a stall would exceed the active entity limit group's per-type or total cap THE SYSTEM SHALL cancel the event.
+
+#### REQ-332 — Configurable unlimited item frames
+
+**Ubiquitous.** THE SYSTEM SHALL default `item_frame` and `glow_item_frame` to `-1` (unlimited) in every bundled entity limit group.
+
+**Optional.** WHERE an item-frame type has an effective negative cap THE SYSTEM SHALL permit its placement without applying the shared `_total` cap. WHERE its effective cap is nonnegative THE SYSTEM SHALL enforce both its per-type cap and the shared total cap, including zero prohibiting placement. Other entity types SHALL retain their existing limits and counting semantics. Existing operator configuration SHALL be preserved.
 
 #### REQ-222 — Per-stall entity-limit override
 
@@ -519,7 +539,43 @@ return the stall to UNOWNED.
 
 ---
 
+## Storage notification resilience
+
+IDs 323–344 are reserved by the pending correctness, companion and search PRs.
+
+### REQ-345 — Join notification thread boundary
+
+**Event-driven.** WHEN a player joins THE SYSTEM SHALL read missed-sale history outside the server thread and deliver the summary only to the same still-connected player session.
+
+### REQ-346 — Snapshot acknowledgement
+
+**Event-driven.** WHEN a missed-sale summary is delivered THE SYSTEM SHALL acknowledge only records up to its captured row watermark while preserving later unread sales.
+
+### REQ-347 — Recoverable notification failures
+
+**Unwanted.** IF notification storage fails or its bounded queue rejects work THE SYSTEM SHALL preserve unread history without performing storage work on the join caller.
+
+### REQ-348 — Completed trade thread boundary
+
+WHEN a completed shop trade reaches the history listener THE SYSTEM SHALL force an immutable local recovery record before returning and deliver SQL history on a dedicated worker without replaying game operations.
+
+### REQ-349 — Replay-safe history delivery
+
+WHEN a recovery record is retried THE SYSTEM SHALL atomically insert a durable receipt and history at most once, including retries after history pruning.
+
+### REQ-350 — Interrupted history delivery
+
+IF delivery or acknowledgement fails THE SYSTEM SHALL retain the recovery record; corrupt records SHALL be quarantined for review without blocking valid records.
+
 ## Acceptance
+
+### REQ-340 — Guild stall read API
+
+**Event-driven.** WHEN a current guild member requests their guild stalls through the versioned read API THE SYSTEM SHALL return current guild-owned stall state, stored rent terms, rent/grace deadlines and current member shop capabilities using the same authority as shop protection, SHALL reject non-member or unavailable membership reads, and SHALL perform no ownership, balance, region or permission mutations.
+
+### REQ-341 — Safe asynchronous stall presentation
+
+**Ubiquitous.** THE SYSTEM SHALL perform stall persistence reads outside the server thread, SHALL resolve region coordinates on the server thread, and SHALL return failed reads as unavailable rather than report that a guild has no stalls.
 
 ### REQ-100 — Smoke test on MockBukkit
 
@@ -531,8 +587,106 @@ return the stall to UNOWNED.
 
 ---
 
+## Search filtering follow-up (2026-10-07)
+
+REQ-323 through REQ-342 are reserved by existing pending Market work, including #197 and the guild API/XP branches; this independent main-based change uses REQ-343/344.
+
+### REQ-343 — Shop direction search filters
+
+**Event-driven.** WHEN a player searches with `/finditem` or `/shop search` THE SYSTEM SHALL offer ANY, SELL and BUY filters using the shop owner's direction, retain the selected filter across paging, sorting and stock changes, reset the page when the direction changes, and preserve existing visibility and trade permissions.
+
+### REQ-344 — Generic shulker material search
+
+**Event-driven.** WHEN a player searches for `shulker` or `shulker_box` THE SYSTEM SHALL match uncolored and every colored shulker box while preserving exact-color queries, nested-content matching, visibility gating and bounded traversal.
+
 ## Authoring rules
 
 1. Every REQ has a single ID, a heading, and exactly one EARS-formatted sentence under a **pattern label** (Ubiquitous / Event-driven / State-driven / Unwanted / Optional).
 2. Use `/spear:spec` to add or revise REQ entries — it runs the EARS validator (`plugins/spear/hooks/lib/ears.mjs`) and assigns the next free ID.
 3. Never reuse an ID. When a requirement is obsolete, strike it through and note the deprecation date; do not renumber.
+
+## Discord Market and guild-stall audit (2026-10-03)
+
+### REQ-323 — Current guild authority
+
+**State-driven.** WHILE a shop belongs to an active guild stall THE SYSTEM SHALL check current membership and the field-specific rank permission for every chest read, stock change, price edit, creation and deletion without granting a creator bypass.
+
+### REQ-324 — Guild roster projection
+
+**Event-driven.** WHEN guild membership changes THE SYSTEM SHALL replace the active guild stalls' WorldGuard rosters including empty rosters and offline members.
+
+### REQ-325 — Guild sellback
+
+**Event-driven.** WHEN an authorised member sells back a guild stall THE SYSTEM SHALL refund the owning guild bank and preserve ownership and projections when payment fails.
+
+### REQ-326 — Guild auction provenance
+
+**Event-driven.** WHEN a member bids for a guild THE SYSTEM SHALL persist its funding target, debit and refund that guild, revalidate membership and authority before settlement, and award the stall to that guild.
+
+### REQ-327 — Submitted edit authority and signs
+
+**Event-driven.** WHEN a Java or Bedrock shop edit is submitted THE SYSTEM SHALL recheck current field-specific authority and refresh all displayed sign fields even when stock is unchanged.
+
+### REQ-328 — Spear creation
+
+**Event-driven.** WHEN a sneaking player holding a spear emits a left-click air interaction aimed at an unregistered shop sign THE SYSTEM SHALL resolve the first target within six blocks and apply normal creation checks.
+
+### REQ-329 — Creature container stock
+
+**Ubiquitous.** THE SYSTEM SHALL ignore incidental creature identity and residence timers when matching bucketed animals and occupied hives while preserving variants, occupancy, custom metadata and actual delivered inventory items.
+
+### REQ-330 — Visitor and hopper boundaries
+
+**Ubiquitous.** THE SYSTEM SHALL permit public workstation use and written lectern-book reading while guarding book removal, decoration mutations, shop inventories and both halves of hopper-connected double chests.
+
+### REQ-334 — Private custom-price chat input
+
+**Event-driven.** WHEN a player with a pending Market price or bulk-quantity prompt sends chat THE SYSTEM SHALL cancel that message before legacy chat broadcasters process it and schedule the existing input handler on the server thread. The Paper-only chat path SHALL remain supported; a legacy-cancelled message SHALL NOT schedule a duplicate callback through the Paper event. Chat without a pending prompt SHALL retain normal broadcasting behavior.
+
+## Guild-shop XP (REQ-342)
+
+See [guild-shop-xp.md](guild-shop-xp.md) for policy, payment boundary, journal states and SPEAR evidence.
+
+### REQ-335 — Sellback moderation reservation
+
+**Unwanted.** IF a stall has an active moderation mutation lock when sellback is confirmed THEN THE SYSTEM SHALL reject sellback before ownership, refund, shop, offer, IP, region or schematic mutations.
+
+## Expanded categories and explicit lookup
+
+### REQ-377 - Category families
+
+**Event-driven.** WHEN a player searches a supported Market category THE SYSTEM SHALL match its defined item materials and supported container contents, allow intentional category overlap, and retain opt-outs and direction/stock controls.
+
+### REQ-378 - Explicit lookup and compatibility
+
+**Event-driven.** WHEN a query uses `item:<material>` THE SYSTEM SHALL perform exact material lookup; WHEN a query uses `category:<name>` THE SYSTEM SHALL select only the defined category. Bare material/prefix searches and established aliases SHALL retain existing coverage, and ambiguous stone/flower aliases SHALL retain their category meaning.
+
+### REQ-379 - Shared completion and entrypoints
+
+**Event-driven.** WHEN a player completes either Market search command THE SYSTEM SHALL suggest category and explicit selector forms alongside ordinary item materials. Both entrypoints SHALL share matching/ticker interpretation and search-result direction-guide behavior.
+
+Detailed taxonomy, proof and delivery boundaries: expanded-search-verification.md.
+
+### REQ-380 — Search stock feedback
+
+**Event-driven.** WHEN a Market item search has shops matching the selected direction but no entries visible under the default stock filter THE SYSTEM SHALL send localized feedback naming the query as not in stock without opening or replacing the player's inventory.
+
+### REQ-381 — Private destination outline
+
+WHEN a player selects a shop search result THE SYSTEM SHALL retain its existing private direction guide and highlight only that destination stall within a configurable distance, using its actual cuboid or polygon footprint and a bounded shop-height outline. The highlight SHALL be private, replace the prior destination and never load terrain or alter blocks/permissions. Missing or unsupported geometry SHALL preserve the direction guide without inventing a region boundary.
+
+### REQ-382 — Configurable arrival and rendering
+
+WHEN a player arrives THE SYSTEM SHALL stop direction particles and retain the private outline for a configurable bounded arrival period (default ten seconds). Cancellation, expiry, disconnect, death, world change and shutdown SHALL clear both. Operators SHALL configure outline enablement, distance, height, spacing, per-player particle limit, color, size and shop marker; existing global finder budgets and limits SHALL apply. Invalid settings SHALL be normalized safely; disabled outlines SHALL retain existing finder behavior.
+
+### REQ-384 — Guild stock attribution
+
+WHEN a currently authorized member manually adds provably identifiable guild-shop stock THE SYSTEM SHALL record the contributor, SHALL attribute completed SELL units FIFO, and SHALL mark existing, drifted, mixed, automated or shared same-item container stock unattributed. BUY trades SHALL NOT count as sales revenue. Taxes, rewards, ownership and payouts SHALL remain unchanged.
+
+### REQ-385 — Read-only accounting reports
+
+WHEN a current guild shop manager requests a stall report THE SYSTEM SHALL verify active guild ownership, membership and shop authority before query and disclosure, SHALL support all/today/inclusive date ranges, and SHALL label net stocked units and gross customer payment rather than profit. Reports and optional CSV SHALL explicitly use the top 100 contributor/material rows. CSV SHALL neutralize formula cells and remain server-local.
+
+### REQ-383 — Durable ordered accounting observations
+
+WHEN a captured accounting observation is appended successfully THE SYSTEM SHALL retain it through SQL delivery failure or restart, SHALL apply its immutable recording ID once in a transaction, and SHALL preserve stock lots and receipts after failed writes. Uncertain inventory provenance SHALL replace remaining attribution with unknown stock. Corrupt earlier pending records SHALL block later delivery rather than silently reorder attribution.

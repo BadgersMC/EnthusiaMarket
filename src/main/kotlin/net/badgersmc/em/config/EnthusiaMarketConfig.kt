@@ -10,6 +10,8 @@ class EnthusiaMarketConfig {
     var market: Market = Market()
     @Comment("Periodic rent charge configuration")
     var rent: Rent = Rent()
+    @Comment("Informational login warnings; rent remains manually prepaid.")
+    var rentWarnings: RentWarnings = RentWarnings()
     @Comment("Auction settings")
     var auction: Auction = Auction()
     @Comment("Sign shop trade settings")
@@ -30,6 +32,8 @@ class EnthusiaMarketConfig {
     var schematics: Schematics = Schematics()
     @Comment("Stall boundary particle outline rendering (REQ-220 region kinds)")
     var particles: Particles = Particles()
+    @Comment("Private direction trails from shop search results.")
+    var finderTrail: FinderTrail = FinderTrail()
     @Comment("Guild tariff/embargo player notifications")
     var guildPolicy: GuildPolicy = GuildPolicy()
     @Comment("Periodic shop audit/repair sweeper (IS2-7/8, REQ-294)")
@@ -49,6 +53,29 @@ class EnthusiaMarketConfig {
                 "Caps render cost on busy servers; excess is deferred to later ticks."
         )
         var maxPerTick: Int = 200
+    }
+
+    class FinderTrail {
+        var enabled: Boolean = true
+        var durationSeconds: Long = 60
+        var maxRange: Double = 256.0
+        var maxActive: Int = 64
+        var maxParticlesPerRender: Int = 200
+        @Comment("Private destination outline; independent of general stall-border particles.")
+        var outline: FinderOutline = FinderOutline()
+    }
+
+    class FinderOutline {
+        var enabled: Boolean = true
+        var revealDistance: Double = 24.0
+        var arrivalSeconds: Long = 10
+        var height: Double = 3.0
+        var spacing: Double = 1.0
+        var maxParticlesPerPlayer: Int = 64
+        @Comment("RGB hex color; invalid values fall back to gold. Particle renderer, not entity glow.")
+        var color: String = "#FFC857"
+        var particleSize: Double = 1.0
+        var showShopMarker: Boolean = true
     }
 
     class GuildPolicy {
@@ -126,6 +153,14 @@ class EnthusiaMarketConfig {
                 "so stall member build-rights override the safezone deny."
         )
         var stallPriority: Int = 20
+    }
+
+    class RentWarnings {
+        var enabled: Boolean = true
+        var warningWindowHours: Long = 24
+        var insufficientFundsEnabled: Boolean = true
+        var maxMessages: Int = 10
+        var cooldownSeconds: Long = 300
     }
 
     class Rent {

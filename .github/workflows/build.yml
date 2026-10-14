@@ -11,8 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXUS_REF: 057836befb9e35aa252cf90104030ec86f28b33f
-      LUMAGUILDS_VERSION: 3.0.0
-      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.0.jar
+      LUMAGUILDS_VERSION: 3.0.39
+      LUMAGUILDS_REF: 283d75f1e1016d415aa5afdfac840252f0391846
+      LUMAGUILDS_SHA256: 3CA71CC1ADC2B3B69565755D25F0A5A2241B52163E41A08B005F7C50ACBB65F1
+      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.39.jar
     steps:
       - uses: actions/checkout@v4
 
@@ -36,16 +38,18 @@ jobs:
           chmod +x gradlew
           ./gradlew publishToMavenLocal --no-daemon --console=plain
 
-      # Market consumes LumaGuilds as an API/runtime dependency. Do not rebuild the
-      # RoseChat -> LumaGuilds graph here; use the released LumaGuilds artifact.
-      - name: Download LumaGuilds 3 compile dependency
+      # Compile and test against the exact approved released companion runtime.
+      - name: Download approved LumaGuilds runtime
         run: |
           mkdir -p libs
+          ACTUAL_REF=$(git ls-remote https://github.com/BadgersMC/LumaGuilds.git \
+            "refs/tags/v${LUMAGUILDS_VERSION}" | awk '{print $1}')
+          test "$ACTUAL_REF" = "$LUMAGUILDS_REF"
           curl --fail --location --silent --show-error \
             -o "$LUMAGUILDS_JAR" \
             "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
           test -s "$LUMAGUILDS_JAR"
-          ls -lh "$LUMAGUILDS_JAR"
+          printf '%s  %s\n' "$LUMAGUILDS_SHA256" "$LUMAGUILDS_JAR" | sha256sum --check
 
       # detekt 1.23.8 does not support running on JDK 25. Keep the production
       # build green on the required 26.2 toolchain; migrate detekt to 2.x separately.
@@ -71,6 +75,23 @@ jobs:
           print("MariaDB moderation tests:", counts)
           if counts["tests"] < 1 or any(counts[name] for name in ("skipped", "failures", "errors")):
               raise SystemExit("MariaDB moderation tests did not execute cleanly")
+          PY
+
+      - name: Verify companion XP runtime contract executed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          report = Path("build/test-results/test/TEST-net.badgersmc.em.infrastructure.guild.GuildShopXpRuntimeContractTest.xml")
+          suite = ElementTree.parse(report).getroot()
+          counts = {
+              name: int(suite.attrib.get(name, "0"))
+              for name in ("tests", "skipped", "failures", "errors")
+          }
+          print("Guild-shop XP runtime contract:", counts)
+          if counts["tests"] < 1 or any(counts[name] for name in ("skipped", "failures", "errors")):
+              raise SystemExit("Guild-shop XP v2 runtime contract did not execute cleanly")
           PY
 
       - name: Upload coverage to Codacy

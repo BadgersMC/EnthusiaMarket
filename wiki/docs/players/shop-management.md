@@ -5,7 +5,7 @@ topic: shop-management
 summary: Manage your shops — list, edit, trust players, and delete.
 keywords: [shop, management, edit, trust, delete, list, commands]
 related: [shop-creation, guild-stalls]
-updated: 2026-06-25
+updated: 2026-10-07
 ---
 
 # Shop management
@@ -32,6 +32,21 @@ Opens a GUI listing all your shops. Click one to edit:
 - Change the price.
 - Toggle search visibility.
 - Toggle frozen state (pause trading).
+
+On Java, quantity and price have separate columns. Quantity changes by one item;
+price changes by ten currency per trade. Hopper input/output, search visibility
+and freeze controls show **Enabled** or **Disabled**. Click the shop item to use
+the item and quantity currently held in your hand.
+
+Edits remain a draft until **Save**. **Back to your shops** offers Save, Discard
+changes or Keep editing when the draft has changed. Closing the inventory normally
+does not save. Permissions are checked again when changes are saved.
+
+**Delete** in the Java editor opens a separate confirmation showing the shop item,
+price/quantity and sign location. **Keep shop** returns to the same draft;
+**Confirm shop deletion** checks current deletion authority before removing it.
+Bedrock retains its existing quantity/price inputs and settings form; submitting
+that form saves through the same permission service.
 
 ## Trust a player
 
@@ -90,11 +105,25 @@ Set a duration or turn it off.
 
 ## Transaction history
 
+History includes your transactions as either shop owner or buyer, ten per page.
+`today` uses the server calendar date; `range` includes both supplied dates in the
+server timezone shown in the response. For example,
+`/shop history range 2026-10-01 2026-10-08` includes all of October 8.
+Dates must use `YYYY-MM-DD`, and start must be on or before end.
+Next-page links retain the selected filter. `all` and the original history command
+show all **retained** records; pruned transactions are unavailable. Retention settings
+are unchanged. These commands do not mark sales as notified or expose other players' history.
+
 ```text
 /shop history [page]
+/shop history all [page]
+/shop history today [page]
+/shop history range YYYY-MM-DD YYYY-MM-DD [page]
 ```
 
 View your shop transaction history (paginated, 10 per page).
+
+History is retained according to the server's `shop.historyRetentionDays` setting (default 30 days). Older rows are pruned; this command is not an all-time sales ledger.
 
 ## Tutorial
 
@@ -103,6 +132,8 @@ View your shop transaction history (paginated, 10 per page).
 ```
 
 Displays a multi-line tutorial from the language files. Good for new players.
+
+The aliases also need the `show` subcommand: `/shoptutorial show` or `/sht show`. Use `/em help` for clickable topics, including the stall IDs and auction IDs required by the related commands.
 
 ## Admin commands
 

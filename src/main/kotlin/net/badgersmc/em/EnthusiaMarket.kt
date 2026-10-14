@@ -29,6 +29,10 @@ import javax.sql.DataSource
 open class EnthusiaMarket : JavaPlugin() {
 
     private var nexus: NexusContext? = null
+    private var shopNotifications: net.badgersmc.em.infrastructure.listeners.ShopNotificationStorage? = null
+    private var rentWarnings: net.badgersmc.em.infrastructure.listeners.RentLoginWarningListener? = null
+    private var stallAccounting: net.badgersmc.em.infrastructure.listeners.StallAccountingStorage? = null
+    private var shopHistory: net.badgersmc.em.infrastructure.listeners.ShopHistoryStorage? = null
     private var scheduler: NexusScheduler? = null
     private var websiteSync: net.badgersmc.em.websync.WebsiteSyncService? = null
     private var bedrockHeadStore: net.badgersmc.em.websync.heads.BedrockHeadStore? = null
@@ -37,6 +41,9 @@ open class EnthusiaMarket : JavaPlugin() {
     private var floodgateSkinCapture: net.badgersmc.em.websync.heads.FloodgateSkinCaptureService? = null
     private var headUploadClientCache: net.badgersmc.em.websync.HeadUploadClientCache? = null
     private var moderationProvider: net.badgersmc.em.infrastructure.moderation.MarketModerationProvider? = null
+    private var finderTrail: net.badgersmc.em.infrastructure.listeners.FinderTrailService? = null
+    private var stallEffectGuard: net.badgersmc.em.infrastructure.listeners.StallEffectGuard? = null
+    private var stallAccessRefresh: net.badgersmc.em.infrastructure.listeners.StallAccessRefreshWorker? = null
 
     @Suppress("LongMethod", "TooGenericExceptionThrown")
     override fun onEnable() {
@@ -97,6 +104,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // i18n service — wired manually since LangService lives outside the EM scan package.
         val lang = LangService(this, Locale(cfg.lang.locale), EnthusiaMarketLang::class.java)
         ctx.registerBean("langService", LangService::class, lang)
+        finderTrail = ctx.getBean<net.badgersmc.em.infrastructure.listeners.FinderTrailService>()
 
         // Database via nexus-persistence
         val dbSpec = when (cfg.database.type) {
@@ -112,6 +120,9 @@ open class EnthusiaMarket : JavaPlugin() {
         val ds = DatabaseFactory.open(dbSpec)
         MigrationRunner(ds, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
         ctx.registerBean("dataSource", DataSource::class, ds as DataSource)
+        shopNotifications = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ShopNotificationStorage>()
+        shopHistory = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ShopHistoryStorage>()
+        stallAccounting = ctx.getBean<net.badgersmc.em.infrastructure.listeners.StallAccountingStorage>()
 
         // Stable Staff integration. Register the policy before Nexus constructs any
         // purchase or auction services so every acquisition shares the durable fence.
@@ -153,9 +164,45 @@ open class EnthusiaMarket : JavaPlugin() {
         val websiteDirtyRelay = net.badgersmc.em.websync.WebsiteSyncDirtyRelay()
         val dirtyFailures = net.badgersmc.em.websync.RateLimitedDirtyTrackingFailureObserver(logger)
         val stallSqlRepo = net.badgersmc.em.infrastructure.persistence.StallRepositorySql(ds)
-        val stallRepository: net.badgersmc.em.domain.stall.StallRepository =
+        val trackedStalls: net.badgersmc.em.domain.stall.StallRepository =
             net.badgersmc.em.websync.DirtyTrackingStallRepository(stallSqlRepo, websiteDirtyRelay, dirtyFailures)
-        ctx.registerBean("stallRepository", net.badgersmc.em.domain.stall.StallRepository::class, stallRepository)
+        val stallRepository = net.badgersmc.em.application.StallAccessIndex(trackedStalls)
+        stallRepository.rebuild()
+        net.badgersmc.em.infrastructure.bootstrap.StallAccessBeans.registerIndex(ctx, stallRepository)
+        rentWarnings = ctx.getBean<net.badgersmc.em.infrastructure.listeners.RentLoginWarningListener>()
+
+        server.servicesManager.register(
+            net.enthusia.market.api.guild.GuildStallReadApi::class.java,
+            net.badgersmc.em.infrastructure.guild.GuildStallReadProvider(
+                net.badgersmc.em.application.GuildStallQueryService(
+                    stallRepository, ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class), cfg,
+                ),
+                ctx.getBean(net.badgersmc.em.domain.ports.RegionProvider::class),
+                java.util.concurrent.Executor { server.scheduler.runTaskAsynchronously(this, it) },
+                java.util.concurrent.Executor { server.scheduler.runTask(this, it) },
+            ),
+            this,
+            org.bukkit.plugin.ServicePriority.Normal,
+        )
+        val accessSettings = net.badgersmc.em.application.StallAccessSettingsService(
+            stallRepository, net.badgersmc.em.infrastructure.persistence.StallAccessSettingsSql(ds),
+            ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class), marketMutationGate,
+        )
+        net.badgersmc.em.infrastructure.bootstrap.StallAccessBeans.registerSettings(ctx, accessSettings)
+        val accessProjection = net.badgersmc.em.infrastructure.listeners.StallAccessProjection()
+        ctx.registerBean("stallAccessProjection", net.badgersmc.em.infrastructure.listeners.StallAccessProjection::class, accessProjection)
+        applyStallAccessPolicies(trackedStalls, accessSettings, accessProjection)
+        val accessRefresh = net.badgersmc.em.infrastructure.listeners.StallAccessRefreshWorker(stallRepository)
+        stallAccessRefresh = accessRefresh
+        marketMutationGate.beforeRelease = accessRefresh::invalidateAndRefresh
+
+        val saleRewards = net.badgersmc.em.application.GuildSaleRewardService(
+            net.badgersmc.em.infrastructure.persistence.GuildSaleJournalSql(ds),
+            net.badgersmc.em.infrastructure.guild.BukkitGuildShopXpGateway(),
+            { id, error -> logger.warning("Guild-shop XP delivery needs retry/investigation for sale $id: ${error.javaClass.simpleName}") },
+        )
+        ctx.registerBean("guildSaleRewards", net.badgersmc.em.domain.ports.GuildSaleRewards::class, saleRewards)
+        server.scheduler.runTaskTimerAsynchronously(this, Runnable { saleRewards.replay() }, 20L, 200L)
 
         // Shop repository + in-memory container index (REQ-281/282, PERF-4). The hopper-control
         // hot path (InventoryMoveItemEvent) must resolve shop status without a DB query, so we wrap
@@ -257,6 +304,7 @@ open class EnthusiaMarket : JavaPlugin() {
 
         // Phase 5: Register Paper commands (triggers bean creation via DI).
         net.badgersmc.em.infrastructure.commands.WebsiteSyncSecretArgumentRegistration.register()
+        net.badgersmc.em.infrastructure.commands.MarketSearchArgumentRegistration.register()
         // itemMaterials suggestion provider backs `/shop search` tab-completion (REQ-283):
         // computed once here, prefix-filtered per keystroke by the pure MaterialSuggestions helper.
         val itemMaterialNames = org.bukkit.Material.entries.filter { it.isItem }.map { it.name }
@@ -282,8 +330,10 @@ open class EnthusiaMarket : JavaPlugin() {
         // Phase 5b: Register /finditem as a top-level Paper Brigadier command.
         // @Subcommand("") crashes Nexus; we bypass it entirely.
         net.badgersmc.em.infrastructure.commands.FindItemRegistrar.register(this, itemMaterialNames, ctx)
+        net.badgersmc.em.infrastructure.commands.GuildSalesRegistrar.register(this, ctx)
 
         // Phase 6: Discover every @Listener-annotated bean in the scan
+        stallEffectGuard = ctx.getBean<net.badgersmc.em.infrastructure.listeners.StallEffectGuard>()
         // package, resolve it from DI, and register it with Bukkit.
         // NOTE: registerNexusListeners is fail-OPEN per listener — a bean
         // whose dependencies can't resolve is logged as a WARNING and
@@ -505,8 +555,15 @@ open class EnthusiaMarket : JavaPlugin() {
     }
 
     override fun onDisable() {
+        stallAccounting?.close()
+        shopHistory?.close()
+        shopNotifications?.close()
+        rentWarnings?.close()
+        finderTrail?.close()
         server.servicesManager.unregisterAll(this)
         runCatching { moderationProvider?.close() }
+        runCatching { stallEffectGuard?.close() }
+        runCatching { stallAccessRefresh?.close() }
         runCatching { geyserHeadIntegration?.close() }
         runCatching { floodgateHeadIntegration?.close() }
         runCatching { floodgateSkinCapture?.close() }
@@ -517,4 +574,10 @@ open class EnthusiaMarket : JavaPlugin() {
         nexus?.close()
         logger.info("EnthusiaMarket disabled")
     }
+
+    private fun applyStallAccessPolicies(
+        stalls: net.badgersmc.em.domain.stall.StallRepository,
+        service: net.badgersmc.em.application.StallAccessSettingsService,
+        projection: net.badgersmc.em.infrastructure.listeners.StallAccessProjection,
+    ) { stalls.all().forEach { projection.apply(it, service.current(it)) } }
 }

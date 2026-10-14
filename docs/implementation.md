@@ -1,5 +1,14 @@
 # Implementation — EnthusiaMarket
 
+## Search stock feedback (REQ-380)
+
+SearchResultsMenu.open applies its existing stock filter before constructing a
+GUI or looking up stall names. An empty visible set sends query-specific,
+localized not-in-stock feedback; an empty raw set retains no-results feedback.
+The early return preserves any existing inventory. Both /finditem and /shop
+search already use this shared presentation adapter. BUY/admin availability,
+explicit out-of-stock display, sorting and pagination remain unchanged.
+
 **Date:** 2026-05-24
 **Status:** Bootstrap (emitted by `/spear:init`; extend as components land)
 **Owner:** BadgersMC
@@ -216,6 +225,12 @@ The V029 reconciliation is the release-time companion to the runtime invariants 
 4. If a shop is found, the listener cancels the move when `hopperAllowOut` (source) / `hopperAllowIn` (destination) is false; otherwise the event passes through.
 5. The index stays correct because every shop mutation flows through `IndexedShopRepository` (4.3 and the management/guild services), and `onEnable` rebuilds it from persistence.
 
+### Search direction and material-family matching (REQ-343/344)
+
+`ShopSearchService.SearchMode` selects the owner's `SignDirection`; `SearchResultsMenu` combines that selection with the existing stock filter before sorting and pagination. Its copy path retains mode on sort, stock and page changes; the direction control resets page one. Both `/finditem` and `/shop search` reuse that menu and preserve their query syntax, completion and permission checks.
+
+Generic shulker matching stays in `ShopSearchService` alongside existing categories. `shulker` and `shulker_box` include all modern shulker colors; exact-color queries, nested shulker/bundle search, opt-in gating and traversal bounds retain their existing semantics. Query casing uses Locale.ROOT. No persistence, payment, companion or trade-service contract changes.
+
 ## 5. Briefing contract for subagent dispatch
 
 Every worker dispatch (`Agent` tool call) for implementation work carries:
@@ -233,7 +248,39 @@ Tasks whose full briefing exceeds ~1500 tokens are decomposed further by `/spear
 
 Semantic versioning. Start at `0.1.0`. Bump major on breaking public-API or DB schema change (migrations always additive within a major).
 
-## 7. Out of scope (this doc)
+## 7. REQ-332 item-frame policy
+
+`EntityLimitGroup.appliesTotalTo` owns the domain decision that a normal/glow frame with an effective negative per-type cap is unlimited. `EntityLimitListener` applies that decision before its existing shared-total check, preserving per-type checks, per-stall allowance merging, event wiring and counts for other entities. The bundled `entitylimits.yml` uses `-1` for both frame types in every kind. No runtime API, permission or persistence schema changes are required.
+
+## 8. REQ-334 private chat input adapter
+
+ChatPriceListener claims pending create-price and bulk-quantity input at LOWEST on the legacy AsyncPlayerChatEvent before RoseChat's LOW-priority broadcaster. AsyncChatEvent remains the fallback; both handlers ignore cancelled events so propagated legacy cancellation cannot schedule duplicate processing. Cancellation occurs before scheduling the existing menu handler onto the server thread. No pending prompt means no cancellation or callback. Input parsing, permissions and persistence are unchanged.
+
+## 9. Out of scope (this doc)
 
 - Per-component code-level docs — owned by each component's own KDoc.
 - CI configuration — owned by `tech-stack.md` §CI and the workflow file itself.
+
+## Expanded category lookup (REQ-377-379)
+
+SearchCategory owns the shared stdlib vocabulary/aliases used by query parsing and completion. MarketSearchQuery distinguishes AUTO, exact ITEM and strict CATEGORY modes. SearchCategoryMaterials supplies bounded material-family predicates; shop metadata/display names never determine membership. ShopSearchService parses once per candidate shop before its existing depth/item-budget traversal. Bare prefixes and legacy wood substring coverage are retained; stone/flower aliases remain strict. Exact selectors resolve colliding category/material names. Category queries suppress misleading single-material price tickers.
+
+Both command adapters use the shared parser/matcher/completion/ticker behavior. The /finditem adapter retains asynchronous repository reads/server-thread metadata handling and now forwards the existing private trail callback like /shop search. Permission, state/persistence and trade behavior are unchanged. Runtime-derived catalog data exports through a test for an interactive review simulation; it is not a live market connection.
+
+## Private finder outline (REQ-381/382)
+
+RegionProvider exposes an optional platform-free Footprint; WorldGuard supplies cuboid outer edges or polygon block-center vertices and returns null for unsupported geometry. FinderTrailService captures it once on selection. FinderOutlinePlanner samples bottom/top footprint edges around shop height, prioritizes corners/marker and widens spacing under caps. FinderTrailTracker owns both direction and bounded arrival phases, replacement and one shared rotating particle budget. The Bukkit adapter normalizes color/size and sends END_ROD direction/DUST outline particles only through the target Player, skipping unloaded chunks. The existing general ParticleBorderService is unchanged. No SQL, terrain load, entity persistence, block mutation, permission or trade changes are introduced.
+
+## Guild-shop XP (REQ-342)
+
+See [guild-shop-xp.md](guild-shop-xp.md) for policy, payment boundary, journal states and SPEAR evidence.
+
+## Guild stall accounting (REQ-384, REQ-385 and REQ-383)
+
+Plain domain values allocate FIFO units and exact integer payment shares. Paper
+adapters capture immutable guild/stall/item/actor observations; the single-worker
+forced-file outbox orders their transactional SQL delivery. Additive migration
+V033 stores receipt IDs, remaining lots, stock events and sale attribution.
+Reporting adapters authorize through the existing GuildProvider and reuse date
+window values. No economic write path or XP policy is added by reporting.
+See [stall-accounting.md](stall-accounting.md) for proof and release boundaries.

@@ -6,6 +6,7 @@ import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.ShopSearchService.SearchMode
 import net.badgersmc.em.domain.shop.PriceTicker
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.stall.StallId
@@ -33,6 +34,8 @@ class SearchResultsMenu(
     private val page: Int = 1,
     private val includeOutOfStock: Boolean = false,
     private val sort: Sort = Sort.PRICE_LOW,
+    private val mode: SearchMode = SearchMode.ANY,
+    private val navigate: ((Player, Shop) -> Unit)? = null,
 ) : Menu {
 
     data class Result(val shop: Shop, val matchedMaterial: Material, val nested: Boolean)
@@ -40,7 +43,16 @@ class SearchResultsMenu(
     enum class Sort { PRICE_LOW, PRICE_HIGH, STOCK_HIGH }
 
     override fun open(player: Player) {
-        val visible = sort(filter(results, includeOutOfStock), sort)
+        val visible = sort(filter(results, includeOutOfStock, mode), sort)
+        if (visible.isEmpty()) {
+            val message = if (filter(results, true, mode).isEmpty()) {
+                "shop.cmd.search.none"
+            } else {
+                "shop.cmd.search.out_of_stock"
+            }
+            player.sendMessage(lang.msg(message, "query" to query))
+            return
+        }
         val totalPages = ((visible.size + PER_PAGE - 1) / PER_PAGE).coerceAtLeast(1)
         val current = page.coerceIn(1, totalPages)
         val pageItems = visible.drop((current - 1) * PER_PAGE).take(PER_PAGE)
@@ -86,6 +98,7 @@ class SearchResultsMenu(
             )
             if (result.nested) lore += lang.msg("gui.shop.search.contains", "item" to pretty(result.matchedMaterial))
             lore += Component.empty()
+            if (navigate != null) lore += lang.msg("finder_trail.click")
             lore += lang.msg(if (player.hasPermission(ADMIN_PERMISSION)) {
                 "gui.shop.search.click_teleport"
             } else {
@@ -94,19 +107,27 @@ class SearchResultsMenu(
             meta.lore(lore.map(::plainStyle))
             icon.itemMeta = meta
             pane.addItem(GuiItem(icon) { event ->
-                event.isCancelled = true
-                player.closeInventory()
-                val world = if (player.hasPermission(ADMIN_PERMISSION)) Bukkit.getWorld(shop.signWorld) else null
-                if (world != null) {
-                    player.teleport(Location(world, shop.signX + 0.5, shop.signY.toDouble(), shop.signZ + 0.5,
-                        player.location.yaw, player.location.pitch))
-                    player.sendMessage(lang.msg("gui.shop.search.teleported", "world" to shop.signWorld,
-                        "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
-                } else {
-                    player.sendMessage(lang.msg("gui.shop.search.clicked", "world" to shop.signWorld,
-                        "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
-                }
+                selectResult(player, shop, event)
             }, index % 9, RESULTS_START_ROW + index / 9)
+        }
+    }
+
+    private fun selectResult(player: Player, shop: Shop, event: org.bukkit.event.inventory.InventoryClickEvent) {
+        event.isCancelled = true
+        player.closeInventory()
+        if (navigate != null && (!player.hasPermission(ADMIN_PERMISSION) || event.isShiftClick)) {
+            navigate.invoke(player, shop)
+        }
+        val teleport = player.hasPermission(ADMIN_PERMISSION) && (navigate == null || !event.isShiftClick)
+        val world = if (teleport) Bukkit.getWorld(shop.signWorld) else null
+        if (world != null) {
+            player.teleport(Location(world, shop.signX + 0.5, shop.signY.toDouble(), shop.signZ + 0.5,
+                player.location.yaw, player.location.pitch))
+            player.sendMessage(lang.msg("gui.shop.search.teleported", "world" to shop.signWorld,
+                "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
+        } else {
+            player.sendMessage(lang.msg("gui.shop.search.clicked", "world" to shop.signWorld,
+                "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
         }
     }
 
@@ -127,6 +148,13 @@ class SearchResultsMenu(
             it.isCancelled = true
             copy(page = 1, includeOutOfStock = !includeOutOfStock).open(player)
         }, 3, 0)
+        pane.addItem(GuiItem(named(Material.HOPPER, lang.msg("gui.shop.search.direction_filter_name"), listOf(
+            lang.msg("gui.shop.search.direction_filter_selected", "mode" to langText(mode.langKey)),
+            lang.msg("gui.shop.search.direction_filter_click"),
+        ))) {
+            it.isCancelled = true
+            copy(page = 1, mode = mode.next()).open(player)
+        }, 4, 0)
         pane.addItem(GuiItem(tickerIcon(visible.map { it.shop })) { it.isCancelled = true }, 5, 0)
         pane.addItem(GuiItem(named(Material.BARRIER, lang.msg("gui.shop.search.close"))) {
             it.isCancelled = true
@@ -146,12 +174,16 @@ class SearchResultsMenu(
 
     private fun addControlFillers(pane: StaticPane) {
         val filler = GuiItem(ItemStack(Material.GRAY_STAINED_GLASS_PANE)) { it.isCancelled = true }
-        listOf(0, 2, 4, 6, 8).forEach { pane.addItem(filler, it, 0) }
+        listOf(0, 2, 6, 8).forEach { pane.addItem(filler, it, 0) }
         listOf(0, 1, 3, 5, 7, 8).forEach { pane.addItem(filler, it, ROWS - 1) }
     }
 
-    private fun copy(page: Int = this.page, includeOutOfStock: Boolean = this.includeOutOfStock, sort: Sort = this.sort) =
-        SearchResultsMenu(results, query, lang, stallRepository, ticker, page, includeOutOfStock, sort)
+    private fun copy(
+        page: Int = this.page,
+        includeOutOfStock: Boolean = this.includeOutOfStock,
+        sort: Sort = this.sort,
+        mode: SearchMode = this.mode,
+    ) = SearchResultsMenu(results, query, lang, stallRepository, ticker, page, includeOutOfStock, sort, mode, navigate)
 
     private fun tickerIcon(shops: List<Shop>): ItemStack {
         val lore = mutableListOf<Component>()
@@ -190,8 +222,10 @@ class SearchResultsMenu(
     private fun plainStyle(component: Component): Component = component.decoration(TextDecoration.ITALIC, false)
 
     companion object {
-        fun filter(results: List<Result>, includeOutOfStock: Boolean): List<Result> =
-            if (includeOutOfStock) results else results.filter { ShopDisplay.tradesAvailable(it.shop) > 0 }
+        @JvmOverloads
+        fun filter(results: List<Result>, includeOutOfStock: Boolean, mode: SearchMode = SearchMode.ANY): List<Result> =
+            results.filter { mode.includes(it.shop.direction) &&
+                (includeOutOfStock || ShopDisplay.tradesAvailable(it.shop) > 0) }
 
         fun sort(results: List<Result>, sort: Sort): List<Result> = when (sort) {
             Sort.PRICE_LOW -> results.sortedBy { unitPrice(it.shop) }
@@ -208,6 +242,11 @@ class SearchResultsMenu(
             Sort.STOCK_HIGH -> "gui.shop.search.sort_stock_high"
         }
         private fun Sort.next(): Sort = Sort.values()[(ordinal + 1) % Sort.values().size]
+        private val SearchMode.langKey: String get() = when (this) {
+            SearchMode.ANY -> "gui.shop.search.direction_any"
+            SearchMode.SELL -> "gui.shop.search.direction_sell"
+            SearchMode.BUY -> "gui.shop.search.direction_buy"
+        }
         private const val ADMIN_PERMISSION = "enthusiamarket.admin.shop"
         private const val ROWS = 6
         private const val RESULTS_START_ROW = 1
