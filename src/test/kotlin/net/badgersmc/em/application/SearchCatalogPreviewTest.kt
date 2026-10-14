@@ -1,6 +1,9 @@
 package net.badgersmc.em.application
 
 import org.bukkit.Material
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.mockbukkit.mockbukkit.MockBukkit
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -8,6 +11,9 @@ import kotlin.test.assertTrue
 
 /** Publish runtime-derived material membership for the interactive review preview. */
 class SearchCatalogPreviewTest {
+    @BeforeEach fun setUp() { MockBukkit.mock() }
+    @AfterEach fun tearDown() { if (MockBukkit.isMocked()) MockBukkit.unmock() }
+
     @Test fun `every category has supported item members and exports its actual catalog`() {
         val items = Material.entries.filter { !it.isLegacy && it.isItem }.sortedBy { it.name }
         val categories = SearchCategory.entries.joinToString(",") { category ->

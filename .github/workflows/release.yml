@@ -66,6 +66,26 @@ jobs:
           test -s "$LUMAGUILDS_JAR"
           printf '%s  %s\n' "$LUMAGUILDS_SHA256" "$LUMAGUILDS_JAR" | sha256sum --check
 
+      - name: Test release candidate
+        run: ./gradlew test --no-daemon -PuseMavenLocal=true
+
+      - name: Verify companion XP runtime contract executed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          report = Path("build/test-results/test/TEST-net.badgersmc.em.infrastructure.guild.GuildShopXpRuntimeContractTest.xml")
+          suite = ElementTree.parse(report).getroot()
+          counts = {
+              name: int(suite.attrib.get(name, "0"))
+              for name in ("tests", "skipped", "failures", "errors")
+          }
+          print("Guild-shop XP runtime contract:", counts)
+          if counts["tests"] < 1 or any(counts[name] for name in ("skipped", "failures", "errors")):
+              raise SystemExit("Guild-shop XP v2 runtime contract did not execute cleanly")
+          PY
+
       - name: Build shadowJar
         env:
           RELEASE_VERSION: ${{ steps.bump.outputs.version }}
