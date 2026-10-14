@@ -42,6 +42,7 @@ class GuildSaleRewardDeliveryTest {
         val aborted = service.prepare(guild, buyer, 3)
         service.aborted(aborted)
         service().replay()
+        assertEquals(setOf(aborted), gateway.aborts)
         assertEquals(setOf(completed), gateway.receipts)
         assertEquals(emptyList(), journal.pending(100))
     }
@@ -64,7 +65,11 @@ class GuildSaleRewardDeliveryTest {
         val service = service()
         val id = service.prepare(guild, buyer, 1)
         service.completed(id)
-        ds.connection.use { c -> c.createStatement().use { it.executeUpdate("CREATE TRIGGER reject_ack BEFORE UPDATE ON guild_sale_xp_journal WHEN NEW.state = 'ACKNOWLEDGED' BEGIN SELECT RAISE(ABORT, 'test fault'); END") } }
+        ds.connection.use { c ->
+            c.createStatement().use {
+                it.executeUpdate("CREATE TRIGGER reject_ack BEFORE UPDATE ON guild_sale_xp_journal WHEN NEW.state = 'ACKNOWLEDGED' BEGIN SELECT RAISE(ABORT, 'test fault'); END")
+            }
+        }
         service.replay()
         assertEquals(setOf(id), gateway.receipts)
         assertEquals(1, journal.pending(100).size)
@@ -83,24 +88,94 @@ class GuildSaleRewardDeliveryTest {
     @Test fun `completion journal write failure stays ambiguous and never auto awards`() {
         val service = service()
         val id = service.prepare(guild, buyer, 1)
-        ds.connection.use { c -> c.createStatement().use { it.executeUpdate("CREATE TRIGGER reject_complete BEFORE UPDATE ON guild_sale_xp_journal BEGIN SELECT RAISE(ABORT, 'test fault'); END") } }
+        ds.connection.use { c ->
+            c.createStatement().use {
+                it.executeUpdate("CREATE TRIGGER reject_complete BEFORE UPDATE ON guild_sale_xp_journal BEGIN SELECT RAISE(ABORT, 'test fault'); END")
+            }
+        }
         service.completed(id)
         service.replay()
         assertEquals(emptySet(), gateway.receipts)
         assertEquals(listOf<UUID?>(id), failures)
     }
 
+    @Test fun `abort provider failure stays retryable and does not terminalize journal`() {
+        val service = service()
+        val id = service.prepare(guild, buyer, 1)
+        gateway.failAbort = true
+        service.aborted(id)
+        assertEquals("PREPARED", journalState(id))
+        assertEquals(listOf<UUID?>(id), failures)
+        assertEquals(emptySet(), gateway.aborts)
+
+        gateway.failAbort = false
+        service.aborted(id)
+        assertEquals("ABORTED", journalState(id))
+        assertEquals(setOf(id), gateway.aborts)
+    }
+
+    @Test fun `ABORTED completion outcome is terminal and never awards XP`() {
+        val service = service()
+        val id = service.prepare(guild, buyer, 1)
+        service.completed(id)
+        gateway.completionOutcome = "ABORTED"
+        service.replay()
+        assertEquals(emptySet(), gateway.receipts)
+        assertEquals(emptyList(), journal.pending(100))
+        assertEquals("ACKNOWLEDGED", journalState(id))
+    }
+
+    @Test fun `abort journal write failure remains retryable with the same companion id`() {
+        val service = service()
+        val id = service.prepare(guild, buyer, 1)
+        ds.connection.use { c ->
+            c.createStatement().use {
+                it.executeUpdate("CREATE TRIGGER reject_abort BEFORE UPDATE ON guild_sale_xp_journal WHEN NEW.state = 'ABORTED' BEGIN SELECT RAISE(ABORT, 'test fault'); END")
+            }
+        }
+        service.aborted(id)
+        assertEquals("PREPARED", journalState(id))
+        assertEquals(setOf(id), gateway.aborts)
+        assertEquals(listOf<UUID?>(id), failures)
+
+        ds.connection.use { c -> c.createStatement().use { it.executeUpdate("DROP TRIGGER reject_abort") } }
+        service.aborted(id)
+        assertEquals("ABORTED", journalState(id))
+        assertEquals(setOf(id), gateway.aborts)
+    }
+
+    private fun journalState(id: UUID): String = ds.connection.use { connection ->
+        connection.prepareStatement("SELECT state FROM guild_sale_xp_journal WHERE id = ?").use { statement ->
+            statement.setString(1, id.toString())
+            statement.executeQuery().use { rows ->
+                check(rows.next()) { "Missing journal row for $id" }
+                rows.getString("state")
+            }
+        }
+    }
+
     private class ReceiptGateway : GuildShopXpGateway {
         var fail = false
+        var failAbort = false
+        var completionOutcome = "AWARDED:5"
         val receipts = mutableSetOf<UUID>()
+        val aborts = mutableSetOf<UUID>()
+
         override fun prepare(id: UUID, guild: UUID, buyer: UUID, occurredAt: Long): String {
             check(!fail)
             return "PREPARED"
         }
+
+        override fun abort(id: UUID): String {
+            check(!failAbort)
+            aborts.add(id)
+            return "ABORTED"
+        }
+
         override fun complete(id: UUID): String {
             check(!fail)
-            receipts.add(id)
-            return "AWARDED:5"
+            if (completionOutcome.startsWith("AWARDED:")) receipts.add(id)
+            return completionOutcome
         }
     }
 }

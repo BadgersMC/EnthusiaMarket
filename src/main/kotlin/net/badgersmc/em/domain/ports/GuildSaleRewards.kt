@@ -11,6 +11,7 @@ interface GuildSaleRewards {
 
 interface GuildShopXpGateway {
     fun prepare(id: UUID, guild: UUID, buyer: UUID, occurredAt: Long): String
+    fun abort(id: UUID): String
     fun complete(id: UUID): String
 }
 

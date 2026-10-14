@@ -27,7 +27,14 @@ class GuildSaleRewardService(
     }
 
     override fun aborted(id: UUID) {
-        try { journal.aborted(id) } catch (e: Exception) { failure(id, e) }
+        try {
+            // Do not terminalize the local journal until Guilds durably confirms the same sale ID.
+            // A provider exception therefore remains retryable/investigable and can never enter XP replay.
+            check(gateway.abort(id) == "ABORTED") { "Unsupported XP abort response" }
+            journal.aborted(id)
+        } catch (e: Exception) {
+            failure(id, e)
+        }
     }
 
     fun replay(limit: Int = 100) {
@@ -45,6 +52,7 @@ class GuildSaleRewardService(
         }
     }
 
-    private fun isTerminal(result: String): Boolean = result in setOf("OWN_GUILD", "DISABLED", "COOLDOWN", "CAPPED", "STALE_RUN") ||
+    private fun isTerminal(result: String): Boolean = result in
+        setOf("ABORTED", "OWN_GUILD", "DISABLED", "COOLDOWN", "CAPPED", "STALE_RUN") ||
         (result.startsWith("AWARDED:") && result.substringAfter(':').toIntOrNull()?.let { it > 0 } == true)
 }

@@ -11,7 +11,10 @@ jobs:
       contents: write
     env:
       NEXUS_REF: 057836befb9e35aa252cf90104030ec86f28b33f
-      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds.jar
+      LUMAGUILDS_VERSION: 3.0.39
+      LUMAGUILDS_REF: 283d75f1e1016d415aa5afdfac840252f0391846
+      LUMAGUILDS_SHA256: 3CA71CC1ADC2B3B69565755D25F0A5A2241B52163E41A08B005F7C50ACBB65F1
+      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.39.jar
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -51,24 +54,17 @@ jobs:
           chmod +x gradlew
           ./gradlew publishToMavenLocal --no-daemon --console=plain
 
-      - name: Download latest LumaGuilds release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Download approved LumaGuilds release
         run: |
           mkdir -p libs
-          LG_RELEASE=$(curl -sS -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/BadgersMC/LumaGuilds/releases/latest)
-          LG_ASSET_URL=$(echo "$LG_RELEASE" | python3 -c "
-          import sys, json
-          r = json.load(sys.stdin)
-          if 'assets' not in r:
-              print(f'ERROR: bad API response: {json.dumps(r)[:200]}', file=sys.stderr)
-              sys.exit(1)
-          print(next(a['browser_download_url'] for a in r['assets'] if a['name'].endswith('.jar')))
-          ")
-          echo "Downloading LumaGuilds from $LG_ASSET_URL"
-          curl -sSL -o libs/LumaGuilds.jar "$LG_ASSET_URL"
-          ls -lh libs/LumaGuilds.jar
+          ACTUAL_REF=$(git ls-remote https://github.com/BadgersMC/LumaGuilds.git \
+            "refs/tags/v${LUMAGUILDS_VERSION}" | awk '{print $1}')
+          test "$ACTUAL_REF" = "$LUMAGUILDS_REF"
+          curl --fail --location --silent --show-error \
+            -o "$LUMAGUILDS_JAR" \
+            "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
+          test -s "$LUMAGUILDS_JAR"
+          printf '%s  %s\n' "$LUMAGUILDS_SHA256" "$LUMAGUILDS_JAR" | sha256sum --check
 
       - name: Build shadowJar
         env:

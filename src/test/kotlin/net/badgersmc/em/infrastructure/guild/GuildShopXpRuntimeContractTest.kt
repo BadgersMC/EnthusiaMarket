@@ -10,35 +10,33 @@ import org.bukkit.plugin.RegisteredServiceProvider
 import org.bukkit.plugin.ServicePriority
 import org.bukkit.plugin.ServicesManager
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assumptions.assumeTrue
-import java.net.URLClassLoader
-import java.nio.file.Path
 import java.lang.reflect.Proxy
+import java.net.URLClassLoader
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.UUID
 import kotlin.test.assertEquals
 
 class GuildShopXpRuntimeContractTest {
     @Test fun `real companion interface works through isolated plugin classloader using JDK values`() {
-        val configured = System.getenv("LUMAGUILDS_JAR")
-        assumeTrue(configured != null, "Set LUMAGUILDS_JAR to execute the paired-runtime contract")
-        val path = checkNotNull(configured)
+        val path = checkNotNull(System.getenv("LUMAGUILDS_JAR")) {
+            "LUMAGUILDS_JAR is required; the paired-runtime release contract may not be skipped"
+        }
+        check(Files.isRegularFile(Path.of(path))) { "LUMAGUILDS_JAR does not name a real file: $path" }
         URLClassLoader(arrayOf(Path.of(path).toUri().toURL()), ClassLoader.getPlatformClassLoader()).use { loader ->
-            // The main CI release pin is still 3.0.17 until the companion PR is merged/released.
-            // Make that limitation explicit; local paired-artifact validation must execute this test.
-            val supported = loader.findResource("net/lumalyte/lg/api/GuildShopXpApi.class") != null
-            assumeTrue(supported, "Pinned companion has no GuildShopXpApi: paired-runtime release gate remains pending")
             @Suppress("UNCHECKED_CAST")
             val api = Class.forName("net.lumalyte.lg.api.GuildShopXpApi", true, loader) as Class<Any>
             val calls = mutableListOf<String>()
             val provider = Proxy.newProxyInstance(loader, arrayOf(api)) { _, method, args ->
                 calls.add(method.name)
                 when (method.name) {
-                    "apiVersion" -> 1
+                    "apiVersion" -> 2
                     "prepare" -> {
                         assertEquals(4, args.size)
                         assertEquals("java.util.UUID", args[0].javaClass.name)
                         "PREPARED"
                     }
+                    "abort" -> "ABORTED"
                     "complete" -> "AWARDED:5"
                     else -> error("Unexpected API call")
                 }
@@ -54,9 +52,15 @@ class GuildShopXpRuntimeContractTest {
                 val gateway = BukkitGuildShopXpGateway()
                 val id = UUID.randomUUID()
                 assertEquals("PREPARED", gateway.prepare(id, UUID.randomUUID(), UUID.randomUUID(), 1000))
+                assertEquals("ABORTED", gateway.abort(id))
                 assertEquals("AWARDED:5", gateway.complete(id))
-                assertEquals(listOf("apiVersion", "prepare", "apiVersion", "complete"), calls)
-            } finally { unmockkAll() }
+                assertEquals(
+                    listOf("apiVersion", "prepare", "apiVersion", "abort", "apiVersion", "complete"),
+                    calls,
+                )
+            } finally {
+                unmockkAll()
+            }
         }
     }
 }

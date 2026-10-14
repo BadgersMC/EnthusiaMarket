@@ -9,6 +9,8 @@ class BukkitGuildShopXpGateway : GuildShopXpGateway {
     override fun prepare(id: UUID, guild: UUID, buyer: UUID, occurredAt: Long): String =
         invoke("prepare", arrayOf(UUID::class.java, UUID::class.java, UUID::class.java, java.lang.Long.TYPE), id, guild, buyer, occurredAt)
 
+    override fun abort(id: UUID): String = invoke("abort", arrayOf(UUID::class.java), id)
+
     override fun complete(id: UUID): String = invoke("complete", arrayOf(UUID::class.java), id)
 
     private fun invoke(name: String, types: Array<Class<*>>, vararg args: Any): String {
@@ -18,7 +20,7 @@ class BukkitGuildShopXpGateway : GuildShopXpGateway {
         val registration = manager.getRegistration(type) ?: error("Guild-shop XP registration disappeared")
         check(registration.plugin.isEnabled) { "Guild-shop XP provider disabled" }
         val provider = registration.provider
-        check(type.getMethod("apiVersion").invoke(provider) == 1) { "Unsupported guild-shop XP API version" }
+        check(type.getMethod("apiVersion").invoke(provider) == 2) { "Unsupported guild-shop XP API version" }
         return type.getMethod(name, *types).invoke(provider, *args) as String
     }
 }
