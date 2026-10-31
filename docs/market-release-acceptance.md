@@ -62,6 +62,27 @@ suites below all executed without skips. Counts are not additional test runs.
 
 ## Remaining gates
 
+### Native trading update — 2026-10-31
+
+User confirms finders working (Roundtable2956). Real FainNeito acceptance2977
+proves personal single/bulk/last-item delivery, depleted-search feedback, guild
+stall purchase18, guild SELL credit11, guild BUY payout2 and insufficient-guild-
+funds rejection with identical full Market database fingerprints. Guild bank
+0→11→9, transactions67624/67625 exactly once; own-guild XP excluded as OWN_GUILD.
+Fixture retained by authorization; clients/TEST released2976. Full private
+[evidence archive](https://drive.google.com/file/d/1aRQ6QPGGYcDMBIPZRupWvoXmVlZiRlJr/view).
+These findings supersede the pending wording below only for those exact cases.
+Outside-guild buyer XP, distinct personal seller transfer, provider failure,
+replay, tax/cap cases and deferred ordinary-player/Bedrock checks remain open.
+
+The pass exposed owner-list status debug text and BUY sentinel stock. REQ-395
+corrects source presentation with regression/preview evidence in
+owner-display-verification.md; new-build native acceptance is pending. Guilds
+owns the separate ledger actor/debit presentation follow-up. No release gate is
+closed solely by this update.
+
+### Broader release boundaries
+
 1. Current paired transaction checks: last-item/bulk delivery, stock refresh,
    insufficient funds, guild accounting/XP and applicable tax/cap/failure/replay
    cases. Keep FainNoir-dependent actions on hold pending Staff-session resolution;

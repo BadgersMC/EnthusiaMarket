@@ -10,6 +10,9 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.minimessage.MiniMessage
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.ShopMenuPage
@@ -74,7 +77,6 @@ class OwnedShopsMenu(
 
     private fun describeIcon(meta: ItemMeta, shop: Shop) {
         val dirLabel = ShopDisplay.directionLabel(shop.direction)
-        val tradesAvailable = ShopDisplay.tradesAvailable(shop)
         val frozenLabel = if (shop.frozen)
             lang.msg("gui.shop.owned.status_frozen")
         else
@@ -82,8 +84,14 @@ class OwnedShopsMenu(
         meta.displayName(lang.msg("gui.shop.owned.icon", "sell_amt" to shop.sellAmount, "cost" to shop.costAmount, "world" to shop.signWorld, "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
         meta.lore(listOf(
             lang.msg("gui.shop.owned.dir_lore", "direction" to dirLabel),
-            lang.msg("gui.shop.owned.stock_lore", "trades" to tradesAvailable),
-            lang.msg("gui.shop.owned.frozen_lore", "frozen" to frozenLabel),
+            stockDescription(shop),
+            lang.msg("gui.shop.owned.frozen_lore", "frozen" to MiniMessage.miniMessage().serialize(frozenLabel)),
         ))
+    }
+
+    private fun stockDescription(shop: Shop): Component = when {
+        shop.adminShop -> lang.msg("gui.shop.owned.stock_unlimited")
+        shop.direction == SignDirection.BUY -> lang.msg("gui.shop.owned.stock_buy")
+        else -> lang.msg("gui.shop.owned.stock_lore", "trades" to ShopDisplay.tradesAvailable(shop))
     }
 }

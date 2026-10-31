@@ -477,6 +477,8 @@ gui:
       icon: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <white><world> <x>,<y>,<z>"
       dir_lore: "<gray>Direction: <white><direction>"
       stock_lore: "<gray>Stock: <aqua><trades> trades</aqua>"
+      stock_unlimited: "<gray>Stock: <aqua>Unlimited</aqua>"
+      stock_buy: "<gray>Capacity and funds checked when trading"
       frozen_lore: "<gray>Status: <frozen>"
       status_frozen: "<red>Frozen"
       status_active: "<green>Active"

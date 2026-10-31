@@ -1191,6 +1191,8 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 
 # Native management UI corrections (2026-10-30)
 
+- [x] **OWNER-DISPLAY-395** — REQ-395: reproduce and correct native owner-list component debug status and BUY sentinel stock; preserve localized styling/templates, finite stock arithmetic, admin stock, navigation and trade policy. Evidence: actual TEST screenshot34 and Roundtable2977; `OwnedShopsMenu.describeIcon`, `ShopDisplay.tradesAvailable`, bundled `lang/en_US.yml`; on-disk Nexus `LangService` bytecode confirms parsed placeholders call `Object.toString`; existing `ShopManagementPaginationTest` and `ShopTutorialLocaleTest` demonstrate MockBukkit GUI and real locale adapters. Uses existing `net.kyori.adventure.text.minimessage.MiniMessage`, `net.badgersmc.nexus.i18n.LangHost`/`LangService`/`Locale`, `EnthusiaMarketLang`, InventoryFramework, MockK, MockBukkit and JUnit fixtures. No new dependencies or companion API changes. Native acceptance of the corrected build remains separate. Manual SPEAR record: owner-display-verification.md (repository-local EARS/state helpers absent).
+
 - [x] MARKET-15 / REQ-390/391/392 spec and native failure evidence: bare-delete parse failure, stale SELL results after BUY filter, raw trust boolean.
 - [x] Engine/architecture: explicit no-argument command route; filter-transition-only empty-menu closure; localized trust labels. No schema, economy, companion API or permission policy changes.
 - [x] Refine implementation: actual-registrar/GUI regressions and responsive interactive preview; first hosted suite identified the help contract's single-handler assumption, now corrected for valid overloads. Evidence: native-ui-fixes-verification.md.

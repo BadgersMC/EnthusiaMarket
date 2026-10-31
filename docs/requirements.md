@@ -733,3 +733,7 @@ WHEN a destination is within reveal distance THE SYSTEM SHALL show a configurabl
 - **REQ-392** WHEN the bulk-trust menu renders a shop, Market SHALL display localized Selected or Not selected text through the existing `sel` placeholder, and SHALL persist trust changes only after confirmation.
 
 - **REQ-393** WHEN a player with shop-use permission runs `/shop trust <player>`, Market SHALL dispatch the existing owner-scoped trust menu without a mode argument. Explicit `menu` and `all` routes, player-name resolution, player-only restrictions and confirmation-only menu persistence SHALL retain their behavior.
+
+### REQ-395 — Readable owner-shop status and availability
+
+WHEN the owned-shop menu renders an entry, Market SHALL display its localized Active or Frozen status without component implementation text, preserving the configured status styling and outer status template. Normal SELL/TRADE entries SHALL show complete stocked trades; admin entries SHALL show localized Unlimited stock; non-admin BUY entries SHALL explain that capacity and funds are checked when trading rather than exposing an internal unlimited sentinel or promising affordability. This presentation SHALL NOT change stock, prices, permissions, pagination or transaction eligibility.
