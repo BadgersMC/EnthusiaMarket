@@ -737,3 +737,7 @@ WHEN a destination is within reveal distance THE SYSTEM SHALL show a configurabl
 ## REQ-395 — Readable owner-shop status and availability
 
 WHEN the owned-shop menu renders an entry, Market SHALL display its localized Active or Frozen status without component implementation text, preserving the configured status styling and outer status template. Normal SELL/TRADE entries SHALL show complete stocked trades; admin entries SHALL show localized Unlimited stock; non-admin BUY entries SHALL explain that capacity and funds are checked when trading rather than exposing an internal unlimited sentinel or promising affordability. This presentation SHALL NOT change stock, prices, permissions, pagination or transaction eligibility.
+
+## REQ-397 — Auction stall bounds
+
+WHEN Market displays an auction listing, it SHALL show the stall region's inclusive bounding-box width, length and height in blocks and the bounding-box volume. WHEN bounds are missing, invalid or volume overflows, it SHALL display size unavailable instead of fabricated values. Bounding volume SHALL NOT be described as guaranteed empty or usable space. Resolving the region SHALL use the main thread; auction bidding, ownership, sorting and permissions SHALL remain unchanged.

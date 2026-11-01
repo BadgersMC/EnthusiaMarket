@@ -1214,3 +1214,8 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 - [x] Prove: four omitted-page forms failed through the actual pinned Nexus registrar; explicit-page, permission and argument cases passed. The previous test checked path presence only.
 - [x] Engine/refine locally: four explicit page-one adapters; 15 registrar/history/date/help cases passed without skips. Evidence: history-command-verification.md.
 - [ ] Inspect exact-head canonical CI/review and separately deploy/verify the history correction on TEST; the activated934279 build does not contain it.
+
+## Auction stall dimensions (REQ-397)
+
+- [x] Spec: user approved showing dimensions and volume in auction results; region bounds are inclusive and may be a polygon's bounding box, so label bounds/volume accurately rather than claim usable interior.
+- [ ] Prove/refine: verify 5 × 5 × 10 = 250, negative coordinates, one block, missing/invalid bounds and overflow; resolve Bukkit/WorldGuard on the main render thread. Build, hosted checks and live Java/Bedrock acceptance remain separate; manual evidence because project-local EARS/state tools are absent.
