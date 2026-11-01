@@ -357,7 +357,7 @@ class AdminCommands(
             sender.sendMessage(lang.msg("command.players_only"))
             return
         }
-        AuctionBrowserMenu(auctions, stalls, auctionService, nexusScheduler, lang).open(sender)
+        AuctionBrowserMenu(auctions, stalls, auctionService, nexusScheduler, lang, regionProvider).open(sender)
     }
 
     @Subcommand("auction cancel")
