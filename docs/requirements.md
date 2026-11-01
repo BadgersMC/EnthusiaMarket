@@ -766,3 +766,7 @@ WHEN Market displays an auction listing, it SHALL show the stall region's inclus
 ### REQ-409 — Guild policy notification text
 
 WHEN a guild trade policy is set, embargoed or cleared, or a targeted player enters a guild stall, THE SYSTEM SHALL render the applicable localized notification with the relevant guild names and tariff. Missing locale entries SHALL fall back to bundled text while preserving configured overrides.
+
+### REQ-396 — Accurate finder results for buying and selling
+
+WHEN the finder shows a non-admin BUY shop, Market SHALL identify it as a buying shop and state that capacity and funds are checked when trading. Mixed directions SHALL use a neutral results title.

@@ -1225,3 +1225,7 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 - [ ] **GUILD-STALL-CAP** — guild stall cap with LumaGuilds prestige bonus (REQ-399)
   References: REQ-399, LimitResolutionService.canClaimForGuild, StallBuyoutService.enforceGuildLimit, AuctionLifecycleService.guildClaimDecision, OptionalGuildPrestigePerkLookup
   Tag: TDD
+
+## Finder BUY result presentation (REQ-396)
+
+- Source and regression evidence: [finder-buy-display-verification.md](finder-buy-display-verification.md).
