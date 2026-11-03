@@ -98,7 +98,7 @@ class AuctionBrowserDisplayTest {
         AuctionBrowserMenu::class.java.getDeclaredMethod("prefetch").apply { isAccessible = true }.invoke(menu)
         AuctionBrowserMenu::class.java.getDeclaredMethod("render", ChestGui::class.java)
             .apply { isAccessible = true }.invoke(menu, gui)
-        val player = MockBukkit.getMock().addPlayer()
+        val player = MockBukkit.getMock()!!.addPlayer()
         gui.show(player)
         return player.openInventory.topInventory.getItem(0)!!
     }
