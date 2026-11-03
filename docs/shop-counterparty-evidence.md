@@ -10,3 +10,7 @@
 ## Evidence and boundaries
 
 Fork Market main 0e0c771 and Guilds main cf9f29a; GuildLookup system bank methods accept a reason, preserve zero-UUID system actor, and write the reason into bank history. Gold ledger limits descriptions to 255 characters. Player-facing reason must stay short and avoid control/formatting characters. Do not change bank permissions, debit the player through the guild API, change XP, infer historical buyers, or expose UUIDs. The compatibility-history write is secondary to canonical gold, so a successful bank mutation does not guarantee a history entry. Bank entries occur during settlement and may be followed by compensation; identify them as payments, not proof of completed item delivery. Native TEST and mobile interactive preview remain separate from local test evidence.
+
+## Fork merge release guard
+
+The fork release workflow publishes on main pushes. Its job now skips only when the push head commit message contains `[skip release]`; other main pushes retain normal release behavior. This allows a merged-commit CI build for TEST without automatically publishing a release. Verify both the merge commit message and the triggered release/build workflow outcomes after merge.
