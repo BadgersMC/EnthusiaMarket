@@ -762,3 +762,7 @@ WHEN Market displays an auction listing, it SHALL show the stall region's inclus
 **Event-driven.** WHEN a guild submits a stall bid THE SYSTEM SHALL reject it before charging if the guild is already the high bidder on a different open auction, including one awaiting settlement. The check SHALL use the guild ID and preserve the existing IP checks.
 
 **Event-driven.** WHEN a guild bids in a staff-designated opening round THE SYSTEM SHALL reject it if that guild has already won a stall in the round. At settlement the system SHALL recheck the rule, refund an ineligible winner, and record a successful win in the same transaction as the stall award. The record SHALL survive restart, transfer and surrender.
+
+### REQ-409 — Guild policy notification text
+
+WHEN a guild trade policy is set, embargoed or cleared, or a targeted player enters a guild stall, THE SYSTEM SHALL render the applicable localized notification with the relevant guild names and tariff. Missing locale entries SHALL fall back to bundled text while preserving configured overrides.
