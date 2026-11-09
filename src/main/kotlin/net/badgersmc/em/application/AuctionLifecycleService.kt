@@ -304,7 +304,18 @@ class AuctionLifecycleService(
         }
     }
 
+    /** REQ-399: the guild stall cap, with LumaGuilds' prestige bonus. */
+    private fun guildClaimDecision(actor: UUID, guildId: String): LimitResolutionService.ClaimDecision {
+        val extra = runCatching { guildProvider?.extraGuildStalls(guildId) ?: 0 }.getOrDefault(0)
+        return limits.canClaimForGuild(actor, ownership.guildCount(guildId), extra)
+    }
+
     private fun placeBidWithPermit(auctionId: AuctionId, request: BidRequest): AuctionResult {
+        if (request.guildId != null) {
+            (guildClaimDecision(request.actor, request.guildId) as? LimitResolutionService.ClaimDecision.Rejected)?.let {
+                return AuctionResult.Failure("Your guild already owns its stall limit (${it.cap})")
+            }
+        }
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
         if (mutationGate.isStallLocked(auction.stallId.value)) return AuctionResult.Failure("This stall is temporarily unavailable")
         if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is not open")
@@ -675,8 +686,8 @@ class AuctionLifecycleService(
             return
         }
         val counts = ownership.counts(bid.bidder)
-        // Match direct guild purchase policy: personal limits do not apply to guild holdings.
-        val decision = if (bid.guildId != null) LimitResolutionService.ClaimDecision.Allowed else limits.canClaim(
+        // Personal limits do not apply to guild holdings; the guild cap does (REQ-399).
+        val decision = if (bid.guildId != null) guildClaimDecision(bid.bidder, bid.guildId) else limits.canClaim(
             player = bid.bidder,
             kind = stall.kind,
             currentTotal = counts.total,

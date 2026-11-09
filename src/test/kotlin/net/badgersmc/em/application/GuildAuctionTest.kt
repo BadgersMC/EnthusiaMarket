@@ -46,6 +46,7 @@ class GuildAuctionTest {
         every { economy.withdraw(any(), any()) } returns true
         every { economy.deposit(any(), any()) } returns true
         every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { limits.canClaimForGuild(any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
         val ip = mockk<IpLimiter>(relaxed = true)
         every { ip.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null)
         val offers = mockk<SellOfferRepository>(relaxed = true)
@@ -101,6 +102,14 @@ class GuildAuctionTest {
     @Test fun `unauthorised guild bids never move money`() {
         every { guilds.hasShopPermission(actor, guildId, any()) } returns false
         assertIs<AuctionResult.Failure>(service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId)))
+        verify(exactly = 0) { guilds.bankWithdraw(any(), any()) }
+    }
+
+    @Test fun `a guild at its stall cap cannot bid and is never charged (REQ-399)`() {
+        every { guilds.extraGuildStalls(guildId) } returns 1
+        every { limits.canClaimForGuild(actor, 0, 1) } returns LimitResolutionService.ClaimDecision.Rejected.GuildCapReached(2)
+        val result = service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId))
+        assertEquals("Your guild already owns its stall limit (2)", assertIs<AuctionResult.Failure>(result).reason)
         verify(exactly = 0) { guilds.bankWithdraw(any(), any()) }
     }
 }
