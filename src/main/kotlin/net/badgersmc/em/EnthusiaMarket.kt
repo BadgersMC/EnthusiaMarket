@@ -423,6 +423,12 @@ open class EnthusiaMarket : JavaPlugin() {
         // M-19: one-time best-effort backfill of stock_count for shops written before V019.
         scheduleStockBackfill(shopRepoForBackfill)
 
+        // REQ-400: tell LumaGuilds' guild page whether a guild owns a stall.
+        val stallCounter = ctx.getBean<net.badgersmc.em.application.StallOwnershipCounter>()
+        val shopApi = net.badgersmc.em.infrastructure.lumaguilds.GuildShopLookupRegistration.lumaGuildsApi()
+        if (net.badgersmc.em.infrastructure.lumaguilds.GuildShopLookupRegistration.register(this, shopApi) { stallCounter.guildCount(it.toString()) > 0 }) {
+            logger.info("Registered GuildShopLookup for LumaGuilds")
+        }
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }
 
