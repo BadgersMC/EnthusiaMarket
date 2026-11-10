@@ -159,6 +159,7 @@ class StallBuyoutServiceTest {
         val limits = mockk<LimitResolutionService>(relaxed = true)
         every { limits.canClaim(any(), any(), any(), any()) } returns
             LimitResolutionService.ClaimDecision.Rejected.TotalCapReached(0)
+        every { limits.canClaimForGuild(any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
 
         val ownership = mockk<StallOwnershipCounter>(relaxed = true)
         every { ownership.counts(player) } returns StallOwnershipCounter.OwnedCounts(0, emptyMap())
@@ -175,5 +176,33 @@ class StallBuyoutServiceTest {
         // SOLO-only limit gate entirely — with the happy-path mocks it proceeds to Purchased.
         val result = svc.buyForGuild(stallId, player, 100L, "1.2.3.4")
         assertIs<StallBuyoutService.Result.Purchased>(result)
+    }
+
+    @Test
+    fun `guild buy at the guild stall cap is rejected before charging (REQ-399)`() {
+        val guildProvider = mockk<GuildProvider>(relaxed = true)
+        every { guildProvider.guildOf(player) } returns GuildProvider.GuildRef("guild1", "Guild")
+        every { guildProvider.hasShopPermission(any(), any(), any()) } returns true
+        every { guildProvider.extraGuildStalls("guild1") } returns 1
+        val owned = unownedStall().copy(id = StallId("other"), state = StallState.OWNED, owner = OwnerRef.guild("guild1"))
+        val stalls = mockk<StallRepository>(relaxUnitFun = true)
+        every { stalls.findById(stallId) } returns unownedStall()
+        every { stalls.all() } returns listOf(owned, owned.copy(id = StallId("third")))
+        val auctions = mockk<net.badgersmc.em.domain.auction.AuctionRepository>(relaxed = true)
+        every { auctions.findOpenByStall(stallId) } returns null
+        val economy = mockk<EconomyProvider>(relaxed = true)
+        val limits = mockk<LimitResolutionService>()
+        every { limits.canClaimForGuild(player, 2, 1) } returns LimitResolutionService.ClaimDecision.Rejected.GuildCapReached(2)
+        val svc = StallBuyoutService(
+            stalls = stalls, offers = mockk(relaxed = true), auctions = auctions,
+            economy = economy, config = EnthusiaMarketConfig(),
+            guildProvider = guildProvider, regionMembers = mockk(relaxed = true),
+            limits = limits, ownership = StallOwnershipCounter(stalls),
+            ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.acquireStall(any(), any()) } returns IpLimiter.Attempt(true, null) },
+        )
+        val result = assertIs<StallBuyoutService.Result.Rejected>(svc.buyForGuild(stallId, player, 100L, "1.2.3.4"))
+        assertEquals("Your guild already owns its stall limit (2)", result.reason)
+        verify(exactly = 0) { economy.withdraw(any(), any()) }
+        verify(exactly = 0) { guildProvider.bankWithdraw(any(), any()) }
     }
 }

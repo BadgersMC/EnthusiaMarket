@@ -748,3 +748,9 @@ WHEN Market displays an auction listing, it SHALL show the stall region's inclus
 **Event-driven.** WHEN Market records a guild shop payment or its reversal THE SYSTEM SHALL preserve system-bank settlement and include the sale-time buyer or seller name in the bank transaction description when that name is safe to display.
 
 **Unwanted.** IF a name is unsafe or unavailable THEN THE SYSTEM SHALL omit the name without changing payment behavior or exposing a raw identifier. Existing records and automatic non-shop operations remain unchanged.
+
+## REQ-399 - Guild stall cap with prestige bonus
+
+**Event-driven.** WHEN a player buys a stall or bids on an auction for their guild THE SYSTEM SHALL refuse it before any charge if the guild already owns or holds in grace at least `guildStallLimit` (default 1) stalls plus the extra stalls LumaGuilds grants (1 at Prestige III by default), and SHALL re-check the cap when the auction settles, refunding the guild if it is over.
+
+**Unwanted.** IF LumaGuilds is absent, older, or fails to answer THEN THE SYSTEM SHALL treat the bonus as 0. Stalls a guild already owns above the cap SHALL never be removed; `-1` keeps guild stalls unlimited and the limit-bypass permission skips the cap.

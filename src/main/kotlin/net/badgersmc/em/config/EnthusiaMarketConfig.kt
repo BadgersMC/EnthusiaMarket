@@ -166,6 +166,12 @@ class EnthusiaMarketConfig {
     )
     var defaultStallLimit: Int = -1
 
+    @Comment(
+        "Most stalls one guild may own (REQ-399). LumaGuilds prestige can add one more. " +
+            "Guilds already above this keep their stalls but cannot claim another. -1 = unlimited."
+    )
+    var guildStallLimit: Int = 1
+
     class LimitGroup {
         @Comment("Maximum total stalls a player in this group may own. -1 = unlimited.")
         var total: Int = -1
