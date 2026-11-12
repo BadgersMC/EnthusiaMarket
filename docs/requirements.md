@@ -757,3 +757,9 @@ WHEN Market displays an auction listing, it SHALL show the stall region's inclus
 
 ### REQ-400
 **Event-driven.** WHEN EnthusiaMarket enables and a LumaGuilds build with `net.lumalyte.lg.api.GuildShopLookup` is loaded THE SYSTEM SHALL register that service, answering whether a guild owns at least one stall in the OWNED or GRACE state; IF the API is missing THEN THE SYSTEM SHALL register nothing and keep running.
+
+## REQ-401 — Guild auction limits
+
+**Event-driven.** WHEN a guild submits a stall bid THE SYSTEM SHALL reject it before charging if the guild is already the high bidder on a different open auction, including one awaiting settlement. The check SHALL use the guild ID and preserve the existing IP checks.
+
+**Event-driven.** WHEN a guild bids in a staff-designated opening round THE SYSTEM SHALL reject it if that guild has already won a stall in the round. At settlement the system SHALL recheck the rule, refund an ineligible winner, and record a successful win in the same transaction as the stall award. The record SHALL survive restart, transfer and surrender.

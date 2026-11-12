@@ -32,14 +32,26 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
             setLong(1, Instant.now().toEpochMilli())
         }
 
+    override fun hasOtherOpenGuildBid(guildId: String, auctionId: AuctionId): Boolean =
+        exists("SELECT 1 FROM auctions WHERE state = 'OPEN' AND high_bid_guild_id = ? AND id <> ?") {
+            setString(1, guildId)
+            setString(2, auctionId.value)
+        }
+
+    override fun hasGuildOpeningRoundWin(roundId: String, guildId: String): Boolean =
+        exists("SELECT 1 FROM guild_auction_round_wins WHERE round_id = ? AND guild_id = ?") {
+            setString(1, roundId)
+            setString(2, guildId)
+        }
+
     override fun create(auction: Auction) {
         ds.connection.use { conn ->
             conn.prepareStatement(
                 """INSERT INTO auctions
                    (id, stall_id, state, start_at, end_at, starting_bid,
                     high_bid_amount, high_bidder, high_placed_at, anti_snipe_sec,
-                    anti_snipe_extend_sec, auction_duration_sec, high_bid_guild_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    anti_snipe_extend_sec, auction_duration_sec, high_bid_guild_id, opening_round_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ).use { ps ->
                 bind(ps, auction)
                 val rows = ps.executeUpdate()
@@ -127,7 +139,16 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
         ps.setLong(11, auction.antiSnipeExtension.toSeconds())
         ps.setLong(12, auction.auctionDuration.toSeconds())
         ps.setString(13, auction.highBid?.guildId)
+        ps.setString(14, auction.openingRoundId)
     }
+
+    private fun exists(sql: String, prep: PreparedStatement.() -> Unit): Boolean =
+        ds.connection.use { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                ps.prep()
+                ps.executeQuery().use { it.next() }
+            }
+        }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Auction? {
         ds.connection.use { conn ->
@@ -178,6 +199,7 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
             antiSnipeWindow = Duration.ofSeconds(rs.getLong("anti_snipe_sec")),
             antiSnipeExtension = Duration.ofSeconds(rs.getLong("anti_snipe_extend_sec")),
             auctionDuration = Duration.ofSeconds(rs.getLong("auction_duration_sec")),
+            openingRoundId = rs.getString("opening_round_id"),
         )
     }
 }
