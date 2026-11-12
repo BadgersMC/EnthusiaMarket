@@ -310,7 +310,7 @@ class JdbcMarketModerationMariaDbTest {
                 "auctions",
                 "stalls",
                 "guild_sale_xp_journal", "guild_stock_lots", "guild_accounting_receipts",
-                "guild_stock_events", "guild_sale_attribution", "stall_access_settings", "schema_migration",
+                "guild_stock_events", "guild_sale_attribution", "stall_access_settings", "guild_auction_round_wins", "schema_migration",
             ).forEach { table -> connection.prepareStatement("DROP TABLE IF EXISTS $table").use { it.executeUpdate() } }
             createStallsBaseline(connection)
             createShopsBaseline(connection)
