@@ -225,6 +225,8 @@ class EnthusiaMarketConfig {
     }
 
     class Auction {
+        @Comment("ID to stamp on new staff auctions for the opening round; blank disables tagging")
+        var openingRoundId: String = ""
         @Comment("Default auction duration (ISO-8601)")
         var defaultDuration: String = "PT24H"
         @Comment("Minimum auction duration (ISO-8601)")

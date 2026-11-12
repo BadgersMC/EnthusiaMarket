@@ -40,7 +40,10 @@ Config file: `plugins/EnthusiaMarket/enthusiamarket.yaml`
 | `auction.maxDuration` | String | `"P7D"` | Maximum auction duration. |
 | `auction.antiSnipeSec` | Int | `30` | Anti-snipe window in seconds. |
 | `auction.feePct` | Double | `0.05` | Fee deducted from seller (5%). |
+| `auction.openingRoundId` | String | `""` | Optional event ID stamped on new staff-started auctions. A guild can win one stall across all auctions with the same ID. |
 | `auction.minStartingBid` | Long | `1` | Minimum starting bid. |
+
+Set a unique opening round ID before starting the first batch. Use that same ID across every opening batch, then clear it before starting follow-up auctions. Each auction keeps the ID it was created with. Guild wins remain on record even if the stall changes hands.
 
 ## Shop
 
