@@ -20,4 +20,10 @@ class StallOwnershipCounter(private val stalls: StallRepository) {
         }
         return OwnedCounts(total = owned.size, byKind = owned.groupingBy { it.kind }.eachCount())
     }
+
+    /** Stalls owned (or in grace) by guild [guildId] (REQ-399). */
+    fun guildCount(guildId: String): Int = stalls.all().count {
+        it.owner.type == OwnerType.GUILD && it.owner.id == guildId &&
+            (it.state == StallState.OWNED || it.state == StallState.GRACE)
+    }
 }

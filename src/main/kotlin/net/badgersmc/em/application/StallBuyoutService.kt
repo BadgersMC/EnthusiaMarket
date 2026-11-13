@@ -72,6 +72,7 @@ class StallBuyoutService(
     }
 
     private fun enforceLimit(request: BuyRequest, stall: Stall): Result? {
+        if (request.owner.type == OwnerType.GUILD) return enforceGuildLimit(request)
         if (request.owner.type != OwnerType.SOLO) return null
         val counts = ownership.counts(request.payer)
         return when (
@@ -86,8 +87,18 @@ class StallBuyoutService(
                 Result.Rejected("Stall limit reached (${decision.cap})")
             is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
                 Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
+            is LimitResolutionService.ClaimDecision.Rejected.GuildCapReached ->
+                Result.Rejected("Stall limit reached (${decision.cap})")
             LimitResolutionService.ClaimDecision.Allowed -> null
         }
+    }
+
+    private fun enforceGuildLimit(request: BuyRequest): Result? {
+        val guildId = request.owner.id
+        val extra = runCatching { guildProvider.extraGuildStalls(guildId) }.getOrDefault(0)
+        val decision = limits.canClaimForGuild(request.payer, ownership.guildCount(guildId), extra)
+        return (decision as? LimitResolutionService.ClaimDecision.Rejected)
+            ?.let { Result.Rejected("Your guild already owns its stall limit (${it.cap})") }
     }
 
     private fun refundAfterFailedAward(request: BuyRequest, cause: Exception) {

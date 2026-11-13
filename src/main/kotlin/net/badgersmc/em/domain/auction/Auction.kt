@@ -21,6 +21,7 @@ data class Auction(
      *  sets [endAt] to `now + auctionDuration`. Zero means normal behaviour —
      *  the timer runs from [startAt] regardless of bids. */
     val auctionDuration: Duration = Duration.ZERO,
+    val openingRoundId: String? = null,
 ) {
     init {
         require(startingBid > 0) { "startingBid must be positive, was $startingBid" }

@@ -747,3 +747,18 @@ WHEN Market displays an auction listing, it SHALL show the stall region's inclus
 **Event-driven.** WHEN Market records a guild shop payment or its reversal THE SYSTEM SHALL preserve system-bank settlement and include the sale-time buyer or seller name in the bank transaction description when that name is safe to display.
 
 **Unwanted.** IF a name is unsafe or unavailable THEN THE SYSTEM SHALL omit the name without changing payment behavior or exposing a raw identifier. Existing records and automatic non-shop operations remain unchanged.
+
+## REQ-399 - Guild stall cap with prestige bonus
+
+**Event-driven.** WHEN a player buys a stall or bids on an auction for their guild THE SYSTEM SHALL refuse it before any charge if the guild already owns or holds in grace at least `guildStallLimit` (default 1) stalls plus the extra stalls LumaGuilds grants (1 at Prestige III by default), and SHALL re-check the cap when the auction settles, refunding the guild if it is over.
+
+**Unwanted.** IF LumaGuilds is absent, older, or fails to answer THEN THE SYSTEM SHALL treat the bonus as 0. Stalls a guild already owns above the cap SHALL never be removed; `-1` keeps guild stalls unlimited and the limit-bypass permission skips the cap.
+
+### REQ-400
+**Event-driven.** WHEN EnthusiaMarket enables and a LumaGuilds build with `net.lumalyte.lg.api.GuildShopLookup` is loaded THE SYSTEM SHALL register that service, answering whether a guild owns at least one stall in the OWNED or GRACE state; IF the API is missing THEN THE SYSTEM SHALL register nothing and keep running.
+
+## REQ-401 — Guild auction limits
+
+**Event-driven.** WHEN a guild submits a stall bid THE SYSTEM SHALL reject it before charging if the guild is already the high bidder on a different open auction, including one awaiting settlement. The check SHALL use the guild ID and preserve the existing IP checks.
+
+**Event-driven.** WHEN a guild bids in a staff-designated opening round THE SYSTEM SHALL reject it if that guild has already won a stall in the round. At settlement the system SHALL recheck the rule, refund an ineligible winner, and record a successful win in the same transaction as the stall award. The record SHALL survive restart, transfer and surrender.

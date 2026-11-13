@@ -1221,3 +1221,7 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 
 - [x] Spec: user approved showing dimensions and volume in auction results; region bounds are inclusive and may be a polygon's bounding box, so label bounds/volume accurately rather than claim usable interior.
 - [ ] Prove/refine: verify 5 × 5 × 10 = 250, negative coordinates, one block, missing/invalid bounds and overflow; resolve Bukkit/WorldGuard on the main render thread. Build, hosted checks and live Java/Bedrock acceptance remain separate; manual evidence because project-local EARS/state tools are absent.
+
+- [ ] **GUILD-STALL-CAP** — guild stall cap with LumaGuilds prestige bonus (REQ-399)
+  References: REQ-399, LimitResolutionService.canClaimForGuild, StallBuyoutService.enforceGuildLimit, AuctionLifecycleService.guildClaimDecision, OptionalGuildPrestigePerkLookup
+  Tag: TDD
