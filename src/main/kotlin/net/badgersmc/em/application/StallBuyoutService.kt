@@ -8,6 +8,8 @@ import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
 import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicService
+import net.badgersmc.em.events.SchematicCaptureFailedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
@@ -37,6 +39,7 @@ class StallBuyoutService(
     private val ipLimiter: IpLimiter,
     private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
     private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
+    private val schematics: SchematicService = SchematicService.Disabled,
 ) {
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
 
@@ -72,6 +75,7 @@ class StallBuyoutService(
     }
 
     private fun enforceLimit(request: BuyRequest, stall: Stall): Result? {
+        if (request.owner.type == OwnerType.GUILD) return enforceGuildLimit(request)
         if (request.owner.type != OwnerType.SOLO) return null
         val counts = ownership.counts(request.payer)
         return when (
@@ -86,8 +90,18 @@ class StallBuyoutService(
                 Result.Rejected("Stall limit reached (${decision.cap})")
             is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
                 Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
+            is LimitResolutionService.ClaimDecision.Rejected.GuildCapReached ->
+                Result.Rejected("Stall limit reached (${decision.cap})")
             LimitResolutionService.ClaimDecision.Allowed -> null
         }
+    }
+
+    private fun enforceGuildLimit(request: BuyRequest): Result? {
+        val guildId = request.owner.id
+        val extra = runCatching { guildProvider.extraGuildStalls(guildId) }.getOrDefault(0)
+        val decision = limits.canClaimForGuild(request.payer, ownership.guildCount(guildId), extra)
+        return (decision as? LimitResolutionService.ClaimDecision.Rejected)
+            ?.let { Result.Rejected("Your guild already owns its stall limit (${it.cap})") }
     }
 
     private fun refundAfterFailedAward(request: BuyRequest, cause: Exception) {
@@ -161,6 +175,29 @@ class StallBuyoutService(
     }
 
     private fun executePurchase(stall: Stall, request: BuyRequest): Result {
+        if (config.schematics.enabled) {
+            val capture = try {
+                schematics.capture(stall.id.value, stall.world, stall.regionId)
+            } catch (failure: Exception) {
+                SchematicService.Result.Failure(failure)
+            }
+            val failure = when (capture) {
+                is SchematicService.Result.Failure -> capture.cause
+                SchematicService.Result.Disabled -> IllegalStateException("Snapshot provider is unavailable")
+                SchematicService.Result.Success -> null
+            }
+            if (failure != null) {
+                log.warning("Stall snapshot failed for ${stall.id.value}; purchase cancelled: ${failure.message}")
+                try {
+                    Bukkit.getServer()?.pluginManager?.callEvent(
+                        SchematicCaptureFailedEvent(stall.id.value, stall.world, stall.regionId, failure),
+                    )
+                } catch (failure: Exception) {
+                    log.warning("Failed to notify staff of snapshot failure: ${failure.message}")
+                }
+                return Result.Rejected("Stall snapshot failed; please contact staff")
+            }
+        }
         if (!economy.withdraw(request.payer, request.price)) {
             return Result.Rejected("Insufficient funds: ${request.price} required")
         }

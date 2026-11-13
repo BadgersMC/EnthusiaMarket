@@ -6,7 +6,11 @@ import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
+import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.RentTerms
+import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
+import net.badgersmc.em.domain.stall.StallState
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -14,10 +18,43 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class AuctionRepositorySqlTest {
+    @Test fun `50 imported lots commit together and a late conflict rolls everything back`() {
+        val stalls = StallRepositorySql(ds)
+        val lots = (1..50).map { number ->
+            val id = "rehearsal_" + number.toString().padStart(2, '0')
+            val stall = Stall(StallId(id), id, "world", StallState.UNOWNED,
+                OwnerRef.unowned(), null, 0, RentTerms.formula(1.0))
+            stalls.create(stall)
+            stall to sampleAuction(id, id, startingBid = 10L + number)
+                .copy(openingRoundId = "rehearsal-opening")
+        }
+        val unrelated = lots.first().first.copy(id = StallId("unrelated"), regionId = "unrelated")
+        stalls.create(unrelated)
+        val (last, lastAuction) = lots.last()
+        stalls.save(last.copy(state = StallState.AUCTIONING))
+        assertEquals(last.id, repo.openImportedLots(lots))
+        assertTrue(lots.all { repo.findByStall(it.first.id).isEmpty() })
+        assertEquals(StallState.UNOWNED, stalls.findById(lots.first().first.id)?.state)
+        stalls.save(last)
+
+        assertNull(repo.openImportedLots(lots))
+        for ((stall, auction) in lots) {
+            assertEquals(auction, repo.findById(auction.id))
+            assertEquals(StallState.AUCTIONING, stalls.findById(stall.id)?.state)
+        }
+        assertEquals(lastAuction, repo.findById(lastAuction.id))
+        assertEquals(StallState.UNOWNED, stalls.findById(unrelated.id)?.state)
+        assertTrue(repo.findByStall(unrelated.id).isEmpty())
+        assertEquals(lots.first().first.id, repo.openImportedLots(lots))
+    }
+
     @Test fun `guild bidder funding survives create and reload`() {
         val guildId = UUID.randomUUID().toString()
         val auction = sampleAuction(highBid = Bid(UUID.randomUUID(), 100, Instant.now(), guildId))
@@ -26,6 +63,44 @@ class AuctionRepositorySqlTest {
         repo.save(auction.copy(highBid = auction.highBid!!.copy(amount = 120)))
         assertEquals(guildId, repo.findById(auction.id)?.highBid?.guildId)
     }
+    @Test fun `guild lead remains reserved until the auction stops being open`() {
+        val guild = UUID.randomUUID().toString()
+        val auction = sampleAuction(highBid = Bid(UUID.randomUUID(), 100, Instant.now(), guild))
+            .copy(openingRoundId = "new-market")
+        repo.create(auction)
+        val reloaded = AuctionRepositorySql(ds)
+        val other = AuctionId("other")
+        assertEquals("new-market", reloaded.findById(auction.id)?.openingRoundId)
+        assertTrue(reloaded.hasOtherOpenGuildBid(guild, other))
+        assertFalse(reloaded.hasOtherOpenGuildBid(guild, auction.id))
+
+        repo.save(auction.copy(highBid = Bid(UUID.randomUUID(), 101, Instant.now())))
+        assertFalse(reloaded.hasOtherOpenGuildBid(guild, other))
+    }
+
+    @Test fun `opening round award rolls back with the stall and persists after transfer`() {
+        val guild = UUID.randomUUID().toString()
+        val owner = OwnerRef.guild(guild)
+        val stalls = StallRepositorySql(ds)
+        val award = Stall(StallId("stall_01"), "region_01", "world", StallState.OWNED,
+            owner, Instant.now(), 100, RentTerms.formula(1.0))
+        val secondAward = award.copy(id = StallId("stall_02"), regionId = "region_02")
+
+        assertFailsWith<MarketModerationConflictException> { stalls.saveOpeningRoundGuildAward(award, "new-market") }
+        assertFalse(repo.hasGuildOpeningRoundWin("new-market", guild))
+
+        stalls.create(award.releaseOwnership())
+        stalls.create(secondAward.releaseOwnership())
+        stalls.saveOpeningRoundGuildAward(award, "new-market")
+        stalls.save(award.releaseOwnership())
+
+        val reloaded = AuctionRepositorySql(ds)
+        assertTrue(reloaded.hasGuildOpeningRoundWin("new-market", guild))
+        assertFalse(reloaded.hasGuildOpeningRoundWin("another-round", guild))
+        assertFailsWith<java.sql.SQLException> { stalls.saveOpeningRoundGuildAward(secondAward, "new-market") }
+        assertEquals(StallState.UNOWNED, stalls.findById(secondAward.id)?.state)
+    }
+
     private lateinit var ds: HikariDataSource
     private lateinit var repo: AuctionRepositorySql
 

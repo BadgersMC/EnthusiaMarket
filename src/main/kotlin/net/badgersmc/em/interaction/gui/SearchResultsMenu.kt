@@ -9,6 +9,7 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopSearchService.SearchMode
 import net.badgersmc.em.domain.shop.PriceTicker
 import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.interaction.Menu
@@ -43,14 +44,13 @@ class SearchResultsMenu(
     enum class Sort { PRICE_LOW, PRICE_HIGH, STOCK_HIGH }
 
     override fun open(player: Player) {
+        open(player, closeOnEmpty = false)
+    }
+
+    private fun open(player: Player, closeOnEmpty: Boolean) {
         val visible = sort(filter(results, includeOutOfStock, mode), sort)
         if (visible.isEmpty()) {
-            val message = if (filter(results, true, mode).isEmpty()) {
-                "shop.cmd.search.none"
-            } else {
-                "shop.cmd.search.out_of_stock"
-            }
-            player.sendMessage(lang.msg(message, "query" to query))
+            rejectEmpty(player, closeOnEmpty)
             return
         }
         val totalPages = ((visible.size + PER_PAGE - 1) / PER_PAGE).coerceAtLeast(1)
@@ -59,7 +59,7 @@ class SearchResultsMenu(
         val stallNames = stallRepository.findByIds(pageItems.map { StallId(it.shop.stallId) }.distinct())
             .mapValues { it.value.regionId }
 
-        val gui = ChestGui(ROWS, ComponentHolder.of(lang.msg("gui.shop.search.title", "query" to query)))
+        val gui = ChestGui(ROWS, ComponentHolder.of(lang.msg("gui.shop.search.results_title", "query" to query)))
         val pane = StaticPane(9, ROWS)
         addControls(pane, player, current, totalPages, visible)
         addResultIcons(pane, player, pageItems, stallNames)
@@ -67,6 +67,18 @@ class SearchResultsMenu(
         gui.addPane(Slot.fromXY(0, 0), pane)
         gui.blockItemTheft()
         gui.show(player)
+    }
+
+    private fun rejectEmpty(player: Player, closeOnEmpty: Boolean) {
+        // Only an in-menu transition closes the previous results. A new command
+        // search must preserve any unrelated inventory the player already has open.
+        if (closeOnEmpty) player.closeInventory()
+        val message = if (filter(results, true, mode).isEmpty()) {
+            "shop.cmd.search.none"
+        } else {
+            "shop.cmd.search.out_of_stock"
+        }
+        player.sendMessage(lang.msg(message, "query" to query))
     }
 
     private fun addResultIcons(
@@ -83,9 +95,8 @@ class SearchResultsMenu(
             val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: langText("gui.shop.search.unknown")
             val stall = stallNames[StallId(shop.stallId)] ?: shop.stallId
             val trades = ShopDisplay.tradesAvailable(shop)
-            val statusKey = if (trades > 0) "gui.shop.search.in_stock" else "gui.shop.search.out_of_stock"
-            meta.displayName(lang.msg(statusKey, "item" to pretty(result.matchedMaterial)))
-            val stock = if (trades == Int.MAX_VALUE) langText("gui.shop.search.unlimited") else trades.toString()
+            val buying = !shop.adminShop && shop.direction == SignDirection.BUY
+            meta.displayName(lang.msg(resultStatusKey(buying, trades), "item" to pretty(result.matchedMaterial)))
             val lore = mutableListOf(
                 lang.msg("gui.shop.search.location_heading"),
                 lang.msg("gui.shop.search.coordinates", "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ),
@@ -93,7 +104,7 @@ class SearchResultsMenu(
                 lang.msg("gui.shop.search.owner", "owner" to owner),
                 lang.msg("gui.shop.search.stall", "stall" to stall),
                 lang.msg("gui.shop.search.price", "cost" to shop.costAmount, "amount" to shop.sellAmount),
-                lang.msg("gui.shop.search.stock", "stock" to stock),
+                availabilityLore(buying, trades),
                 lang.msg("gui.shop.search.direction", "direction" to ShopDisplay.directionLabel(shop.direction)),
             )
             if (result.nested) lore += lang.msg("gui.shop.search.contains", "item" to pretty(result.matchedMaterial))
@@ -110,6 +121,18 @@ class SearchResultsMenu(
                 selectResult(player, shop, event)
             }, index % 9, RESULTS_START_ROW + index / 9)
         }
+    }
+
+    private fun resultStatusKey(buying: Boolean, trades: Int) = when {
+        buying -> "gui.shop.search.buying"
+        trades > 0 -> "gui.shop.search.in_stock"
+        else -> "gui.shop.search.out_of_stock"
+    }
+
+    private fun availabilityLore(buying: Boolean, trades: Int): Component {
+        if (buying) return lang.msg("gui.shop.search.buy_availability")
+        val stock = if (trades == Int.MAX_VALUE) langText("gui.shop.search.unlimited") else trades.toString()
+        return lang.msg("gui.shop.search.stock", "stock" to stock)
     }
 
     private fun selectResult(player: Player, shop: Shop, event: org.bukkit.event.inventory.InventoryClickEvent) {
@@ -138,7 +161,7 @@ class SearchResultsMenu(
             lang.msg("gui.shop.search.sort_click"),
         ))) {
             it.isCancelled = true
-            copy(page = 1, sort = sort.next()).open(player)
+            copy(page = 1, sort = sort.next()).open(player, closeOnEmpty = true)
         }, 1, 0)
         val filterMaterial = if (includeOutOfStock) Material.LIME_DYE else Material.GRAY_DYE
         pane.addItem(GuiItem(named(filterMaterial, lang.msg("gui.shop.search.stock_filter_name"), listOf(
@@ -146,14 +169,14 @@ class SearchResultsMenu(
             lang.msg("gui.shop.search.stock_filter_click"),
         ))) {
             it.isCancelled = true
-            copy(page = 1, includeOutOfStock = !includeOutOfStock).open(player)
+            copy(page = 1, includeOutOfStock = !includeOutOfStock).open(player, closeOnEmpty = true)
         }, 3, 0)
         pane.addItem(GuiItem(named(Material.HOPPER, lang.msg("gui.shop.search.direction_filter_name"), listOf(
             lang.msg("gui.shop.search.direction_filter_selected", "mode" to langText(mode.langKey)),
             lang.msg("gui.shop.search.direction_filter_click"),
         ))) {
             it.isCancelled = true
-            copy(page = 1, mode = mode.next()).open(player)
+            copy(page = 1, mode = mode.next()).open(player, closeOnEmpty = true)
         }, 4, 0)
         pane.addItem(GuiItem(tickerIcon(visible.map { it.shop })) { it.isCancelled = true }, 5, 0)
         pane.addItem(GuiItem(named(Material.BARRIER, lang.msg("gui.shop.search.close"))) {

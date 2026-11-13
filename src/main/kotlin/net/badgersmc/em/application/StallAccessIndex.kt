@@ -18,8 +18,22 @@ class StallAccessIndex(private val delegate: StallRepository) : StallRepository 
     fun invalidate(id: String) { stale.add(id) }
     @Synchronized fun refresh(id: String) { delegate.findById(StallId(id))?.let(::publish) }
 
+    override fun onExternalStateCommit(id: StallId) {
+        invalidate(id.value)
+        try {
+            refresh(id.value)
+        } finally {
+            delegate.onExternalStateCommit(id)
+        }
+    }
+
     @Synchronized override fun create(stall: Stall) { delegate.create(stall); publish(stall) }
     @Synchronized override fun save(stall: Stall) { delegate.save(stall); publish(stall) }
+
+    @Synchronized override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
+        delegate.saveOpeningRoundGuildAward(stall, roundId)
+        publish(stall)
+    }
 
     private fun publish(stall: Stall) {
         snapshots[stall.id.value] = stall

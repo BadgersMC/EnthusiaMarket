@@ -41,6 +41,12 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 import java.time.Instant
 import net.badgersmc.em.websync.WebsiteSyncService
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.event.ClickEvent
+import net.kyori.adventure.text.format.NamedTextColor
+import java.io.IOException
+import java.nio.file.Files
+import java.util.logging.Level
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
@@ -51,7 +57,7 @@ class AdminCommands(
     private val auctionService: AuctionLifecycleService,
     private val configManager: ConfigManager,
     private val auctions: AuctionRepository,
-    @Suppress("UnusedPrivateProperty") private val plugin: JavaPlugin,
+    private val plugin: JavaPlugin,
     private val lang: LangService,
     private val nexusScheduler: NexusScheduler,
     private val stallMembers: StallMemberService,
@@ -76,6 +82,8 @@ class AdminCommands(
     private val pricing: net.badgersmc.em.application.StallVolumePricingService? = null,
     private val websiteSync: WebsiteSyncService? = null,
     private val bulkRentExtension: net.badgersmc.em.application.BulkRentExtensionService? = null,
+    private val mutationGate: net.badgersmc.em.domain.ports.MarketMutationGate =
+        net.badgersmc.em.domain.ports.MarketMutationGate.Open,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -329,6 +337,66 @@ class AdminCommands(
         })
     }
 
+    private val lotImport = AuctionLotImport()
+
+    @Subcommand("auction preview")
+    @Permission("enthusiamarket.admin")
+    fun auctionPreview(
+        @Context sender: CommandSender,
+        @Arg("file") file: String,
+        @Arg("round") round: String,
+        @Arg("duration") duration: String,
+    ) = runLotCommand(sender) {
+        val actor = AuctionLotImport.actor(sender)
+        lotImport.discard(actor)
+        AuctionLotImport.validateRound(round)
+        val directory = plugin.dataFolder.toPath().resolve("auction-lots")
+        Files.createDirectories(directory)
+        val plan = auctionService.previewImportedLots(AuctionLotImport.read(directory, file), round, duration)
+        val token = lotImport.remember(actor, plan)
+        sendAuctionPreview(sender, plan, token)
+    }
+
+    private fun sendAuctionPreview(sender: CommandSender, plan: net.badgersmc.em.application.AuctionLotPlan, token: String) {
+        sender.sendMessage(Component.text("Auction preview • ${plan.lots.size} lots", NamedTextColor.GOLD))
+        sender.sendMessage(Component.text("Opening round ${plan.round} • Duration ${plan.duration}", NamedTextColor.YELLOW))
+        for ((stall, lot) in plan.lots) {
+            sender.sendMessage(Component.text(
+                "${stall.id.value} (${stall.world}/${stall.regionId}) • ${lot.minimumBid} raw gold minimum",
+                NamedTextColor.GRAY,
+            ))
+        }
+        val command = "/em auction confirm $token"
+        sender.sendMessage(Component.text("Review all lots, then run $command within 5 minutes.", NamedTextColor.GOLD)
+            .clickEvent(ClickEvent.suggestCommand(command)))
+    }
+
+    @Subcommand("auction confirm")
+    @Permission("enthusiamarket.admin")
+    fun auctionConfirm(@Context sender: CommandSender, @Arg("token") token: String) = runLotCommand(sender) {
+        val plan = lotImport.consume(AuctionLotImport.actor(sender), token)
+        val ends = auctionService.openImportedLots(plan)
+        val receipt = "Opened ${plan.lots.size} lots in opening round ${plan.round}. Scheduled close $ends."
+        plugin.logger.info("${sender.name}: $receipt")
+        sender.sendMessage(Component.text(receipt, NamedTextColor.GREEN))
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun runLotCommand(sender: CommandSender, action: () -> Unit) {
+        try {
+            require(!maintenanceFreeze.isFrozen()) { "Market maintenance is active." }
+            action()
+        } catch (failure: IllegalArgumentException) {
+            sender.sendMessage(Component.text(failure.message ?: "Invalid auction import.", NamedTextColor.RED))
+        } catch (failure: IOException) {
+            sender.sendMessage(Component.text("Could not read the UTF-8 auction CSV. Check the server log.", NamedTextColor.RED))
+            plugin.logger.log(Level.WARNING, "Auction import file error", failure)
+        } catch (failure: Exception) {
+            sender.sendMessage(Component.text("Auction import failed. Check the server log and auction state.", NamedTextColor.RED))
+            plugin.logger.log(Level.WARNING, "Auction import failed", failure)
+        }
+    }
+
     @Subcommand("auction startall")
     @Permission("enthusiamarket.admin")
     fun auctionStartAll(
@@ -355,7 +423,7 @@ class AdminCommands(
             sender.sendMessage(lang.msg("command.players_only"))
             return
         }
-        AuctionBrowserMenu(auctions, stalls, auctionService, nexusScheduler, lang).open(sender)
+        AuctionBrowserMenu(auctions, stalls, auctionService, nexusScheduler, lang, regionProvider).open(sender)
     }
 
     @Subcommand("auction cancel")
@@ -664,47 +732,17 @@ class AdminCommands(
         var fixed = 0
         var skipped = 0
         var errors = 0
+        val access = net.badgersmc.em.application.StallRegionAccessService(guildProvider, regionMembers, mutationGate)
         for (stall in stalls.all()) {
-            // Re-apply region flags (idempotent — safe to run on already-correct regions)
-            regionProvisioner.provision(stall.world, stall.regionId, config.market.stallPriority)
-            when (stall.state) {
-                StallState.OWNED, StallState.GRACE -> when (stall.owner.type) {
-                    OwnerType.SOLO -> try {
-                        val uuid = UUID.fromString(stall.owner.id)
-                        // Rebuild full ACL: clear first, set owner, then replay members.
-                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                        regionMembers.setOwner(stall.world, stall.regionId, uuid)
-                        for (memberId in stall.members) {
-                            regionMembers.addMember(stall.world, stall.regionId, memberId)
-                        }
-                        fixed++
-                    } catch (_: Exception) {
-                        errors++
-                    }
-                    OwnerType.GUILD -> try {
-                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                        val guids = guildProvider.memberIds(stall.owner.id)
-                        if (guids.isNotEmpty()) {
-                            regionMembers.syncGuildMembers(stall.world, stall.regionId, guids)
-                        }
-                        fixed++  // owners/members always cleared above; sync best-effort
-                    } catch (_: Exception) {
-                        errors++
-                    }
-                    OwnerType.NONE -> Unit
-                }
-                StallState.UNOWNED -> try {
-                    regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+            try {
+                if (access.sync(stall)) {
+                    regionProvisioner.provision(stall.world, stall.regionId, config.market.stallPriority)
                     fixed++
-                } catch (_: Exception) {
-                    errors++
+                } else {
+                    skipped++
                 }
-                // Active auctions and moderation holds are left alone. Auction ownership is
-                // finalized at settlement, while moderation fencing owns its held-stall ACL.
-                StallState.AUCTIONING,
-                StallState.MODERATION_HOLD,
-                StallState.RE_AUCTIONING,
-                StallState.EMERGENCY_AUCTIONING -> skipped++
+            } catch (_: Exception) {
+                errors++
             }
         }
         sender.sendMessage(lang.msg(

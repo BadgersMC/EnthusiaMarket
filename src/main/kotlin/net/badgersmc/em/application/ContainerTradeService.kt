@@ -64,6 +64,18 @@ open class ContainerTradeService(
     /** Read-only balance lookup for purchase-menu affordability previews. */
     fun balanceOf(playerUuid: UUID): Long = economy.balance(playerUuid)
 
+    /** Current stock for menu previews; trade execution still performs its own checks. */
+    fun availableTrades(shop: Shop): Int {
+        if (unlimitedPreviewStock(shop)) return Int.MAX_VALUE
+        if (shop.sellAmount <= 0) return 0
+        val item = deserializeStack(shop.sellItem) ?: return 0
+        val container = getContainer(shop) ?: return 0
+        return ItemStackMatch.countSimilar(container.inventory, item) / shop.sellAmount
+    }
+
+    private fun unlimitedPreviewStock(shop: Shop): Boolean =
+        shop.direction == net.badgersmc.em.domain.shop.SignDirection.BUY || shop.adminShop
+
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult =
         executeBuyBatch(shop, playerUuid, 1)
 
@@ -136,7 +148,7 @@ open class ContainerTradeService(
     private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, cost: Long): ContainerTradeResult {
         val guildId = ctx.guildId
         if (cost > 0L) {
-            if (!withdrawFromShop(guildId, ctx.ownerUuid, cost)) {
+            if (!withdrawFromShop(guildId, ctx.ownerUuid, cost, ctx.player.name)) {
                 return buyPaymentWithdrawFailed(ctx, sellStack, guildId)
             }
             if (!economy.deposit(ctx.player.uniqueId, cost)) {
@@ -156,7 +168,7 @@ open class ContainerTradeService(
     }
 
     private fun buyPaymentDepositFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?, cost: Long): ContainerTradeResult {
-        val refunded = refundShop(guildId, ctx.ownerUuid, cost)
+        val refunded = refundShop(guildId, ctx.ownerUuid, cost, ctx.player.name)
         rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
         return ContainerTradeResult.CompensationFailed(
             error = "Player deposit failed",
@@ -280,7 +292,7 @@ open class ContainerTradeService(
         }
 
         val guildId = ctx.guildId
-        if (!depositToShop(guildId, ctx.ownerUuid, cost)) {
+        if (!depositToShop(guildId, ctx.ownerUuid, cost, ctx.player.name)) {
             collectedItems.forEach { ctx.containerInv.addItem(it) }
             val playerRefunded = economy.deposit(playerUuid, cost)
             return ContainerTradeResult.CompensationFailed(
@@ -299,7 +311,7 @@ open class ContainerTradeService(
         if (delivery.leftoverAmount > 0) {
             InventoryTradeDelivery.removeDelivered(ctx.player.inventory, delivery.addedPerItem)
             val rolledBack = rollbackFullTransaction(
-                ctx.guildId, ctx.ownerUuid, playerUuid, order.cost, ctx.containerInv, collectedItems,
+                ctx.guildId, ctx.ownerUuid, playerUuid, ctx.player.name, order.cost, ctx.containerInv, collectedItems,
             )
             return ContainerTradeResult.CompensationFailed(
                 error = "Inventory full",
@@ -320,7 +332,7 @@ open class ContainerTradeService(
     }
 
     private fun rollbackFullTransaction(
-        guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, cost: Long,
+        guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, playerName: String, cost: Long,
         containerInv: Inventory, collectedItems: List<ItemStack>,
     ): Boolean {
         // Restore actual collected container items (REQ-301) — not a template reconstruction.
@@ -330,7 +342,7 @@ open class ContainerTradeService(
             if (containerInv.addItem(item).isNotEmpty()) itemsRestored = false
         }
         val fundsReversed = if (guildId != null) {
-            guildProvider?.bankWithdraw(guildId.toString(), cost) == true
+            guildProvider?.shopBankWithdraw(guildId.toString(), cost, playerName, true) == true
         } else {
             economy.withdraw(ownerUuid, cost)
         }
@@ -346,18 +358,18 @@ open class ContainerTradeService(
         }
     }
 
-    private fun withdrawFromShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
-        return if (guildId != null) guildProvider?.bankWithdraw(guildId.toString(), cost) ?: false
+    private fun withdrawFromShop(guildId: UUID?, ownerUuid: UUID, cost: Long, playerName: String): Boolean {
+        return if (guildId != null) guildProvider?.shopBankWithdraw(guildId.toString(), cost, playerName) ?: false
         else economy.withdraw(ownerUuid, cost)
     }
 
-    private fun depositToShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
-        return if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
+    private fun depositToShop(guildId: UUID?, ownerUuid: UUID, cost: Long, playerName: String): Boolean {
+        return if (guildId != null) guildProvider?.shopBankDeposit(guildId.toString(), cost, playerName) ?: false
         else economy.deposit(ownerUuid, cost)
     }
 
-    private fun refundShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
-        return if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
+    private fun refundShop(guildId: UUID?, ownerUuid: UUID, cost: Long, playerName: String): Boolean {
+        return if (guildId != null) guildProvider?.shopBankDeposit(guildId.toString(), cost, playerName, true) ?: false
         else economy.deposit(ownerUuid, cost)
     }
 

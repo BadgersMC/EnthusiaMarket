@@ -40,6 +40,9 @@ class LumaGuildsGuildProvider : GuildProvider {
         return OptionalGuildAllianceLookup.areAllied(guild, ally)
     }
 
+    override fun extraGuildStalls(guildId: String): Int =
+        parseUuid(guildId)?.let(OptionalGuildPrestigePerkLookup::extraGuildStalls) ?: 0
+
     override fun guildOf(player: UUID): GuildProvider.GuildRef? {
         val lg = lookup ?: return null
         val firstId = lg.getPlayerGuildIds(player).firstOrNull() ?: return null
@@ -179,6 +182,30 @@ class LumaGuildsGuildProvider : GuildProvider {
         val uuid = parseUuid(guildId) ?: return false
         return lookup?.systemBankDeposit(uuid, amount, "EnthusiaMarket") ?: false
     }
+
+    override fun shopBankWithdraw(guildId: String, amount: Long, playerName: String, reversal: Boolean): Boolean {
+        if (amount !in 1..Int.MAX_VALUE.toLong()) return false
+        val uuid = parseUuid(guildId) ?: return false
+        val role = if (reversal) "Buyer" else "Seller"
+        return lookup?.systemBankWithdraw(uuid, amount, shopPaymentReason(role, playerName, reversal)) ?: false
+    }
+
+    override fun shopBankDeposit(guildId: String, amount: Long, playerName: String, reversal: Boolean): Boolean {
+        if (amount !in 1..Int.MAX_VALUE.toLong()) return false
+        val uuid = parseUuid(guildId) ?: return false
+        val role = if (reversal) "Seller" else "Buyer"
+        return lookup?.systemBankDeposit(uuid, amount, shopPaymentReason(role, playerName, reversal)) ?: false
+    }
+
+    private fun shopPaymentReason(role: String, playerName: String, reversal: Boolean): String {
+        // Bound and sanitize player-controlled text before persisting it in the shared ledger.
+        val safeName = playerName.takeIf { it.length in 1..32 && it.all(::isSafeShopNameCharacter) }
+        val operation = if (reversal) "Shop payment reversal" else "Shop payment"
+        return if (safeName == null) "$operation | EnthusiaMarket" else "$operation | $role: $safeName | EnthusiaMarket"
+    }
+
+    private fun isSafeShopNameCharacter(character: Char): Boolean =
+        character.isLetterOrDigit() || character == '_' || character == '.' || character == ' '
 
     override fun onDissolved(handler: (String) -> Unit) {
         dissolveHandlers.add(handler)
