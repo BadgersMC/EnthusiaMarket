@@ -59,6 +59,11 @@ class DirtyTrackingStallRepository(
         notify(stall.id.value)
     }
 
+    override fun onExternalStateCommit(id: StallId) {
+        delegate.onExternalStateCommit(id)
+        notify(id.value)
+    }
+
     override fun create(stall: Stall) {
         delegate.create(stall)
         notify(stall.id.value)

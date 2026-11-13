@@ -288,11 +288,8 @@ class AuctionLifecycleService(
         val conflict = auctionRepository.openImportedLots(batch)
         require(conflict == null) { "Stall ${conflict?.value} changed. No lots were opened." }
         for ((stall, _) in batch) {
-            (stallRepository as? StallAccessIndex)?.let { index ->
-                index.invalidate(stall.id.value)
-                runCatching { index.refresh(stall.id.value) }.onFailure {
-                    logger.log(Level.WARNING, "Could not refresh auction stall ${stall.id.value}", it)
-                }
+            runCatching { stallRepository.onExternalStateCommit(stall.id) }.onFailure {
+                logger.log(Level.WARNING, "Could not refresh auction stall ${stall.id.value}", it)
             }
             fireStateChanged(stall.id.value, StallState.UNOWNED, StallState.AUCTIONING)
         }

@@ -10,5 +10,7 @@ interface StallRepository {
     fun save(stall: Stall)
     /** Persist the guild award and consume its opening-round win in one transaction. */
     fun saveOpeningRoundGuildAward(stall: Stall, roundId: String)
+    /** Notify projections after another repository commits a stall state change. */
+    fun onExternalStateCommit(id: StallId) = Unit
     fun create(stall: Stall)
 }
