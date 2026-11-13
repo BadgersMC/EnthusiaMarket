@@ -354,6 +354,10 @@ class AdminCommands(
         Files.createDirectories(directory)
         val plan = auctionService.previewImportedLots(AuctionLotImport.read(directory, file), round, duration)
         val token = lotImport.remember(actor, plan)
+        sendAuctionPreview(sender, plan, token)
+    }
+
+    private fun sendAuctionPreview(sender: CommandSender, plan: net.badgersmc.em.application.AuctionLotPlan, token: String) {
         sender.sendMessage(Component.text("Auction preview • ${plan.lots.size} lots", NamedTextColor.GOLD))
         sender.sendMessage(Component.text("Opening round ${plan.round} • Duration ${plan.duration}", NamedTextColor.YELLOW))
         for ((stall, lot) in plan.lots) {

@@ -271,7 +271,19 @@ class AuctionLifecycleService(
         require(checked == plan) { "Stall details or auction settings changed. Preview the file again." }
         val now = clock.instant()
         val ends = now.plus(plan.duration)
-        val batch = plan.lots.map { (stall, lot) ->
+        val conflict = auctionRepository.openImportedLots(importedAuctions(plan, now, ends))
+        require(conflict == null) { "Stall ${conflict?.value} changed. No lots were opened." }
+        for ((stall, _) in plan.lots) {
+            runCatching { stallRepository.onExternalStateCommit(stall.id) }.onFailure {
+                logger.log(Level.WARNING, "Could not refresh auction stall ${stall.id.value}", it)
+            }
+            fireStateChanged(stall.id.value, StallState.UNOWNED, StallState.AUCTIONING)
+        }
+        return ends
+    }
+
+    private fun importedAuctions(plan: AuctionLotPlan, now: Instant, ends: Instant) =
+        plan.lots.map { (stall, lot) ->
             stall to Auction(
                 id = AuctionId(UUID.randomUUID().toString()),
                 stallId = stall.id,
@@ -285,16 +297,6 @@ class AuctionLifecycleService(
                 openingRoundId = plan.round,
             )
         }
-        val conflict = auctionRepository.openImportedLots(batch)
-        require(conflict == null) { "Stall ${conflict?.value} changed. No lots were opened." }
-        for ((stall, _) in batch) {
-            runCatching { stallRepository.onExternalStateCommit(stall.id) }.onFailure {
-                logger.log(Level.WARNING, "Could not refresh auction stall ${stall.id.value}", it)
-            }
-            fireStateChanged(stall.id.value, StallState.UNOWNED, StallState.AUCTIONING)
-        }
-        return ends
-    }
 
     private fun validateImportedLot(lot: AuctionLot): Stall {
         val id = lot.stallId

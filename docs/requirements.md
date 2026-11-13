@@ -755,6 +755,7 @@ WHEN Market displays an auction listing, it SHALL show the stall region's inclus
 **Unwanted.** IF LumaGuilds is absent, older, or fails to answer THEN THE SYSTEM SHALL treat the bonus as 0. Stalls a guild already owns above the cap SHALL never be removed; `-1` keeps guild stalls unlimited and the limit-bypass permission skips the cap.
 
 ### REQ-400
+
 **Event-driven.** WHEN EnthusiaMarket enables and a LumaGuilds build with `net.lumalyte.lg.api.GuildShopLookup` is loaded THE SYSTEM SHALL register that service, answering whether a guild owns at least one stall in the OWNED or GRACE state; IF the API is missing THEN THE SYSTEM SHALL register nothing and keep running.
 
 ## REQ-401 — Guild auction limits

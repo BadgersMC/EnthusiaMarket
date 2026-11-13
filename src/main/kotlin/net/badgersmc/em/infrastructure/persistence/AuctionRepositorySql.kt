@@ -54,35 +54,12 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
 
     @Suppress("TooGenericExceptionCaught")
     override fun openImportedLots(lots: List<Pair<Stall, Auction>>): StallId? =
-        ds.connection.use transaction@{ conn ->
+        ds.connection.use { conn ->
             conn.autoCommit = false
             try {
-                conn.prepareStatement(
-                    """UPDATE stalls SET state = 'AUCTIONING'
-                       WHERE id = ? AND state = 'UNOWNED' AND owner_type = 'NONE'
-                         AND world = ? AND region_id = ? AND moderation_revision = ?
-                         AND NOT EXISTS (SELECT 1 FROM market_moderation_locks WHERE stall_id = ?)
-                         AND NOT EXISTS (SELECT 1 FROM sell_offers WHERE stall_id = ?)
-                         AND NOT EXISTS (SELECT 1 FROM auctions WHERE stall_id = ? AND state = 'OPEN')"""
-                ).use { update ->
-                    for ((stall, auction) in lots.sortedBy { it.first.id.value }) {
-                        val id = stall.id.value
-                        update.setString(1, id)
-                        update.setString(2, stall.world)
-                        update.setString(3, stall.regionId)
-                        update.setLong(4, stall.moderationRevision)
-                        update.setString(5, id)
-                        update.setString(6, id)
-                        update.setString(7, id)
-                        if (update.executeUpdate() != 1) {
-                            conn.rollback()
-                            return@transaction stall.id
-                        }
-                        insert(conn, auction)
-                    }
-                    conn.commit()
-                    null
-                }
+                val conflict = stageImportedLots(conn, lots)
+                if (conflict == null) conn.commit() else conn.rollback()
+                conflict
             } catch (failure: Exception) {
                 try {
                     conn.rollback()
@@ -92,6 +69,35 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
                 throw failure
             }
         }
+
+    private fun stageImportedLots(conn: Connection, lots: List<Pair<Stall, Auction>>): StallId? {
+        conn.prepareStatement(
+            """UPDATE stalls SET state = 'AUCTIONING'
+               WHERE id = ? AND state = 'UNOWNED' AND owner_type = 'NONE'
+                 AND world = ? AND region_id = ? AND moderation_revision = ?
+                 AND NOT EXISTS (SELECT 1 FROM market_moderation_locks WHERE stall_id = ?)
+                 AND NOT EXISTS (SELECT 1 FROM sell_offers WHERE stall_id = ?)
+                 AND NOT EXISTS (SELECT 1 FROM auctions WHERE stall_id = ? AND state = 'OPEN')"""
+        ).use { update ->
+            for ((stall, auction) in lots.sortedBy { it.first.id.value }) {
+                bindImportedStall(update, stall)
+                if (update.executeUpdate() != 1) return stall.id
+                insert(conn, auction)
+            }
+        }
+        return null
+    }
+
+    private fun bindImportedStall(update: PreparedStatement, stall: Stall) {
+        val id = stall.id.value
+        update.setString(1, id)
+        update.setString(2, stall.world)
+        update.setString(3, stall.regionId)
+        update.setLong(4, stall.moderationRevision)
+        update.setString(5, id)
+        update.setString(6, id)
+        update.setString(7, id)
+    }
 
     private fun insert(conn: Connection, auction: Auction) {
         conn.prepareStatement(

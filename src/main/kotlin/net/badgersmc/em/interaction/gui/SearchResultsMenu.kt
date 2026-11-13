@@ -96,13 +96,7 @@ class SearchResultsMenu(
             val stall = stallNames[StallId(shop.stallId)] ?: shop.stallId
             val trades = ShopDisplay.tradesAvailable(shop)
             val buying = !shop.adminShop && shop.direction == SignDirection.BUY
-            val statusKey = when {
-                buying -> "gui.shop.search.buying"
-                trades > 0 -> "gui.shop.search.in_stock"
-                else -> "gui.shop.search.out_of_stock"
-            }
-            meta.displayName(lang.msg(statusKey, "item" to pretty(result.matchedMaterial)))
-            val stock = if (trades == Int.MAX_VALUE) langText("gui.shop.search.unlimited") else trades.toString()
+            meta.displayName(lang.msg(resultStatusKey(buying, trades), "item" to pretty(result.matchedMaterial)))
             val lore = mutableListOf(
                 lang.msg("gui.shop.search.location_heading"),
                 lang.msg("gui.shop.search.coordinates", "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ),
@@ -110,8 +104,7 @@ class SearchResultsMenu(
                 lang.msg("gui.shop.search.owner", "owner" to owner),
                 lang.msg("gui.shop.search.stall", "stall" to stall),
                 lang.msg("gui.shop.search.price", "cost" to shop.costAmount, "amount" to shop.sellAmount),
-                if (buying) lang.msg("gui.shop.search.buy_availability")
-                else lang.msg("gui.shop.search.stock", "stock" to stock),
+                availabilityLore(buying, trades),
                 lang.msg("gui.shop.search.direction", "direction" to ShopDisplay.directionLabel(shop.direction)),
             )
             if (result.nested) lore += lang.msg("gui.shop.search.contains", "item" to pretty(result.matchedMaterial))
@@ -128,6 +121,18 @@ class SearchResultsMenu(
                 selectResult(player, shop, event)
             }, index % 9, RESULTS_START_ROW + index / 9)
         }
+    }
+
+    private fun resultStatusKey(buying: Boolean, trades: Int) = when {
+        buying -> "gui.shop.search.buying"
+        trades > 0 -> "gui.shop.search.in_stock"
+        else -> "gui.shop.search.out_of_stock"
+    }
+
+    private fun availabilityLore(buying: Boolean, trades: Int): Component {
+        if (buying) return lang.msg("gui.shop.search.buy_availability")
+        val stock = if (trades == Int.MAX_VALUE) langText("gui.shop.search.unlimited") else trades.toString()
+        return lang.msg("gui.shop.search.stock", "stock" to stock)
     }
 
     private fun selectResult(player: Player, shop: Shop, event: org.bukkit.event.inventory.InventoryClickEvent) {
