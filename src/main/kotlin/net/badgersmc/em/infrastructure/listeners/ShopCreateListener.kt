@@ -33,7 +33,8 @@ open class ShopCreateListener(
     private val lang: LangService,
     private val menuFactory: net.badgersmc.em.interaction.MenuFactory,
     private val shopSignRenderer: net.badgersmc.em.application.ShopSignRenderer,
-    private val guildProvider: GuildProvider? = null
+    private val guildProvider: GuildProvider? = null,
+    private val access: net.badgersmc.em.domain.ports.StallAccessPolicy = net.badgersmc.em.domain.ports.StallAccessPolicy.Open,
 ) : Listener {
 
     private val logger = java.util.logging.Logger.getLogger(ShopCreateListener::class.java.name)
@@ -52,7 +53,7 @@ open class ShopCreateListener(
         }
 
         // Check player can manage this stall
-        if (!canManageStall(stall, event.player)) {
+        if (!canManageStall(stall, event.player) || findStallAt(attachedBlock.location)?.id != stall.id) {
             event.player.sendMessage(lang.msg("shop.create.no_authority"))
             return
         }
@@ -71,7 +72,8 @@ open class ShopCreateListener(
         val player = event.player
         val authorised: (Player) -> Boolean = { actor ->
             val current = stallRepository.findById(stall.id)
-            current != null && current.state in setOf(net.badgersmc.em.domain.stall.StallState.OWNED, net.badgersmc.em.domain.stall.StallState.GRACE) && canManageStall(current, actor)
+            current != null && current.state in setOf(net.badgersmc.em.domain.stall.StallState.OWNED, net.badgersmc.em.domain.stall.StallState.GRACE) &&
+                findStallAt(signLoc)?.id == current.id && findStallAt(containerLoc)?.id == current.id && canManageStall(current, actor)
         }
         if (menuFactory.shouldUseBedrockMenus(player)) {
             net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
@@ -166,11 +168,9 @@ open class ShopCreateListener(
                     player.sendMessage(lang.msg("shop.create.guild_unavailable"))
                     return false
                 }
-                provider.isMember(player.uniqueId, stall.owner.id) &&
-                    provider.hasShopPermission(
-                        player.uniqueId,
-                        stall.owner.id,
-                        GuildProvider.GuildPermission.MANAGE_SHOPS
+                access.allows(stall.id.value, player.uniqueId, net.badgersmc.em.domain.stall.StallCapability.STOCK) &&
+                    net.badgersmc.em.domain.stall.GuildStallAccessRules.allows(
+                        stall, player.uniqueId, provider, GuildProvider.GuildPermission.MANAGE_SHOPS,
                     )
             }
             OwnerType.NONE -> false

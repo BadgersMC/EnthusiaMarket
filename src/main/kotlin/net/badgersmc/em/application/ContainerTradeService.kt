@@ -64,10 +64,25 @@ open class ContainerTradeService(
     private val shopVault: ShopVaultService? = null,
     private val stallAccess: net.badgersmc.em.domain.ports.StallAccessPolicy = net.badgersmc.em.domain.ports.StallAccessPolicy.Open,
     private val saleRewards: net.badgersmc.em.domain.ports.GuildSaleRewards? = null,
+    private val shopRepository: net.badgersmc.em.domain.shop.ShopRepository,
     private val weeklyPlayerNames: WeeklyPlayerNames = WeeklyPlayerNames { Bukkit.getOfflinePlayer(it).name },
 ) {
     private val log = Logger.getLogger(ContainerTradeService::class.java.name)
     private val compensationAlerts = CompensationAlertService()
+
+    fun offerIsCurrent(offer: Shop): Boolean {
+        val current = shopRepository.findById(offer.id) ?: return false
+        return current == offer.copy(stockCount = current.stockCount, trusted = current.trusted,
+            hopperAllowIn = current.hopperAllowIn, hopperAllowOut = current.hopperAllowOut,
+            searchEnabled = current.searchEnabled)
+    }
+
+    fun priceFactor(shop: Shop, actor: UUID): Double {
+        if (shop.direction == net.badgersmc.em.domain.shop.SignDirection.TRADE) return 1.0
+        val guild = resolveStall(shop)?.let(::resolveGuildUuid) ?: return 1.0
+        val stance = tradePolicy?.stanceFor(guild.toString(), actor, shop.direction)
+        return (stance as? GuildTradePolicyService.TradeStance.Allowed)?.factor ?: 1.0
+    }
 
     /** Read-only balance lookup for purchase-menu affordability previews. */
     fun balanceOf(playerUuid: UUID): Long = economy.balance(playerUuid)

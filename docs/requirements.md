@@ -803,3 +803,9 @@ WHEN PlaceholderAPI is available THE SYSTEM SHALL expose the last closed New Yor
 IF the website reports incomplete coverage or cannot supply the current award response THEN THE SYSTEM SHALL show the applicable pending or unavailable status.
 
 WHEN the sales exporter runs behind a managed HTTPS proxy THE SYSTEM SHALL allow an explicit IPv4 wildcard bind while retaining loopback as the default and requiring the Market bearer on every request.
+
+## Shop quotes and guild build access
+
+When a customer confirms a shop offer, Market must compare it with the stored listing and the customer's current tariff. A changed or deleted listing requires reopening the shop. Stock changes alone may leave the offer valid. A bulk confirmation requires the full selected quantity. Java and Bedrock must quote the same rounded currency total used at settlement.
+
+Creating a guild shop requires current membership, the owning guild's stock-management permission and stall stock access. The sign and linked container must belong to the same stall. Breaking a guild shop requires the current guild permission. Multi-block placement must pass the build check at every affected position. Staff overrides remain subject to the existing server protections.

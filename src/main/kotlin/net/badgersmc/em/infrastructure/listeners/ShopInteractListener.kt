@@ -10,6 +10,7 @@ import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.MenuFactory
 import net.badgersmc.em.interaction.gui.PurchaseMenu
 import net.badgersmc.nexus.annotations.Component
+import kotlin.math.roundToLong
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.block.Block
@@ -138,10 +139,15 @@ open class ShopInteractListener(
 
     open fun openBedrockPurchaseForm(player: Player, shop: Shop) {
         val uuid = player.uniqueId
+        val factor = tradeService.priceFactor(shop, uuid)
         net.badgersmc.em.interaction.bedrock.BedrockPurchaseForm(
             player, shop,
-            onConfirm = { executeBedrockTransaction(shop, uuid) },
-            logger, lang,
+            onConfirm = {
+                if (tradeService.offerIsCurrent(shop) && tradeService.priceFactor(shop, uuid) == factor)
+                    executeBedrockTransaction(shop, uuid)
+                else net.badgersmc.em.application.ContainerTradeResult.Failure("The offer changed. Reopen the shop to review it.")
+            },
+            logger, lang, (shop.costAmount * factor).roundToLong(),
         ).open(player)
     }
 

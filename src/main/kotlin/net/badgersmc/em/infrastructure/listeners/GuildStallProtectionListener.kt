@@ -88,7 +88,9 @@ open class GuildStallProtectionListener(
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     fun onPlace(event: BlockPlaceEvent) {
-        if (!allowed(event.player, listOf(event.block.location), GuildProvider.GuildPermission.EDIT_SHOP_STOCK, false)) event.isCancelled = true
+        val affected = if (event is org.bukkit.event.block.BlockMultiPlaceEvent)
+            event.replacedBlockStates.map { it.location } else listOf(event.block.location)
+        if (!allowed(event.player, affected, GuildProvider.GuildPermission.EDIT_SHOP_STOCK, false)) event.isCancelled = true
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)

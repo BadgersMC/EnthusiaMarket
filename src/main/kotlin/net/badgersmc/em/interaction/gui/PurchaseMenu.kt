@@ -18,6 +18,7 @@ import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.em.interaction.blockTopInventoryExcept
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextDecoration
+import kotlin.math.roundToLong
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
@@ -85,7 +86,7 @@ class PurchaseMenu(
 
         // --- Row 1: the actual items ---
         val summary = summary(shop, player, tradeService)
-        val row = buildRowItems(summary.stockTrades)
+        val row = buildRowItems(summary.stockTrades, summary.costFor(multiplier))
         pane.addItem(GuiItem(decorated(row.receiveItem, row.receiveName, row.receiveLore)), 2, 1)
         pane.addItem(GuiItem(statusItem(summary)) {
             it.isCancelled = true
@@ -161,10 +162,15 @@ class PurchaseMenu(
             if (canPurchase) Material.LIME_CONCRETE else Material.RED_CONCRETE,
             lang.msg(if (canPurchase) buttonKey else "gui.shop.confirm_unavailable",
                 "trades" to multiplier, "amount" to (shop.sellAmount.toLong() * multiplier),
-                "cost" to (shop.costAmount.toLong() * multiplier), "item" to sellName), buttonLore,
+                "cost" to summary.costFor(multiplier), "item" to sellName), buttonLore,
         )) { event ->
             event.isCancelled = true
             if (!canPurchase) return@GuiItem
+            if (!tradeService.offerIsCurrent(shop) || tradeService.priceFactor(shop, player.uniqueId) != summary.factor) {
+                player.closeInventory()
+                player.sendMessage(lang.msg("shop.trade.failure", "reason" to "The offer changed. Reopen the shop to review it."))
+                return@GuiItem
+            }
             executeTrade(player)
             multiplier = 1
             render(player)
@@ -179,7 +185,7 @@ class PurchaseMenu(
             else -> "gui.shop.unavailable_items"
         }
         return lang.msg(key, "amount" to (shop.sellAmount.toLong() * multiplier),
-            "cost" to (shop.costAmount.toLong() * multiplier), "item" to sellName)
+            "cost" to summary.costFor(multiplier), "item" to sellName)
     }
 
     private fun executeTrade(player: Player) {
@@ -195,18 +201,17 @@ class PurchaseMenu(
             player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Out of stock"))
             return
         }
-        val effectiveMultiplier = multiplier.coerceAtMost(available)
-        if (effectiveMultiplier < multiplier) {
-            player.sendMessage(lang.msg("shop.trade.multiplier_capped",
-                "asked" to multiplier, "available" to effectiveMultiplier))
+        if (available < multiplier) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Too little stock for the selected quantity"))
+            return
         }
 
         // Execute all trades in a single batch operation — avoids N separate
         // inventory transfers, N separate transaction events, and N individual
         // log lines that compound and can crash the server on large purchases.
         val result = when (shop.direction) {
-            SignDirection.SELL -> tradeService.executeSellBatch(shop, player.uniqueId, effectiveMultiplier)
-            SignDirection.BUY -> tradeService.executeBuyBatch(shop, player.uniqueId, effectiveMultiplier)
+            SignDirection.SELL -> tradeService.executeSellBatch(shop, player.uniqueId, multiplier)
+            SignDirection.BUY -> tradeService.executeBuyBatch(shop, player.uniqueId, multiplier)
             else -> return
         }
         when (result) {
@@ -346,9 +351,8 @@ class PurchaseMenu(
     )
 
     @Suppress("CyclomaticComplexMethod")
-    private fun buildRowItems(avail: Int): RowItems {
+    private fun buildRowItems(avail: Int, totalCost: Long): RowItems {
         val totalAmount = shop.sellAmount.toLong() * multiplier
-        val totalCost = shop.costAmount.toLong() * multiplier
         val stockStr = if (avail == Int.MAX_VALUE) "Unlimited" else avail.toString()
         return when (shop.direction) {
             SignDirection.SELL -> RowItems(
@@ -398,21 +402,33 @@ class PurchaseMenu(
             private val paymentPerTrade: Int,
             private val currencyPayment: Boolean,
             private val currencyReceive: Boolean = false,
+            val factor: Double = 1.0,
         ) {
             val stockText: String get() = if (stockTrades == Int.MAX_VALUE) "Unlimited" else stockTrades.toString()
-            fun receivedFor(trades: Int): String = (receivePerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
+            fun costFor(trades: Int): Long = ((if (currencyReceive) receivePerTrade else paymentPerTrade).toLong() * trades * factor).roundToLong()
+            fun receivedFor(trades: Int): String = (if (currencyReceive) costFor(trades) else receivePerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
                 if (currencyReceive) " currency" else " items"
-            fun paymentFor(trades: Int): String = (paymentPerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
+            fun paymentFor(trades: Int): String = (if (currencyPayment) costFor(trades) else paymentPerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
                 if (currencyPayment) " currency" else " items"
+        }
+
+        private fun affordableTrades(price: Int, factor: Double, balance: Long): Int {
+            var low = 0L
+            var high = Int.MAX_VALUE.toLong()
+            while (low < high) {
+                val mid = (low + high + 1) / 2
+                if ((price * mid * factor).roundToLong() <= balance) low = mid else high = mid - 1
+            }
+            return low.toInt()
         }
 
         fun summary(shop: Shop, player: Player, tradeService: ContainerTradeService): Summary {
             val stock = tradeService.availableTrades(shop)
             val sell = ItemStackSerializer.deserialize(shop.sellItem)
             val cost = ItemStackSerializer.deserialize(shop.costItem)
+            val factor = tradeService.priceFactor(shop, player.uniqueId)
             val affordable = when (shop.direction) {
-                SignDirection.SELL -> (tradeService.balanceOf(player.uniqueId) / shop.costAmount)
-                    .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                SignDirection.SELL -> affordableTrades(shop.costAmount, factor, tradeService.balanceOf(player.uniqueId))
                 SignDirection.BUY -> sell?.let { ItemStackMatch.countSimilar(player.inventory, it) / shop.sellAmount } ?: 0
                 SignDirection.TRADE -> cost?.let { ItemStackMatch.countSimilar(player.inventory, it) / shop.costAmount } ?: 0
             }
@@ -420,7 +436,7 @@ class PurchaseMenu(
             return Summary(stock, affordable, if (shop.frozen) 0 else minOf(stock, affordable),
                 if (buyingItems) shop.costAmount else shop.sellAmount,
                 if (buyingItems) shop.sellAmount else shop.costAmount,
-                shop.direction == SignDirection.SELL, buyingItems)
+                shop.direction == SignDirection.SELL, buyingItems, factor)
         }
     }
 }

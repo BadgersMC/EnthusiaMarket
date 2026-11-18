@@ -33,7 +33,7 @@ class BlockProtectionListener(
 
     private val logger = Logger.getLogger(BlockProtectionListener::class.java.name)
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {
         val block = event.block
 
@@ -45,15 +45,15 @@ class BlockProtectionListener(
                     // Owner breaks their own sign -> delete the shop and let the break proceed,
                     // so a broken sign never leaves an orphan row blocking the spot (REQ-015).
                     management.canDelete(shop, player.uniqueId) -> {
-                        management.delete(player.uniqueId, shop.id)
-                        player.sendMessage(lang.msg("shop.protect.sign_broken_deleted"))
-                        event.isCancelled = false  // ensure break proceeds
+                        val deleted = management.delete(player.uniqueId, shop.id)
+                        event.isCancelled = !deleted
+                        player.sendMessage(lang.msg(if (deleted) "shop.protect.sign_broken_deleted" else "shop.protect.delete_error"))
                     }
                     // Admin in break-others mode -> admin delete and allow the break.
                     player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId) -> {
-                        management.adminDelete(shop.id)
-                        player.sendMessage(lang.msg("shop.admin.breakothers.deleted"))
-                        event.isCancelled = false  // ensure break proceeds
+                        val deleted = management.adminDelete(shop.id)
+                        event.isCancelled = !deleted
+                        player.sendMessage(lang.msg(if (deleted) "shop.admin.breakothers.deleted" else "shop.protect.delete_error"))
                     }
                     // Anyone else -> protect the sign from being broken.
                     else -> cancelSignBreak(event, shop, event.player)
@@ -113,6 +113,7 @@ class BlockProtectionListener(
             logger.info("Deleted ${shops.size} shop(s) at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ}")
             player.sendMessage(lang.msg("shop.protect.deleted", "count" to shops.size))
         } catch (e: Exception) {
+            event.isCancelled = true
             logger.severe("Failed to delete shops at container break: ${e.message}")
             player.sendMessage(lang.msg("shop.protect.delete_error"))
         }

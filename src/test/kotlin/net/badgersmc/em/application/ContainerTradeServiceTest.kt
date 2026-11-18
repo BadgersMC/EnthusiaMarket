@@ -68,6 +68,19 @@ class ContainerTradeServiceTest {
         frozen = frozen
     )
 
+    @Test fun `offer validation checks current price item direction status and existence but permits restocking`() {
+        val shops = mockk<net.badgersmc.em.domain.shop.ShopRepository>()
+        val service = ContainerTradeService(mockk(), mockk(), null, shopRepository = shops)
+        val offer = testShop()
+        for (changed in listOf(offer.copy(costAmount = 20), offer.copy(sellItem = "other"),
+            offer.copy(direction = net.badgersmc.em.domain.shop.SignDirection.BUY), offer.copy(frozen = true), null)) {
+            every { shops.findById(offer.id) } returns changed
+            assertEquals(false, service.offerIsCurrent(offer))
+        }
+        every { shops.findById(offer.id) } returns offer.copy(stockCount = 50)
+        assertTrue(service.offerIsCurrent(offer))
+    }
+
     /** Sample owned stall. */
     private fun sampleStall(owner: UUID = ownerUuid): Stall = Stall(
         id = StallId("stall_01"),

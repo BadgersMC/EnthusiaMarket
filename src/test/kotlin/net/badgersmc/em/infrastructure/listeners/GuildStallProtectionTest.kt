@@ -34,6 +34,18 @@ class GuildStallProtectionTest {
         every { guilds.hasShopPermission(actor, guildId, any()) } returns false
     }
 
+    @Test fun `only a current stock editor can break a guild stall block`() {
+        val event = mockk<org.bukkit.event.block.BlockBreakEvent>(relaxed = true)
+        every { event.player } returns player
+        every { event.block.location } returns location
+        every { guilds.hasShopPermission(actor, guildId, GuildPermission.EDIT_SHOP_STOCK) } returns true
+        listener.onBreak(event)
+        verify(exactly = 0) { event.isCancelled = true }
+        every { guilds.isMember(actor, guildId) } returns false
+        listener.onBreak(event)
+        verify(exactly = 1) { event.isCancelled = true }
+    }
+
     @Test fun `membership does not grant chest viewing`() {
         val event = mockk<InventoryOpenEvent>(relaxed = true)
         every { event.player } returns player

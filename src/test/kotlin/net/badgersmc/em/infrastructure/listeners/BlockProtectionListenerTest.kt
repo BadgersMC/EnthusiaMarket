@@ -119,6 +119,7 @@ class BlockProtectionListenerTest {
         val management = mockk<ShopManagementService>(relaxed = true).also { svc -> every { svc.canDelete(any(), any()) } answers { firstArg<Shop>().owner == secondArg<UUID>() } }
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
+        every { management.delete(ownerId, 7) } returns true
         val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), management, mockk(relaxed = true))
 
         listener.onBlockBreak(event)
