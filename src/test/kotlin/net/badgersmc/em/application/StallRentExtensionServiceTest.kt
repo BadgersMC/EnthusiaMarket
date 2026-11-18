@@ -134,7 +134,7 @@ class StallRentExtensionServiceTest {
         verify(exactly = 0) { svc.guildProvider.bankDeposit(any(), any()) }
 
         // The stall was persisted with a pushed timer.
-        verify { svc.stallRepo.save(match { it.state == StallState.OWNED && it.nextRentAt != null }) }
+        verify { svc.stallRepo.savePaidExtension(match { it.state == StallState.OWNED && it.nextRentAt != null }, OwnerRef.guild(guildId), expectedAmount, any(), any()) }
     }
 
     // --- extend: guild stall with insufficient bank is rejected ---
@@ -178,7 +178,7 @@ class StallRentExtensionServiceTest {
         verify(exactly = 0) { svc.guildProvider.bankDeposit(any(), any()) }
 
         // The stall was persisted with a pushed timer.
-        verify { svc.stallRepo.save(match { it.state == StallState.OWNED && it.nextRentAt != null }) }
+        verify { svc.stallRepo.savePaidExtension(match { it.state == StallState.OWNED && it.nextRentAt != null }, OwnerRef.solo(playerUuid), expectedAmount, any(), any()) }
     }
 
     @Test

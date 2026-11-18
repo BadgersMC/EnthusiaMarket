@@ -168,19 +168,23 @@ open class ContainerTradeService(
     }
 
     private fun buyPaymentWithdrawFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?): ContainerTradeResult {
-        rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
+        val returned = rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
         return ContainerTradeResult.CompensationFailed(
             error = guildPaymentFailure(guildId, "Owner payment failed").reason,
-            compensation = "Item returned"
+            compensation = if (returned) "Item returned" else "Item return failed — contact staff"
         )
     }
 
     private fun buyPaymentDepositFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?, cost: Long): ContainerTradeResult {
         val refunded = refundShop(guildId, ctx.ownerUuid, cost, ctx.player.name)
-        rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
+        val returned = rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
         return ContainerTradeResult.CompensationFailed(
             error = "Player deposit failed",
-            compensation = if (refunded) "Full rollback" else "Partial rollback — shop refund failed"
+            compensation = when {
+                !returned -> "Item return failed — contact staff"
+                !refunded -> "Partial rollback — shop refund failed"
+                else -> "Full rollback"
+            }
         )
     }
 
@@ -351,11 +355,12 @@ open class ContainerTradeService(
 
     private data class SaleOrder(val stack: ItemStack, val amount: Int, val cost: Long)
 
-    private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack) {
+    private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack): Boolean {
         val result = transferSimilar(containerInv, player.inventory, stack, stack.amount)
         if (result !is TransferResult.Success) {
-            Bukkit.getLogger().warning("Rollback failed: items could not be returned to ${player.name}")
+            log.warning("Rollback failed: items could not be returned to ${player.name}")
         }
+        return result is TransferResult.Success
     }
 
     private fun rollbackFullTransaction(
@@ -775,7 +780,7 @@ open class ContainerTradeService(
         template: ItemStack,
         amount: Int,
     ): TransferResult {
-        val contents = source.contents
+        val contents = source.storageContents
         if (contents != null && contents.isNotEmpty()) {
             // Preflight: don't mutate until we know the full amount can be moved
             if (!ItemStackMatch.containsAtLeastSimilar(source, template, amount)) {
@@ -788,14 +793,26 @@ open class ContainerTradeService(
                 fail[0] = template.clone().apply { this.amount = amount }
                 return TransferResult.DestFull(fail)
             }
+            val sourceBefore = contents.map { it?.clone() }.toTypedArray()
+            val destBefore = dest.storageContents.map { it?.clone() }.toTypedArray()
             var remaining = amount
             for (item in contents) {
                 if (item == null) continue
                 if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
                 val take = minOf(item.amount, remaining)
                 val batch = item.clone().apply { this.amount = take }
-                source.removeItem(batch)
-                dest.addItem(batch)
+                val removed = source.removeItem(batch.clone())
+                if (removed.isNotEmpty()) {
+                    source.storageContents = sourceBefore
+                    dest.storageContents = destBefore
+                    return TransferResult.SourceFailure(removed)
+                }
+                val overflow = dest.addItem(batch)
+                if (overflow.isNotEmpty()) {
+                    source.storageContents = sourceBefore
+                    dest.storageContents = destBefore
+                    return TransferResult.DestFull(overflow)
+                }
                 remaining -= take
                 if (remaining <= 0) return TransferResult.Success
             }

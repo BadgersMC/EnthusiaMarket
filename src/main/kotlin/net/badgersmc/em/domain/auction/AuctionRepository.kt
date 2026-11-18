@@ -15,6 +15,11 @@ interface AuctionRepository {
     /** Opens all lots and transitions their stalls together. Returns the first conflicting stall. */
     fun openImportedLots(lots: List<Pair<Stall, Auction>>): StallId?
     fun save(auction: Auction)
+    /** Persist the transition, optional ownership award and any resulting obligation atomically. */
+    fun commitTransition(previous: Auction, next: Auction, award: Stall?, payment: AuctionPayment?)
+    fun pendingPayments(now: Long): List<AuctionPayment>
+    fun claimPayment(id: String): Boolean
+    fun finishPayment(id: String, paid: Boolean, nextAttempt: Long)
     fun delete(id: AuctionId)
     /** Most recent CLOSED auction for [stallId] by end_at desc, or null. */
     fun findMostRecentClosedByStall(stallId: StallId): Auction?

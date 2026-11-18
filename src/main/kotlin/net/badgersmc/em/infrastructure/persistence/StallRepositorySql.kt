@@ -52,32 +52,45 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
     }
 
     override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
-        require(stall.owner.type == OwnerType.GUILD && stall.state == StallState.OWNED)
         ds.connection.use { conn ->
-            conn.autoCommit = false
-            try {
-                conn.prepareStatement(
-                    "INSERT INTO guild_auction_round_wins (round_id, guild_id, stall_id) VALUES (?, ?, ?)"
-                ).use { ps ->
-                    ps.setString(1, roundId)
-                    ps.setString(2, stall.owner.id)
-                    ps.setString(3, stall.id.value)
+            conn.inMarketTransaction { saveGuildAward(conn, stall, roundId) }
+        }
+    }
+
+    internal fun saveGuildAward(conn: Connection, stall: Stall, roundId: String) {
+        require(stall.owner.type == OwnerType.GUILD && stall.state == StallState.OWNED)
+        conn.prepareStatement(
+            "INSERT INTO guild_auction_round_wins (round_id, guild_id, stall_id) VALUES (?, ?, ?)"
+        ).use { ps ->
+            ps.setString(1, roundId)
+            ps.setString(2, stall.owner.id)
+            ps.setString(3, stall.id.value)
+            check(ps.executeUpdate() == 1)
+        }
+        save(conn, stall)
+    }
+
+    override fun savePaidExtension(stall: Stall, payer: OwnerRef, amount: Long, paidAt: Instant, coveredFrom: Instant) {
+        ds.connection.use { conn ->
+            conn.inMarketTransaction {
+                save(conn, stall)
+                conn.prepareStatement("""INSERT INTO rent_ledger
+                    (stall_id, charged_at, amount, paid, payer_type, payer_id, covered_from, covered_until)
+                    VALUES (?, ?, ?, 1, ?, ?, ?, ?)""").use { ps ->
+                    ps.setString(1, stall.id.value)
+                    ps.setLong(2, paidAt.toEpochMilli())
+                    ps.setLong(3, amount)
+                    ps.setString(4, payer.type.name)
+                    ps.setString(5, payer.id)
+                    ps.setLong(6, coveredFrom.toEpochMilli())
+                    ps.setLong(7, requireNotNull(stall.nextRentAt).toEpochMilli())
                     check(ps.executeUpdate() == 1)
                 }
-                save(conn, stall)
-                conn.commit()
-            } catch (failure: Exception) {
-                try {
-                    conn.rollback()
-                } catch (rollbackFailure: Exception) {
-                    failure.addSuppressed(rollbackFailure)
-                }
-                throw failure
             }
         }
     }
 
-    private fun save(conn: Connection, stall: Stall) {
+    internal fun save(conn: Connection, stall: Stall) {
         conn.prepareStatement(
             """UPDATE stalls SET
                 region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,

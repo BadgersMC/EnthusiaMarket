@@ -8,6 +8,9 @@ import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.nexus.annotations.Repository
+import net.badgersmc.em.domain.auction.AuctionPayment
+import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.OwnerType
 import java.sql.PreparedStatement
 import java.sql.Connection
 import java.sql.ResultSet
@@ -143,6 +146,81 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
                 ps.setString(12, auction.id.value)
                 val rows = ps.executeUpdate()
                 if (rows != 1) error("AuctionRepositorySql.save: expected 1 row, affected $rows")
+            }
+        }
+    }
+
+    override fun commitTransition(previous: Auction, next: Auction, award: Stall?, payment: AuctionPayment?) {
+        require(previous.state == AuctionState.OPEN && previous.id == next.id)
+        ds.connection.use { conn ->
+            conn.inMarketTransaction {
+                val bid = next.highBid
+                conn.prepareStatement("""UPDATE auctions SET state=?, end_at=?, high_bid_amount=?, high_bidder=?,
+                    high_placed_at=?, high_bid_guild_id=? WHERE id=? AND state='OPEN'
+                    AND COALESCE(high_bid_amount,-1)=?""").use { ps ->
+                    ps.setString(1, next.state.name)
+                    ps.setLong(2, if (next.endAt == Instant.MAX) Long.MAX_VALUE else next.endAt.toEpochMilli())
+                    ps.setObject(3, bid?.amount)
+                    ps.setString(4, bid?.bidder?.toString())
+                    ps.setObject(5, bid?.placedAt?.toEpochMilli())
+                    ps.setString(6, bid?.guildId)
+                    ps.setString(7, next.id.value)
+                    ps.setLong(8, previous.highBid?.amount ?: -1L)
+                    check(ps.executeUpdate() == 1) { "Auction state or high bid changed" }
+                }
+                if (award != null) {
+                    require(award.id == next.stallId && next.state == AuctionState.CLOSED)
+                    val stalls = StallRepositorySql(ds)
+                    if (award.owner.type == OwnerType.GUILD && next.openingRoundId != null) {
+                        stalls.saveGuildAward(conn, award, next.openingRoundId)
+                    } else {
+                        stalls.save(conn, award)
+                    }
+                }
+                if (payment != null) {
+                    require(payment.auctionId == next.id && payment.amount > 0)
+                    conn.prepareStatement("""INSERT INTO auction_payments
+                        (id,auction_id,purpose,payer_type,recipient,amount,status,next_attempt)
+                        VALUES (?,?,?,?,?,?,'PENDING',0)""").use { ps ->
+                        ps.setString(1, payment.id)
+                        ps.setString(2, payment.auctionId.value)
+                        ps.setString(3, payment.purpose)
+                        ps.setString(4, payment.recipient.type.name)
+                        ps.setString(5, payment.recipient.id)
+                        ps.setLong(6, payment.amount)
+                        ps.executeUpdate()
+                    }
+                }
+            }
+        }
+    }
+
+    override fun pendingPayments(now: Long): List<AuctionPayment> = ds.connection.use { conn ->
+        conn.prepareStatement("""SELECT * FROM auction_payments WHERE status='PENDING' AND next_attempt<=?
+            ORDER BY next_attempt,id LIMIT 32""").use { ps ->
+            ps.setLong(1, now)
+            ps.executeQuery().use { rows -> buildList {
+                while (rows.next()) add(AuctionPayment(AuctionId(rows.getString("auction_id")), rows.getString("purpose"),
+                    OwnerRef(OwnerType.valueOf(rows.getString("payer_type")), rows.getString("recipient")),
+                    rows.getLong("amount"), rows.getString("id")))
+            } }
+        }
+    }
+
+    override fun claimPayment(id: String): Boolean = ds.connection.use { conn ->
+        conn.prepareStatement("UPDATE auction_payments SET status='IN_FLIGHT' WHERE id=? AND status='PENDING'").use { ps ->
+            ps.setString(1, id)
+            ps.executeUpdate() == 1
+        }
+    }
+
+    override fun finishPayment(id: String, paid: Boolean, nextAttempt: Long) {
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE auction_payments SET status=?,next_attempt=? WHERE id=? AND status='IN_FLIGHT'").use { ps ->
+                ps.setString(1, if (paid) "PAID" else "PENDING")
+                ps.setLong(2, nextAttempt)
+                ps.setString(3, id)
+                check(ps.executeUpdate() == 1)
             }
         }
     }

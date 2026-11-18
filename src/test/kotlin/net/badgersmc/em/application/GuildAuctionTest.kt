@@ -65,6 +65,7 @@ class GuildAuctionTest {
         every { offers.findByStall(any()) } returns null
         val shops = mockk<ShopRepository>(relaxed = true)
         every { shops.findByStall(any()) } returns emptyList()
+        stubAuctionTransactions(auctions, stalls)
         service = AuctionLifecycleService(auctions, stalls, economy, EnthusiaMarketConfig(), limits, offers,
             shops, regions, StallOwnershipCounter(stalls), ip, lang = mockk(relaxed = true), guildProvider = guilds)
     }

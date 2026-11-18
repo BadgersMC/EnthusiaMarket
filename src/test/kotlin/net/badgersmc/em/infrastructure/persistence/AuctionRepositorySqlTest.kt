@@ -101,6 +101,69 @@ class AuctionRepositorySqlTest {
         assertEquals(StallState.UNOWNED, stalls.findById(secondAward.id)?.state)
     }
 
+    @Test fun `cancellation and payment claim survive restart without a second credit`() {
+        val bid = Bid(UUID.randomUUID(), 125, Instant.now())
+        val auction = sampleAuction(highBid = bid)
+        repo.create(auction)
+        val payment = net.badgersmc.em.domain.auction.AuctionPayment(auction.id, "REFUND", OwnerRef.solo(bid.bidder), bid.amount)
+        repo.commitTransition(auction, auction.close(), null, payment)
+        val restarted = AuctionRepositorySql(ds)
+        assertFailsWith<IllegalStateException> { restarted.commitTransition(auction, auction.close(), null, payment.copy(id = "duplicate")) }
+        assertEquals(listOf(payment), restarted.pendingPayments(0))
+        assertTrue(restarted.claimPayment(payment.id))
+        assertFalse(restarted.claimPayment(payment.id))
+        assertTrue(restarted.pendingPayments(Long.MAX_VALUE).isEmpty())
+        restarted.finishPayment(payment.id, false, 60)
+        assertTrue(restarted.pendingPayments(59).isEmpty())
+        assertEquals(listOf(payment), restarted.pendingPayments(60))
+        assertTrue(restarted.claimPayment(payment.id))
+        restarted.finishPayment(payment.id, true, 0)
+        assertTrue(restarted.pendingPayments(Long.MAX_VALUE).isEmpty())
+    }
+
+    @Test fun `failed award rolls back auction and payout then commits both on retry`() {
+        val bid = Bid(UUID.randomUUID(), 150, Instant.now())
+        val auction = sampleAuction(highBid = bid)
+        repo.create(auction)
+        val stall = Stall(auction.stallId, "region", "world", StallState.OWNED, OwnerRef.solo(bid.bidder),
+            Instant.now(), bid.amount, RentTerms.formula(1.0))
+        val payment = net.badgersmc.em.domain.auction.AuctionPayment(auction.id, "SELLER", OwnerRef.solo(UUID.randomUUID()), 140)
+        assertFailsWith<MarketModerationConflictException> { repo.commitTransition(auction, auction.close(), stall, payment) }
+        assertEquals(AuctionState.OPEN, repo.findById(auction.id)?.state)
+        assertTrue(repo.pendingPayments(0).isEmpty())
+        val stalls = StallRepositorySql(ds)
+        stalls.create(stall.releaseOwnership())
+        repo.commitTransition(auction, auction.close(), stall, payment)
+        assertEquals(stall.owner, stalls.findById(stall.id)?.owner)
+        assertEquals(AuctionState.CLOSED, repo.findById(auction.id)?.state)
+        assertEquals(listOf(payment), repo.pendingPayments(0))
+    }
+
+    @Test fun `paid rent receipt and new expiry commit together`() {
+        val paidAt = Instant.ofEpochMilli(3000)
+        val payer = OwnerRef.guild("guild-rent")
+        val stall = Stall(StallId("rent"), "region", "world", StallState.OWNED, payer, paidAt,
+            400, RentTerms.formula(1.0), nextRentAt = paidAt.plusSeconds(90))
+        val stalls = StallRepositorySql(ds)
+        stalls.create(stall)
+        val extended = stall.copy(nextRentAt = stall.nextRentAt!!.plusSeconds(3600))
+        stalls.savePaidExtension(extended, payer, 77, paidAt, stall.nextRentAt!!)
+        ds.connection.use { conn -> conn.createStatement().use { statement ->
+            statement.executeQuery("SELECT * FROM rent_ledger").use { row ->
+                assertTrue(row.next())
+                assertEquals(payer.id, row.getString("payer_id"))
+                assertEquals("GUILD", row.getString("payer_type"))
+                assertEquals(77, row.getInt("amount"))
+                assertEquals(stall.nextRentAt!!.toEpochMilli(), row.getLong("covered_from"))
+                assertEquals(extended.nextRentAt!!.toEpochMilli(), row.getLong("covered_until"))
+                assertFalse(row.next())
+            }
+            statement.execute("CREATE TRIGGER reject_receipt BEFORE INSERT ON rent_ledger BEGIN SELECT RAISE(ABORT,'unavailable'); END")
+        } }
+        assertFailsWith<java.sql.SQLException> { stalls.savePaidExtension(stall, payer, 77, paidAt, paidAt) }
+        assertEquals(extended.nextRentAt, stalls.findById(stall.id)?.nextRentAt)
+    }
+
     private lateinit var ds: HikariDataSource
     private lateinit var repo: AuctionRepositorySql
 

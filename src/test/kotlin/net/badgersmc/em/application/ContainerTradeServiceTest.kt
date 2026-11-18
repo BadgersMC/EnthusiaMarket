@@ -490,6 +490,12 @@ class ContainerTradeServiceTest {
         // Verify rollback: remove item from container and return to player
         verify { containerInv.removeItem(any()) }
         verify { playerInv.addItem(any()) }
+        assertEquals("Item returned", result.compensation)
+        every { playerInv.addItem(any()) } returns hashMapOf(0 to mockk<ItemStack>(relaxed = true))
+        val failedReturn = service.executeBuy(testShop(), playerUuid)
+        assertTrue(failedReturn is ContainerTradeResult.CompensationFailed)
+        assertTrue(failedReturn.compensation.contains("Item return failed"))
+
     }
 
     // ===== SELL: Success =====
