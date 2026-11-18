@@ -51,7 +51,7 @@ class JdbcMarketModerationMariaDbTest {
         })
         createV27UpgradeBaseline()
         val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
-        assertEquals((28..38).toList(), applied.map { it.version })
+        assertEquals((28..39).toList(), applied.map { it.version })
         createStallAndShop()
     }
 
@@ -80,6 +80,24 @@ class JdbcMarketModerationMariaDbTest {
 
         repository.save(original)
         assertEquals(personalBid, repository.findById(auctionId)?.highBid)
+    }
+
+    @Test
+    fun `mariadb upgraded tables preserve refund claim and rent coverage`() {
+        val auctions = AuctionRepositorySql(dataSource)
+        val open = assertNotNull(auctions.findById(AuctionId("auction-legacy")))
+        val payment = net.badgersmc.em.domain.auction.AuctionPayment(open.id, "REFUND", OwnerRef.solo(ownerId), open.highBid!!.amount)
+        auctions.commitTransition(open, open.close(), null, payment)
+        assertEquals(listOf(payment), auctions.pendingPayments(now.toEpochMilli()))
+        assertTrue(auctions.claimPayment(payment.id))
+        assertFalse(auctions.claimPayment(payment.id))
+        auctions.finishPayment(payment.id, true, 0)
+        assertTrue(auctions.pendingPayments(now.toEpochMilli()).isEmpty())
+        val stalls = StallRepositorySql(dataSource)
+        val stall = assertNotNull(stalls.findById(StallId("stall-maria")))
+        val start = stall.nextRentAt!!
+        stalls.savePaidExtension(stall.copy(nextRentAt = start.plusSeconds(DAY_SECONDS)), stall.owner, 75, now, start)
+        assertEquals(75, scalarInt("SELECT amount FROM rent_ledger WHERE covered_from=${start.toEpochMilli()}"))
     }
 
     @Test
@@ -301,6 +319,7 @@ class JdbcMarketModerationMariaDbTest {
     private fun createV27UpgradeBaseline() {
         dataSource.connection.use { connection ->
             listOf(
+                "rent_ledger", "auction_payments",
                 "market_moderation_locks",
                 "market_moderation_operations",
                 "market_stall_blacklists",
@@ -317,6 +336,11 @@ class JdbcMarketModerationMariaDbTest {
             createShopsBaseline(connection)
             createAuctionsBaseline(connection)
             connection.createStatement().use { statement ->
+                statement.executeUpdate("""CREATE TABLE rent_ledger (
+                    id BIGINT PRIMARY KEY AUTO_INCREMENT, stall_id VARCHAR(128) NOT NULL,
+                    charged_at BIGINT NOT NULL, amount BIGINT NOT NULL, paid INTEGER NOT NULL DEFAULT 0,
+                    payer_type VARCHAR(16) NOT NULL, payer_id VARCHAR(128) NOT NULL
+                ) ENGINE=InnoDB""")
                 statement.executeUpdate("""CREATE TABLE shop_transactions (
                     id BIGINT PRIMARY KEY AUTO_INCREMENT, shop_id BIGINT NOT NULL,
                     owner VARCHAR(36) NOT NULL, buyer VARCHAR(36) NOT NULL,
