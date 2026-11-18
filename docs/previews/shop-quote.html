@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Market purchase confirmation</title></head><body>
+<section id="market-quote-preview" aria-label="Shop confirmation simulation">
+  <style>
+    #market-quote-preview{font:1rem/1.45 system-ui;color:inherit;max-width:32rem;margin:auto}
+    #market-quote-preview article{border:1px solid currentColor;border-radius:.4rem;padding:1rem;margin:.8rem 0}
+    #market-quote-preview button{font:inherit;min-height:44px;padding:.45rem .8rem;margin:.25rem .2rem .25rem 0}
+  </style>
+  <h2>Redstone shop</h2>
+  <article><strong>You receive</strong> · 1 redstone<br><strong>You give</strong> · <span data-quote>10</span> raw gold</article>
+  <button type="button" data-confirm>Confirm purchase</button>
+  <button type="button" data-owner>Change shop price to 20</button>
+  <p aria-live="polite" data-status>Simulated wallet · 50 raw gold</p>
+  <script>
+  (() => {
+    const root = document.getElementById('market-quote-preview');
+    const find = key => root.querySelector('[data-' + key + ']');
+    let price = 10, quote = 10, gold = 50, closed = false;
+    find('owner').onclick = () => {
+      price = 20;
+      find('owner').disabled = true;
+      find('status').textContent = 'Owner saved a price of 20 raw gold. Your open offer still shows ' + quote + '.';
+    };
+    find('confirm').onclick = () => {
+      if (closed) {
+        quote = price;
+        closed = false;
+        find('quote').textContent = quote;
+        find('confirm').textContent = 'Confirm purchase';
+        find('status').textContent = 'New offer opened. Wallet · ' + gold + ' raw gold';
+      } else if (quote !== price) {
+        closed = true;
+        find('confirm').textContent = 'Reopen shop';
+        find('status').textContent = 'The offer changed. Reopen the shop to review it. Wallet · ' + gold + ' raw gold';
+      } else if (gold >= quote) {
+        gold -= quote;
+        find('status').textContent = 'Bought 1 redstone for ' + quote + ' raw gold. Wallet · ' + gold + ' raw gold';
+      } else {
+        find('status').textContent = 'Insufficient funds. Wallet · ' + gold + ' raw gold';
+      }
+    };
+  })();
+  </script>
+</section>
+
+</body></html>

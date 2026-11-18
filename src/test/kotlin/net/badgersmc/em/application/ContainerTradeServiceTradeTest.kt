@@ -131,7 +131,7 @@ class ContainerTradeServiceTradeTest {
         every { costStack.amount } returns 3
 
         val vaultService = mockk<ShopVaultService>(relaxed = true)
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, shopVault = vaultService) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, shopVault = vaultService, shopRepository = mockk()) {
             override fun deserializeStack(base64: String): ItemStack? = costStack
             override fun getContainer(shop: Shop): Container? = container
             override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int) = true
@@ -283,7 +283,7 @@ class ContainerTradeServiceTradeTest {
 
         val vaultService = mockk<ShopVaultService>(relaxed = true)
 
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, shopVault = vaultService) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, shopVault = vaultService, shopRepository = mockk()) {
             override fun deserializeStack(base64: String): ItemStack? =
                 if (base64 == "costBase64") costStack else mockk(relaxed = true)
             override fun getContainer(shop: Shop): Container? = container

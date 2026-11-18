@@ -68,6 +68,22 @@ class ShopMenuInteractionTest : ShopMenuFixture() {
         click(21)
         assertEquals(Material.RED_CONCRETE, item(10)?.type)
     }
+    @Test fun `guild tariff is shown before confirmation and changing it invalidates the offer`() {
+        every { trades.priceFactor(current, player.uniqueId) } returns 1.25
+        PurchaseMenu(current, trades, lang, 2).open(player)
+        assertTrue(label(23).contains("(cost, 250)"), label(23))
+        every { trades.priceFactor(current, player.uniqueId) } returns 1.5
+        click(23)
+        verify(exactly = 0) { trades.executeSellBatch(any(), any(), any()) }
+    }
+
+    @Test fun `changed quote closes without settling`() {
+        PurchaseMenu(current, trades, lang).open(player)
+        every { trades.offerIsCurrent(current) } returns false
+        click(23)
+        verify(exactly = 0) { trades.executeSellBatch(any(), any(), any()) }
+    }
+
     @Test fun `money purchase fits three rows and bulk selection does not trade`() {
         PurchaseMenu(current, trades, lang).open(player)
         assertEquals(27, player.openInventory.topInventory.size)
@@ -249,6 +265,8 @@ abstract class ShopMenuFixture {
         }
         every { lang.raw(any()) } answers { firstArg() }
         every { trades.balanceOf(any()) } returns 1_000L
+        every { trades.offerIsCurrent(any()) } returns true
+        every { trades.priceFactor(any(), any()) } returns 1.0
         every { trades.availableTrades(any()) } answers {
             val shop = firstArg<Shop>()
             ShopDisplay.tradesAvailable(shop)

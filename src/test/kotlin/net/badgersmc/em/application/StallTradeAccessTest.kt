@@ -26,7 +26,7 @@ class StallTradeAccessTest {
         every { access.allows("s", actor, StallCapability.TRADE) } returns false
         val shop = Shop(1, "s", UUID.randomUUID(), "world", 1, 2, 3, "world", 1, 2, 3,
             "unused", 1, "unused", 10)
-        val service = ContainerTradeService(stalls, economy, guilds, stallAccess = access, saleRewards = rewards)
+        val service = ContainerTradeService(stalls, economy, guilds, stallAccess = access, shopRepository = mockk(), saleRewards = rewards)
         assertIs<ContainerTradeResult.Failure>(service.executeBuyBatch(shop, actor, 1))
         assertIs<ContainerTradeResult.Failure>(service.executeSellBatch(shop, actor, 1))
         assertIs<ContainerTradeResult.Failure>(service.executeTrade(shop, actor))
