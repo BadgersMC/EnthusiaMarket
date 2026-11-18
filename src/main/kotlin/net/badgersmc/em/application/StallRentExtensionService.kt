@@ -84,8 +84,10 @@ class StallRentExtensionService(
             )
         }
 
-        val pushed = pushTimer(stall.nextRentAt)
-        persistExtension(stall, stallId, actor, amount, isGuild, pushed)
+        val paidAt = clock.instant()
+        val coveredFrom = maxOf(stall.nextRentAt ?: paidAt, paidAt)
+        val pushed = coveredFrom.plus(collectionInterval())
+        persistExtension(stall, stallId, actor, amount, isGuild, pushed, paidAt, coveredFrom)
         return Result.Extended(pushed, amount)
     }
 
@@ -119,10 +121,13 @@ class StallRentExtensionService(
         amount: Long,
         isGuild: Boolean,
         pushed: Instant,
+        paidAt: Instant,
+        coveredFrom: Instant,
     ) {
         try {
             val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
-            stalls.save(updated)
+            val payer = if (isGuild) stall.owner else net.badgersmc.em.domain.stall.OwnerRef.solo(actor)
+            stalls.savePaidExtension(updated, payer, amount, paidAt, coveredFrom)
             fireStateChanged(stallId.value, stall.state, updated.state)
         } catch (e: Exception) {
             val refunded = try {

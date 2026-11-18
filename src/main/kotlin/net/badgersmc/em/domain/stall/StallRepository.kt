@@ -8,6 +8,7 @@ interface StallRepository {
     fun all(): List<Stall>
     fun byState(state: StallState): List<Stall>
     fun save(stall: Stall)
+    fun savePaidExtension(stall: Stall, payer: OwnerRef, amount: Long, paidAt: java.time.Instant, coveredFrom: java.time.Instant)
     /** Persist the guild award and consume its opening-round win in one transaction. */
     fun saveOpeningRoundGuildAward(stall: Stall, roundId: String)
     /** Notify projections after another repository commits a stall state change. */

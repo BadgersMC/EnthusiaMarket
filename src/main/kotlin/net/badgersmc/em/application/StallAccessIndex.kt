@@ -30,6 +30,11 @@ class StallAccessIndex(private val delegate: StallRepository) : StallRepository 
     @Synchronized override fun create(stall: Stall) { delegate.create(stall); publish(stall) }
     @Synchronized override fun save(stall: Stall) { delegate.save(stall); publish(stall) }
 
+    @Synchronized override fun savePaidExtension(stall: Stall, payer: net.badgersmc.em.domain.stall.OwnerRef, amount: Long, paidAt: java.time.Instant, coveredFrom: java.time.Instant) {
+        delegate.savePaidExtension(stall, payer, amount, paidAt, coveredFrom)
+        publish(stall)
+    }
+
     @Synchronized override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
         delegate.saveOpeningRoundGuildAward(stall, roundId)
         publish(stall)

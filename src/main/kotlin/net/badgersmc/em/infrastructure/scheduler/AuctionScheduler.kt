@@ -56,6 +56,7 @@ class AuctionScheduler(
             override fun run() {
                 if (maintenanceFreeze.isFrozen()) return
                 try {
+                    auctionLifecycleService.retryPendingPayments()
                     val report = auctionLifecycleService.settleExpired()
                     if (report.settled > 0 || report.errors > 0) {
                         plugin.logger.info(
