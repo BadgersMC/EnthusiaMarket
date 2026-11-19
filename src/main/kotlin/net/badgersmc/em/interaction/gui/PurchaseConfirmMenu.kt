@@ -24,7 +24,7 @@ import org.bukkit.inventory.ItemStack
 class PurchaseConfirmMenu(
     private val stallId: StallId,
     private val price: Long,
-    private val isGuild: Boolean,
+    private val guild: PurchaseFlow.GuildOption?,
     private val buyout: StallBuyoutService,
     private val lang: LangService,
 ) : Menu {
@@ -34,10 +34,11 @@ class PurchaseConfirmMenu(
         val pane = StaticPane(9, 3)
 
         // Display item — diamond for personal, gold block for guild
-        val previewMat = if (isGuild) Material.GOLD_BLOCK else Material.DIAMOND
-        val previewKey = if (isGuild) "purchase_sign.msg.confirm_guild" else "purchase_sign.msg.confirm_personal"
+        val previewMat = if (guild != null) Material.GOLD_BLOCK else Material.DIAMOND
+        val previewKey = if (guild != null) "purchase_sign.msg.confirm_guild" else "purchase_sign.msg.confirm_personal"
         pane.addItem(
-            GuiItem(decorated(previewMat, lang.msg(previewKey, "stall" to stallId.value, "price" to price))),
+            GuiItem(decorated(previewMat, lang.msg(previewKey, "stall" to stallId.value, "price" to price),
+                guild?.let { listOf(lang.msg("purchase_sign.msg.method_guild_buyer", "guild_name" to it.name)) }.orEmpty())),
             4, 0,
         )
 
@@ -45,7 +46,7 @@ class PurchaseConfirmMenu(
         pane.addItem(
             GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("purchase_sign.msg.confirm_yes"))) { event ->
                 event.isCancelled = true
-                val result = PurchaseFlow.execute(player, stallId, price, isGuild, buyout)
+                val result = PurchaseFlow.execute(player, stallId, price, guild, buyout)
                 player.sendMessage(PurchaseFlow.message(result, stallId, lang))
                 player.closeInventory()
             },

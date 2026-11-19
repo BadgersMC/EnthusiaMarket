@@ -27,13 +27,13 @@ class PurchaseFlowTest {
     @Test fun `personal and guild selections call the matching buyout methods`() {
         val buyout = mockk<StallBuyoutService>()
         every { buyout.buy(any(), any(), any(), any()) } returns StallBuyoutService.Result.Rejected("test")
-        every { buyout.buyForGuild(any(), any(), any(), any()) } returns StallBuyoutService.Result.Rejected("test")
+        every { buyout.buyForGuild(any(), any(), any(), any(), any()) } returns StallBuyoutService.Result.Rejected("test")
 
-        PurchaseFlow.execute(player, stallId, 500, false, buyout)
-        PurchaseFlow.execute(player, stallId, 500, true, buyout)
+        PurchaseFlow.execute(player, stallId, 500, null, buyout)
+        PurchaseFlow.execute(player, stallId, 500, PurchaseFlow.GuildOption("guild-1", "Badgers"), buyout)
 
         verify(exactly = 1) { buyout.buy(stallId, playerId, 500, any()) }
-        verify(exactly = 1) { buyout.buyForGuild(stallId, playerId, 500, any()) }
+        verify(exactly = 1) { buyout.buyForGuild(stallId, playerId, 500, any(), "guild-1") }
     }
 
     @Test fun `guild option requires membership and shop permission`() {
@@ -43,6 +43,9 @@ class PurchaseFlowTest {
         every { provider.hasShopPermission(playerId, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS) } returns false
         assertNull(PurchaseFlow.eligibleGuild(player, provider))
         every { provider.hasShopPermission(playerId, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS) } returns true
+        every { provider.canWithdrawForStall(playerId, guild.id) } returns false
+        assertNull(PurchaseFlow.eligibleGuild(player, provider))
+        every { provider.canWithdrawForStall(playerId, guild.id) } returns true
         assertEquals("Badgers", PurchaseFlow.eligibleGuild(player, provider)?.name)
     }
 }

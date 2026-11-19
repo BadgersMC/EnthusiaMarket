@@ -62,6 +62,8 @@ interface GuildProvider {
         MODIFY_SHOP_PRICES
     }
 
+    fun canWithdrawForStall(player: UUID, guildId: String): Boolean = false
+
     fun bankBalance(guildId: String): Long
     fun bankWithdraw(guildId: String, amount: Long): Boolean
     fun bankDeposit(guildId: String, amount: Long): Boolean

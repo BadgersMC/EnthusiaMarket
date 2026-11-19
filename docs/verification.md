@@ -1,5 +1,9 @@
 # Market check refinement — 2026-10-04
 
+## Guild-funded sign buyouts — 2026-11-18
+
+Stall 69 on TEST reproduced the previous behavior: the guild received ownership while the member paid 10. `StallBuyoutServiceTest` and `PurchaseFlowTest` cover funding, refund destination, declined payments, guild changes and withdrawal authority. Native acceptance of the replacement build is pending.
+
 ## Auction escrow and paid rent extensions — 2026-11-18
 
 An auction transition compares the open state and expected bid amount. A winning transition commits ownership, the opening-round guild win when applicable, the auction closure and any seller credit in one database transaction. Outbid and cancellation refunds are recorded with the corresponding bid transition. A failed award leaves the bid held and the auction available for scheduler retry.

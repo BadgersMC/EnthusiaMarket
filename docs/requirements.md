@@ -330,6 +330,8 @@ Reference: study of `advanced-region-market` (ARM) plugin. Eight features select
 
 **Ubiquitous.** THE SYSTEM SHALL support placing physical signs in the world linked to a stall such that right-clicking the sign triggers a claim/extend/buy action appropriate to the stall's state, and the sign's text is auto-rendered from a translated template.
 
+When a member confirms a guild buyout at a vacant stall sign, Market shall verify the displayed guild and the member’s shop-management and withdrawal permissions, debit the purchase price from that guild bank, and award the stall only after payment succeeds. If ownership persistence fails, Market shall refund the same bank. Personal buyouts use the buyer’s wallet.
+
 #### REQ-251 — Sign creation workflow
 
 **Event-driven.** WHEN an admin (or stall owner where permitted) creates a sign whose first line matches the configured trigger token (e.g. `[em]`) and whose second line names an existing stall THE SYSTEM SHALL register the sign as a linked purchase sign, sync its text on creation, and persist the binding.
