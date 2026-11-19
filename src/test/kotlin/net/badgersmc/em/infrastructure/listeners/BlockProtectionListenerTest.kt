@@ -1,5 +1,15 @@
 package net.badgersmc.em.infrastructure.listeners
 
+import net.badgersmc.em.domain.stall.StallId
+import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.application.ShopAccessPolicy
+import net.badgersmc.em.domain.stall.Stall
+import net.badgersmc.em.domain.stall.StallState
+import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.RentTerms
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -247,5 +257,36 @@ class BlockProtectionListenerTest {
         listener.onBlockBreak(event)
 
         assert(!event.isCancelled) { "Non-shop sign should pass through" }
+    }
+
+    @Test
+    fun `guild shop sign deletion follows current rank even for the original creator`() {
+        val player = server.addPlayer()
+        player.isOp = false
+        val shop = makeShop(owner = player.uniqueId)
+        val guildId = UUID.randomUUID().toString()
+        val stallId = StallId(shop.stallId)
+        val stall = Stall(stallId, stallId.value, "world", StallState.OWNED, OwnerRef.guild(guildId),
+            null, 100, RentTerms.formula(1.0))
+        val stalls = mockk<StallRepository>()
+        every { stalls.findById(stallId) } returns stall
+        val guilds = mockk<GuildProvider>(relaxed = true)
+        every { guilds.isMember(player.uniqueId, guildId) } returns true
+        val shops = mockk<ShopRepository>(relaxUnitFun = true)
+        every { shops.findBySign("world", shop.signX, shop.signY, shop.signZ) } returns shop
+        every { shops.findById(shop.id) } returns shop
+        val management = ShopManagementService(shops, ShopAccessPolicy(stalls, guilds))
+        val listener = BlockProtectionListener(shops, mockk(relaxed = true), management, mockk(relaxed = true))
+        val sign = mockSign(x = shop.signX, y = shop.signY, z = shop.signZ)
+        val denied = BlockBreakEvent(sign, player)
+        listener.onBlockBreak(denied)
+        assertTrue(denied.isCancelled)
+        verify(exactly = 0) { shops.delete(shop.id) }
+        every { guilds.hasShopPermission(player.uniqueId, guildId,
+            GuildProvider.GuildPermission.EDIT_SHOP_STOCK) } returns true
+        val allowed = BlockBreakEvent(sign, player)
+        listener.onBlockBreak(allowed)
+        assertFalse(allowed.isCancelled)
+        verify(exactly = 1) { shops.delete(shop.id) }
     }
 }
