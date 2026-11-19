@@ -4,7 +4,9 @@ import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.interaction.PurchaseFlow
 import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import org.bukkit.plugin.java.JavaPlugin
 import org.geysermc.cumulus.form.SimpleForm
 import java.util.logging.Logger
 
@@ -23,7 +25,13 @@ class BedrockPurchaseConfirmForm(
         .content(confirmContent())
         .button(lang.legacy("purchase_sign.msg.confirm_yes"))
         .button(lang.legacy("purchase_sign.msg.confirm_no"))
-        .validResultHandler { handleButton(it.clickedButtonId()) }
+        .validResultHandler { response ->
+            val button = response.clickedButtonId()
+            if (Bukkit.isPrimaryThread()) handleButton(button)
+            else Bukkit.getScheduler().runTask(JavaPlugin.getProvidingPlugin(javaClass), Runnable {
+                if (player.isOnline) handleButton(button)
+            })
+        }
         .build()
 
     internal fun handleButton(button: Int) {
