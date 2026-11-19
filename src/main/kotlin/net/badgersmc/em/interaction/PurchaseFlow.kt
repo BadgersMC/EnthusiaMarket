@@ -16,12 +16,12 @@ object PurchaseFlow {
         val guild = guildProvider?.guildOf(player.uniqueId) ?: return null
         if (!guildProvider.hasShopPermission(
                 player.uniqueId, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS,
-            )) return null
+            ) || !guildProvider.canWithdrawForStall(player.uniqueId, guild.id)) return null
         return GuildOption(guild.id, guild.name)
     }
 
-    fun execute(player: Player, stallId: StallId, price: Long, guild: Boolean, buyout: StallBuyoutService) =
-        if (guild) buyout.buyForGuild(stallId, player.uniqueId, price, playerIp(player))
+    fun execute(player: Player, stallId: StallId, price: Long, guild: GuildOption?, buyout: StallBuyoutService) =
+        if (guild != null) buyout.buyForGuild(stallId, player.uniqueId, price, playerIp(player), guild.id)
         else buyout.buy(stallId, player.uniqueId, price, playerIp(player))
 
     fun message(result: StallBuyoutService.Result, stallId: StallId, lang: LangService): Component = when (result) {

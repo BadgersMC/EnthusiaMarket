@@ -173,6 +173,11 @@ class LumaGuildsGuildProvider : GuildProvider {
         return lookup?.hasRankAtLeast(player, guildUuid, node) ?: false
     }
 
+    override fun canWithdrawForStall(player: UUID, guildId: String): Boolean {
+        val uuid = parseUuid(guildId) ?: return false
+        return lookup?.hasShopPermission(player, uuid, "WITHDRAW_FROM_BANK") == true
+    }
+
     override fun bankBalance(guildId: String): Long {
         val uuid = parseUuid(guildId) ?: return 0L
         return lookup?.getBankBalance(uuid) ?: 0L

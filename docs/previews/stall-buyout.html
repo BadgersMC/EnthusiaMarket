@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market · Stall purchase preview</title>
+<style>
+*{box-sizing:border-box}body{background:#17151b;color:#fff1d5;font:1rem/1.5 system-ui;margin:0;padding:1rem}main{max-width:30rem;margin:8vh auto}h1{font-size:1.5rem}section{border:2px solid #b38445;background:#2b2227;padding:1.2rem}button{display:block;background:#55424b;color:white;font:inherit;border:1px solid #ae8968;min-height:48px;width:100%;margin:.6rem 0;padding:.5rem}button:focus-visible{outline:3px solid gold}small{color:#d6c7b7}
+</style><main><small>EnthusiaMarket · Interactive simulation</small><h1 id="title"></h1><section aria-live="polite"><p id="detail"></p><div id="actions"></div></section></main>
+<script>
+const title=document.querySelector('#title'),detail=document.querySelector('#detail'),actions=document.querySelector('#actions');
+function screen(name,description,choices){
+ title.textContent=name;detail.textContent=description;actions.replaceChildren();
+ for(const [label,action] of choices){const button=document.createElement('button');button.textContent=label;button.onclick=action;actions.append(button)}
+}
+function select(){screen('Purchase stall 69','Price · 10 raw gold',[
+ ['Buy for yourself',()=>confirmPurchase(false)],['Buy for your guild · GoldProofOct26',()=>confirmPurchase(true)],['Cancel',()=>finish('Purchase cancelled.')]])}
+function confirmPurchase(guild){
+ screen('Confirm purchase',guild?'Buy stall 69 from the guild bank for 10 raw gold. Guild · GoldProofOct26':'Buy stall 69 for 10 raw gold (personal).',[
+ ['Confirm purchase',()=>finish(guild?'Purchased stall 69 for your guild — guild bank paid 10.':'Purchased stall 69 for 10.')],['Cancel',()=>finish('Purchase cancelled.')]])
+}
+function finish(message){screen('Purchase sign',message,[['Reopen sign',select]])}select()
+</script></html>

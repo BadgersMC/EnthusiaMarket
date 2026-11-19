@@ -59,7 +59,7 @@ class PurchaseMethodMenu(
         pane.addItem(
             GuiItem(decorated(head, lang.msg("purchase_sign.msg.method_personal"), listOf(lang.msg("purchase_sign.msg.method_personal_lore")))) { event ->
                 event.isCancelled = true
-                PurchaseConfirmMenu(stallId, price, isGuild = false, buyout, lang).open(player)
+                PurchaseConfirmMenu(stallId, price, null, buyout, lang).open(player)
             },
             3, 1,
         )
@@ -75,7 +75,7 @@ class PurchaseMethodMenu(
                     lang.msg("purchase_sign.msg.method_guild_buyer", "guild_name" to guild.name),
                 ))) { event ->
                     event.isCancelled = true
-                    PurchaseConfirmMenu(stallId, price, isGuild = true, buyout, lang).open(player)
+                    PurchaseConfirmMenu(stallId, price, guild, buyout, lang).open(player)
                 },
                 5, 1,
             )

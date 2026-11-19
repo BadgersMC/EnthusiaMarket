@@ -40,7 +40,7 @@ class BedrockPurchaseMethodForm(
 
     private fun openConfirm(forGuild: Boolean) {
         BedrockPurchaseConfirmForm(
-            player, stallId, price, forGuild, guild?.name, buyout, logger, lang,
+            player, stallId, price, guild.takeIf { forGuild }, buyout, logger, lang,
         ).open(player)
     }
 }

@@ -57,7 +57,7 @@ class StallBuyoutService(
 
     private data class BuyRequest(
         val stallId: StallId,
-        val payer: UUID,
+        val actor: UUID,
         val owner: OwnerRef,
         val price: Long,
         val ip: String,
@@ -66,9 +66,12 @@ class StallBuyoutService(
     fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result =
         buyForOwner(BuyRequest(stallId, buyer, OwnerRef.solo(buyer), price, ip))
 
-    fun buyForGuild(stallId: StallId, actor: UUID, price: Long, ip: String): Result {
+    fun buyForGuild(stallId: StallId, actor: UUID, price: Long, ip: String, expectedGuildId: String): Result {
         val guild = guildProvider.guildOf(actor) ?: return Result.NotInGuild
-        if (!guildProvider.hasShopPermission(actor, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS)) {
+        if (guild.id != expectedGuildId) return Result.Rejected("Your guild changed. Reopen the purchase sign.")
+        if (!guildProvider.hasShopPermission(actor, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS) ||
+            !guildProvider.canWithdrawForStall(actor, guild.id)
+        ) {
             return Result.NoGuildPermission
         }
         return buyForOwner(BuyRequest(stallId, actor, OwnerRef.guild(guild.id), price, ip))
@@ -77,10 +80,10 @@ class StallBuyoutService(
     private fun enforceLimit(request: BuyRequest, stall: Stall): Result? {
         if (request.owner.type == OwnerType.GUILD) return enforceGuildLimit(request)
         if (request.owner.type != OwnerType.SOLO) return null
-        val counts = ownership.counts(request.payer)
+        val counts = ownership.counts(request.actor)
         return when (
             val decision = limits.canClaim(
-                request.payer,
+                request.actor,
                 stall.kind,
                 counts.total,
                 counts.byKind[stall.kind] ?: 0,
@@ -99,29 +102,30 @@ class StallBuyoutService(
     private fun enforceGuildLimit(request: BuyRequest): Result? {
         val guildId = request.owner.id
         val extra = runCatching { guildProvider.extraGuildStalls(guildId) }.getOrDefault(0)
-        val decision = limits.canClaimForGuild(request.payer, ownership.guildCount(guildId), extra)
+        val decision = limits.canClaimForGuild(request.actor, ownership.guildCount(guildId), extra)
         return (decision as? LimitResolutionService.ClaimDecision.Rejected)
             ?.let { Result.Rejected("Your guild already owns its stall limit (${it.cap})") }
     }
 
     private fun refundAfterFailedAward(request: BuyRequest, cause: Exception) {
         val refunded = try {
-            economy.deposit(request.payer, request.price)
+            if (request.owner.type == OwnerType.GUILD) guildProvider.bankDeposit(request.owner.id, request.price)
+            else economy.deposit(request.actor, request.price)
         } catch (refund: Exception) {
-            log.severe("StallBuyoutService: refund of ${request.price} to ${request.payer} threw: ${refund.message}")
+            log.severe("StallBuyoutService: refund of ${request.price} to ${request.owner} threw: ${refund.message}")
             false
         }
         val stallId = request.stallId.value
         if (refunded) {
             log.severe(
                 "StallBuyoutService: ownership transfer failed for stall $stallId after charging " +
-                    "payer ${request.payer} price=${request.price} (owner=${request.owner}). " +
+                    "actor ${request.actor} price=${request.price} (owner=${request.owner}). " +
                     "Payer has been refunded. cause=${cause.message}",
             )
         } else {
             log.severe(
                 "StallBuyoutService: ownership transfer failed for stall $stallId AND the refund of " +
-                    "${request.price} to ${request.payer} failed — manual refund required. cause=${cause.message}",
+                    "${request.price} to ${request.owner} failed — manual refund required. cause=${cause.message}",
             )
         }
     }
@@ -150,7 +154,7 @@ class StallBuyoutService(
     }
 
     private fun buyForOwner(request: BuyRequest): Result = try {
-        moderationPolicy.withAcquisitionPermit(request.payer) { buyForOwnerWithPermit(request) }
+        moderationPolicy.withAcquisitionPermit(request.actor) { buyForOwnerWithPermit(request) }
     } catch (blocked: MarketAcquisitionBlockedException) {
         Result.Rejected(blocked.message ?: "Market acquisitions are restricted")
     }
@@ -198,7 +202,11 @@ class StallBuyoutService(
                 return Result.Rejected("Stall snapshot failed; please contact staff")
             }
         }
-        if (!economy.withdraw(request.payer, request.price)) {
+        if (request.owner.type == OwnerType.GUILD) {
+            if (!guildProvider.bankWithdraw(request.owner.id, request.price)) {
+                return Result.Rejected("Guild bank payment declined: ${request.price} required")
+            }
+        } else if (!economy.withdraw(request.actor, request.price)) {
             return Result.Rejected("Insufficient funds: ${request.price} required")
         }
         val updated = persistAward(stall, request)
