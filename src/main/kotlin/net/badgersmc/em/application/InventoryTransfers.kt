@@ -3,19 +3,6 @@ package net.badgersmc.em.application
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 
-/**
- * Transfers [amount] items matching [template] (by [ItemStack.isSimilar]) from
- * [source] to [dest], preserving the original item stacks including display names
- * and NBT. Atomic — preflights source count and dest capacity before mutating
- * either inventory. Returns [TransferResult.Success] when the full amount was
- * transferred.
- */
-internal sealed class TransferResult {
-    data object Success : TransferResult()
-    data class SourceFailure(val leftover: Map<Int, ItemStack>) : TransferResult()
-    data class DestFull(val leftover: Map<Int, ItemStack>) : TransferResult()
-}
-
 @Suppress("CyclomaticComplexMethod")
 internal fun transferSimilar(
     source: Inventory,
@@ -24,21 +11,22 @@ internal fun transferSimilar(
     amount: Int,
 ): TransferResult {
     val contents = source.storageContents
-    if (contents != null && contents.isNotEmpty()) {
-        // Preflight: don't mutate until we know the full amount can be moved
-        if (!ItemStackMatch.containsAtLeastSimilar(source, template, amount)) {
-            val fail = HashMap<Int, ItemStack>()
-            fail[0] = template.clone().apply { this.amount = amount }
-            return TransferResult.SourceFailure(fail)
-        }
-        if (!ItemStackMatch.canFitSimilar(dest, template, amount)) {
-            val fail = HashMap<Int, ItemStack>()
-            fail[0] = template.clone().apply { this.amount = amount }
-            return TransferResult.DestFull(fail)
-        }
+    if (!contents.isNullOrEmpty()) {
+        val rejected = transferRejection(source, dest, template, amount)
+        if (rejected != null) return rejected
         moveMatchingStacks(TransferInventories(source, dest, contents), template, amount)?.let { return it }
     }
-    // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
+    return transferBatch(source, dest, template, amount)
+}
+
+private fun transferRejection(source: Inventory, dest: Inventory, template: ItemStack, amount: Int): TransferResult? {
+    fun remainder() = mapOf(0 to template.clone().apply { this.amount = amount })
+    if (!ItemStackMatch.containsAtLeastSimilar(source, template, amount)) return TransferResult.SourceFailure(remainder())
+    if (!ItemStackMatch.canFitSimilar(dest, template, amount)) return TransferResult.DestFull(remainder())
+    return null
+}
+
+private fun transferBatch(source: Inventory, dest: Inventory, template: ItemStack, amount: Int): TransferResult {
     val batch = template.clone().apply { this.amount = amount }
     val removed = source.removeItem(batch)
     if (removed.isNotEmpty()) return TransferResult.SourceFailure(removed)
@@ -56,24 +44,19 @@ private fun moveMatchingStacks(inventories: TransferInventories, template: ItemS
     val (source, dest, contents) = inventories
     val sourceBefore = contents.map { it?.clone() }.toTypedArray()
     val destBefore = dest.storageContents.map { it?.clone() }.toTypedArray()
+    fun rollback(result: TransferResult): TransferResult {
+        source.storageContents = sourceBefore
+        dest.storageContents = destBefore
+        return result
+    }
     var remaining = amount
-    for (item in contents) {
-        if (item == null) continue
-        if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
+    for (item in matchingItems(contents, template)) {
         val take = minOf(item.amount, remaining)
         val batch = item.clone().apply { this.amount = take }
         val removed = source.removeItem(batch.clone())
-        if (removed.isNotEmpty()) {
-            source.storageContents = sourceBefore
-            dest.storageContents = destBefore
-            return TransferResult.SourceFailure(removed)
-        }
+        if (removed.isNotEmpty()) return rollback(TransferResult.SourceFailure(removed))
         val overflow = dest.addItem(batch)
-        if (overflow.isNotEmpty()) {
-            source.storageContents = sourceBefore
-            dest.storageContents = destBefore
-            return TransferResult.DestFull(overflow)
-        }
+        if (overflow.isNotEmpty()) return rollback(TransferResult.DestFull(overflow))
         remaining -= take
         if (remaining <= 0) return TransferResult.Success
     }
@@ -89,23 +72,7 @@ private fun moveMatchingStacks(inventories: TransferInventories, template: ItemS
  */
 @Suppress("CyclomaticComplexMethod")
 internal fun removeSimilar(source: Inventory, template: ItemStack, amount: Int): Map<Int, ItemStack> {
-    var remaining = amount
-    val contents = source.contents
-    if (contents != null && contents.isNotEmpty()) {
-        for (item in contents) {
-            if (item == null) continue
-            if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
-            val take = minOf(item.amount, remaining)
-            val batch = item.clone().apply { this.amount = take }
-            source.removeItem(batch)
-            remaining -= take
-            if (remaining <= 0) return emptyMap()
-        }
-    }
-    if (remaining <= 0) return emptyMap()
-    // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
-    val batch = template.clone().apply { this.amount = remaining }
-    return source.removeItem(batch)
+    return removeAndCollectSimilar(source, template, amount).second
 }
 
 /**
@@ -118,18 +85,13 @@ internal fun removeSimilar(source: Inventory, template: ItemStack, amount: Int):
 internal fun removeAndCollectSimilar(source: Inventory, template: ItemStack, amount: Int): Pair<List<ItemStack>, Map<Int, ItemStack>> {
     val collected = mutableListOf<ItemStack>()
     var remaining = amount
-    val contents = source.contents
-    if (contents != null && contents.isNotEmpty()) {
-        for (item in contents) {
-            if (item == null) continue
-            if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
-            val take = minOf(item.amount, remaining)
-            val batch = item.clone().apply { this.amount = take }
-            source.removeItem(batch)
-            collected.add(batch)
-            remaining -= take
-            if (remaining <= 0) return collected to emptyMap()
-        }
+    for (item in matchingItems(source.contents, template)) {
+        val take = minOf(item.amount, remaining)
+        val batch = item.clone().apply { this.amount = take }
+        source.removeItem(batch)
+        collected.add(batch)
+        remaining -= take
+        if (remaining <= 0) return collected to emptyMap()
     }
     if (remaining <= 0) return collected to emptyMap()
     // Fallback for test mocks — use template
@@ -138,3 +100,6 @@ internal fun removeAndCollectSimilar(source: Inventory, template: ItemStack, amo
     if (leftovers.isEmpty()) collected.add(batch)
     return collected to leftovers
 }
+
+private fun matchingItems(contents: Array<out ItemStack?>?, template: ItemStack): Sequence<ItemStack> =
+    contents.orEmpty().asSequence().filterNotNull().filter { ItemStackMatch.isSimilarIgnoringDamageNullZero(it, template) }

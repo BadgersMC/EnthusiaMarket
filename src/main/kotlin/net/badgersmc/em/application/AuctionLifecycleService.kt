@@ -381,6 +381,10 @@ class AuctionLifecycleService(
         if (mutationGate.isStallLocked(auction.stallId.value)) return AuctionResult.Failure("This stall is temporarily unavailable")
         if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is not open")
         guildBidRejection(auction, request.guildId)?.let { return it }
+        return reserveBid(auction, request)
+    }
+
+    private fun reserveBid(auction: Auction, request: BidRequest): AuctionResult {
         val reservation = ipLimiter.acquireAuction(request.ip, auction.id.value)
         if (!reservation.allowed) return AuctionResult.Failure("You already have an active bid on another auction.")
         return applyReservedBid(auction, request, reservation)
@@ -754,6 +758,11 @@ class AuctionLifecycleService(
             return
         }
 
+        if (!captureWinnerStall(auction, stall, bid)) return
+        awardWinner(auction, stall, bid)
+    }
+
+    private fun captureWinnerStall(auction: Auction, stall: Stall, bid: Bid): Boolean {
         // Winner already paid at bid time. Settlement must not charge again.
 
         // 0.5 REQ-270/273/274 — snapshot the stall geometry BEFORE finalising
@@ -771,11 +780,11 @@ class AuctionLifecycleService(
                 )
                 closeWithoutAward(auction, stall)
                 fireCaptureFailed(stall.id.value, stall.world, stall.regionId, capture.cause)
-                return
+                return false
             }
         }
 
-        awardWinner(auction, stall, bid)
+        return true
     }
 
     private fun winnerEligible(auction: Auction, stall: Stall, bid: Bid): Boolean {
@@ -787,14 +796,7 @@ class AuctionLifecycleService(
         if (bid.guildId != null && guildAlreadyWonOpeningRound(auction, bid.guildId)) {
             return false
         }
-        val counts = ownership.counts(bid.bidder)
-        // Personal limits do not apply to guild holdings; the guild cap does (REQ-399).
-        val decision = if (bid.guildId != null) guildClaimDecision(bid.bidder, bid.guildId) else limits.canClaim(
-            player = bid.bidder,
-            kind = stall.kind,
-            currentTotal = counts.total,
-            currentForKind = counts.byKind[stall.kind] ?: 0,
-        )
+        val decision = winnerLimit(stall, bid)
         if (decision is LimitResolutionService.ClaimDecision.Rejected) {
             logger.info(
                 "Auction ${auction.id} winner ${bid.bidder} over limit " +
@@ -803,6 +805,17 @@ class AuctionLifecycleService(
             return false
         }
         return true
+    }
+
+    private fun winnerLimit(stall: Stall, bid: Bid): LimitResolutionService.ClaimDecision {
+        val counts = ownership.counts(bid.bidder)
+        // Personal limits do not apply to guild holdings; the guild cap does (REQ-399).
+        return if (bid.guildId != null) guildClaimDecision(bid.bidder, bid.guildId) else limits.canClaim(
+            player = bid.bidder,
+            kind = stall.kind,
+            currentTotal = counts.total,
+            currentForKind = counts.byKind[stall.kind] ?: 0,
+        )
     }
 
     private fun awardWinner(auction: Auction, stall: Stall, bid: Bid) {

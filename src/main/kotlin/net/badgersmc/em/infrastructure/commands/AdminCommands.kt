@@ -270,35 +270,7 @@ class AdminCommands(
     @Subcommand("list page")
     @Permission("enthusiamarket.admin.list")
     fun listPage(@Context sender: CommandSender, @Arg("page") @Suggests("directoryPages") page: Int) {
-        val ordered = stalls.all().sortedWith(compareBy({ it.world }, { it.id.value.trimEnd { c -> c in '0'..'9' } },
-            { numericSuffix(it.id.value).length }, { numericSuffix(it.id.value) }, { it.id.value }))
-        if (ordered.isEmpty()) {
-            sender.sendMessage(lang.msg("admin.list.empty"))
-            return
-        }
-        val pages = (ordered.size - 1) / LIST_PAGE_SIZE + 1
-        if (page !in 1..pages) {
-            sender.sendMessage(lang.msg("admin.list.invalid", "pages" to pages))
-            return
-        }
-        sender.sendMessage(lang.msg("admin.list.header", "count" to ordered.size, "page" to page, "pages" to pages))
-        for (stall in ordered.drop((page - 1) * LIST_PAGE_SIZE).take(LIST_PAGE_SIZE)) {
-            val id = stall.id.value
-            val match = NUMBERED_STALL.matchEntire(id)
-            val label = if (match == null) id else {
-                val number = match.groupValues[2].trimStart('0').ifEmpty { "0" }
-                if (match.groupValues[1].isEmpty()) "Stall $number" else "Market stall $number"
-            }
-            val status = lang.msg("admin.list.states." + stall.state.name.lowercase())
-            val row = lang.msg("admin.list.row", "label" to label).append(status)
-                .hoverEvent(lang.msg("admin.list.details", "id" to id, "world" to stall.world, "region" to stall.regionId))
-            sender.sendMessage(if (id.matches(SAFE_STALL_ARGUMENT)) row.clickEvent(ClickEvent.runCommand("/em stall info $id")) else row)
-        }
-        val nav = Component.text()
-        if (page > 1) nav.append(lang.msg("admin.list.previous").clickEvent(ClickEvent.runCommand("/em list page ${page - 1}")))
-        if (page in 2 until pages) nav.append(Component.space())
-        if (page < pages) nav.append(lang.msg("admin.list.next").clickEvent(ClickEvent.runCommand("/em list page ${page + 1}")))
-        if (pages > 1) sender.sendMessage(nav.build())
+        StallDirectory(lang).send(sender, stalls.all(), page)
     }
 
     @Subcommand("auction start")
@@ -1044,91 +1016,41 @@ class AdminCommands(
 
     @Subcommand("websync status")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncStatus(@Context sender: CommandSender) {
-        val status = sync().status()
-        sender.sendMessage("Website sync: configured=${yesNo(status.configuredEnabled)}, active=${yesNo(status.active)}, " +
-            "secret=${yesNo(status.secretConfigured)}, validation=${status.validation}")
-        sender.sendMessage("Pending stalls=${status.pendingStalls}, full=${yesNo(status.pendingFull)}, " +
-            "oldest=${age(status.oldestPendingAgeMillis)}, snapshot=${status.snapshotRevision}")
-        sender.sendMessage("Last full=${instant(status.lastFullSuccess)}, last stall=${instant(status.lastStallSuccess)}, " +
-            "status=${status.errorCategory ?: "ok"}")
-        status.bedrockHeads?.let { heads ->
-            sender.sendMessage("Bedrock heads: geyser=${yesNo(status.geyserApiAvailable)}, " +
-                "capture=${yesNo(status.bedrockCaptureEnabled)}, published=${heads.captured}, pending=${heads.pending}, " +
-                "last=${instant(heads.lastSuccessAt)}, status=${heads.lastError ?: "ok"}")
-        }
-        status.floodgateCapture?.let { capture ->
-            sender.sendMessage("Floodgate capture: events=${capture.events}, accepted=${capture.accepted}, queued=${capture.queued}, " +
-                "rejected=${capture.rejected}, failed=${capture.failed}, dropped=${capture.dropped}, " +
-                "last=${capture.lastFailure ?: "ok"}")
-        }
-    }
+    fun webSyncStatus(@Context sender: CommandSender) = websiteCommands.webSyncStatus(sender)
 
     @Subcommand("websync secret")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncSecret(@Context sender: CommandSender, @Arg("value") value: WebsiteSyncSecretArgument) {
-        val result = sync().setSecret(value.value)
-        sender.sendMessage(if (result.config != null) "Website sync secret stored; synchronization remains in its configured state."
-            else "Website sync configuration is invalid; synchronization is disabled.")
-    }
+    fun webSyncSecret(@Context sender: CommandSender, @Arg("value") value: WebsiteSyncSecretArgument) = websiteCommands.webSyncSecret(sender, value)
 
     @Subcommand("websync clear-secret")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncClearSecret(@Context sender: CommandSender, @Arg("confirmation") confirmation: String) {
-        if (confirmation != "confirm") {
-            sender.sendMessage("Use /em websync clear-secret confirm")
-            return
-        }
-        sync().clearSecret()
-        sender.sendMessage("Website sync secret cleared and synchronization disabled.")
-    }
+    fun webSyncClearSecret(@Context sender: CommandSender, @Arg("confirmation") confirmation: String) = websiteCommands.webSyncClearSecret(sender, confirmation)
 
     @Subcommand("websync test")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncTest(@Context sender: CommandSender) {
-        sender.sendMessage("Testing website sync authentication...")
-        sync().authenticatedTest { success, category ->
-            sender.sendMessage(if (success) "Website sync authentication succeeded." else "Website sync test failed: $category")
-        }
-    }
+    fun webSyncTest(@Context sender: CommandSender) = websiteCommands.webSyncTest(sender)
 
     @Subcommand("websync validate")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncValidate(@Context sender: CommandSender) {
-        val report = sync().validateLiveReport()
-        if (report.errors.isEmpty()) sender.sendMessage("Website sync validation passed for all 71 exact stall identities.")
-        else sender.sendMessage("Website sync validation failed (${report.errors.size} safe issue(s)): ${report.errors.take(10).joinToString()}")
-        sender.sendMessage("Website sync diagnostics: ${report.diagnostics.joinToString()}")
-    }
+    fun webSyncValidate(@Context sender: CommandSender) = websiteCommands.webSyncValidate(sender)
 
     @Subcommand("websync full")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncFull(@Context sender: CommandSender) {
-        sender.sendMessage(if (sync().requestFull()) "Website full reconciliation requested." else "Website sync is not active.")
-    }
+    fun webSyncFull(@Context sender: CommandSender) = websiteCommands.webSyncFull(sender)
 
     @Subcommand("websync enable")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncEnable(@Context sender: CommandSender) {
-        sync().enable()
-        sender.sendMessage(if (sync().status().active) "Website sync enabled; full reconciliation started."
-            else "Website sync remains inactive until a valid secret, configuration, and persistence are present.")
-    }
+    fun webSyncEnable(@Context sender: CommandSender) = websiteCommands.webSyncEnable(sender)
 
     @Subcommand("websync disable")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncDisable(@Context sender: CommandSender) {
-        sync().disable()
-        sender.sendMessage("Website sync disabled; persistent pending state was retained.")
-    }
+    fun webSyncDisable(@Context sender: CommandSender) = websiteCommands.webSyncDisable(sender)
 
     @Subcommand("websync retry")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncRetry(@Context sender: CommandSender) {
-        sender.sendMessage(if (sync().retry()) "Website sync delivery retry requested." else "Website sync retry could not be queued.")
-    }
+    fun webSyncRetry(@Context sender: CommandSender) = websiteCommands.webSyncRetry(sender)
 
-    private fun sync(): WebsiteSyncService = requireNotNull(websiteSync) { "Website sync service is unavailable" }
+    private val websiteCommands = WebsiteSyncCommands(websiteSync)
 
     /**
      * Drop expired entries from [pendingSellbacks] so the map doesn't
@@ -1146,18 +1068,12 @@ class AdminCommands(
 
     internal companion object {
         internal const val LIST_PAGE_SIZE = 6
-        private fun numericSuffix(id: String) = id.takeLastWhile { it in '0'..'9' }.trimStart('0')
-        private val NUMBERED_STALL = Regex("stall(_cm_)?([0-9]+)", RegexOption.IGNORE_CASE)
-        private val SAFE_STALL_ARGUMENT = Regex("[A-Za-z0-9_.-]+")
         private val BULK_RENT_DURATION = Regex("^([1-9][0-9]*)([mhd])$")
 
         const val KEY_WORLD = "world"
         const val KEY_REGION_PREFIX = "region_prefix"
         const val WEBSYNC_PERMISSION = "enthusiamarket.admin.websync"
 
-        private fun yesNo(value: Boolean) = if (value) "yes" else "no"
-        private fun age(value: Long?): String = value?.let { "${it / 1000}s" } ?: "none"
-        private fun instant(value: Long?): String = value?.let { Instant.ofEpochMilli(it).toString() } ?: "never"
 
         /** Set a stall's region kind. Returns false when the stall is missing. */
         fun applySetKind(repo: StallRepository, stallId: String, kind: String): Boolean {

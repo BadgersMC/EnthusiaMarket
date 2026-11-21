@@ -221,6 +221,10 @@ class PurchaseMenu(
             SignDirection.BUY -> tradeService.executeBuyBatch(shop, player.uniqueId, multiplier)
             else -> return
         }
+        reportResult(player, result)
+    }
+
+    private fun reportResult(player: Player, result: ContainerTradeResult) {
         when (result) {
             is ContainerTradeResult.Success -> player.sendMessage(
                 lang.msg("shop.trade.success", "message" to result.message),
@@ -362,39 +366,45 @@ class PurchaseMenu(
         val totalAmount = shop.sellAmount.toLong() * multiplier
         val stockStr = if (avail == Int.MAX_VALUE) "Unlimited" else avail.toString()
         return when (shop.direction) {
-            SignDirection.SELL -> RowItems(
-                receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
-                receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
-                receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
-                    lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
-                ),
-                giveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
-                giveName = lang.msg("gui.shop.give_currency", "cost" to totalCost),
-                giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to totalCost)),
-            )
-            SignDirection.BUY -> RowItems(
-                receiveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
-                receiveName = lang.msg("gui.shop.receive_currency", "cost" to totalCost),
-                receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to totalCost)),
-                giveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
-                giveName = lang.msg("gui.shop.give_item", "amount" to totalAmount, "item" to sellName),
-                giveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
-                ),
-            )
-            SignDirection.TRADE -> RowItems(
-                receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
-                receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
-                receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
-                ),
-                giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
-                giveName = Component.empty(),
-                giveLore = emptyList(),
-            )
+            SignDirection.SELL -> sellRow(totalAmount, totalCost, stockStr)
+            SignDirection.BUY -> buyRow(totalAmount, totalCost)
+            SignDirection.TRADE -> tradeRow(totalAmount, stockStr)
         }
     }
+
+    private fun sellRow(totalAmount: Long, totalCost: Long, stockStr: String) = RowItems(
+        receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
+        receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
+        receiveLore = listOf(
+            lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
+            lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
+        ),
+        giveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
+        giveName = lang.msg("gui.shop.give_currency", "cost" to totalCost),
+        giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to totalCost)),
+    )
+
+    private fun buyRow(totalAmount: Long, totalCost: Long) = RowItems(
+        receiveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
+        receiveName = lang.msg("gui.shop.receive_currency", "cost" to totalCost),
+        receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to totalCost)),
+        giveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
+        giveName = lang.msg("gui.shop.give_item", "amount" to totalAmount, "item" to sellName),
+        giveLore = listOf(
+            lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
+        ),
+    )
+
+    private fun tradeRow(totalAmount: Long, stockStr: String) = RowItems(
+        receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
+        receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
+        receiveLore = listOf(
+            lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
+        ),
+        giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
+        giveName = Component.empty(),
+        giveLore = emptyList(),
+    )
 
     private fun displayAmount(item: ItemStack, requested: Long): ItemStack = item.apply {
         amount = requested.coerceIn(1, maxStackSize.coerceAtLeast(1).toLong()).toInt()
