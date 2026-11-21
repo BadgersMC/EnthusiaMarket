@@ -31,12 +31,6 @@ class DeletedShopSignListener(private val shops: ShopRepository) : Listener {
         }
     }
 
-    private fun clearAfterLoad(world: World, shop: Shop) {
-        world.getChunkAtAsync(shop.signX shr 4, shop.signZ shr 4, false).thenAccept { chunk ->
-            if (chunk != null) clearListing(world, shop)
-        }
-    }
-
     private fun attachedToContainer(shop: Shop, facing: org.bukkit.block.BlockFace) =
         shop.signX - facing.modX == shop.containerX && shop.signY - facing.modY == shop.containerY &&
             shop.signZ - facing.modZ == shop.containerZ
@@ -57,5 +51,11 @@ class DeletedShopSignListener(private val shops: ShopRepository) : Listener {
         if (header != "[${shop.direction.name}]") return
         for (line in 0..3) side.line(line, Text.empty())
         sign.update(false, false)
+    }
+
+    private fun clearAfterLoad(world: World, shop: Shop) {
+        world.getChunkAtAsync(shop.signX shr 4, shop.signZ shr 4, false).thenAccept { chunk ->
+            if (chunk != null) clearListing(world, shop)
+        }
     }
 }

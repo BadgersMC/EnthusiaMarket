@@ -126,12 +126,20 @@ internal class ShopHistoryOutbox(
         if (version < 2) return null
         val stall = input.optionalUtf()
         val guild = input.optionalUtf()?.let(UUID::fromString)
-        val eligible = version >= 3 && input.readBoolean()
-        val owner = if (version >= 4) net.badgersmc.em.domain.shop.SaleAwardOwner(
-            UUID.fromString(input.readUTF()), input.readUTF(), UUID.fromString(input.readUTF()),
-        ) else null
+        val eligible = input.readEligibility(version)
+        val owner = readOwner(input, version)
         if (eligible) validateOwner(stall, guild, owner?.id)
         return if (stall == null && guild == null) null else ShopSaleAttribution(stall, guild, eligible, owner)
+    }
+
+    private fun DataInputStream.readEligibility(version: Int): Boolean {
+        return version >= 3 && readBoolean()
+    }
+
+    private fun readOwner(input: DataInputStream, version: Int): net.badgersmc.em.domain.shop.SaleAwardOwner? {
+        return if (version >= 4) net.badgersmc.em.domain.shop.SaleAwardOwner(
+            UUID.fromString(input.readUTF()), input.readUTF(), UUID.fromString(input.readUTF()),
+        ) else null
     }
 
     private fun validateOwner(stall: String?, guild: UUID?, owner: UUID?) {

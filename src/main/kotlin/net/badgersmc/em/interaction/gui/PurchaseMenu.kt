@@ -304,24 +304,6 @@ class PurchaseMenu(
         }
     }
 
-    private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
-        val item = ItemStack(material)
-        val meta = item.itemMeta ?: return item
-        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
-        if (lore.isNotEmpty()) meta.lore(lore)
-        item.itemMeta = meta
-        return item
-    }
-
-    private fun decorated(base: ItemStack, name: Component, lore: List<Component> = emptyList()): ItemStack {
-        val item = base.clone()
-        val meta = item.itemMeta ?: return item
-        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
-        if (lore.isNotEmpty()) meta.lore(lore)
-        item.itemMeta = meta
-        return item
-    }
-
     private fun statusItem(summary: Summary): ItemStack = decorated(Material.PAPER,
         lang.msg("gui.shop.purchase_status", "trades" to multiplier), listOf(
             lang.msg("gui.shop.purchase_stock", "trades" to summary.stockText),
@@ -345,26 +327,6 @@ class PurchaseMenu(
             ShulkerPreviewMenu(deepCopy, lang).open(player)
         }, 8, 0)
     }
-
-    /** Visual border around the empty placement slot 15 for TRADE shops. */
-    private fun addPlacementSlotBorder(pane: StaticPane) {
-        val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-            .apply { itemMeta = itemMeta?.apply { displayName(Component.text(" ")) } ?: return }
-        // Left, right, and bottom border around slot 15 (position 6,1).
-        // Row 0 col 6 already holds the YOU GIVE label framing the top.
-        listOf(Pair(5, 1), Pair(7, 1), Pair(6, 2)).forEach { (x, y) ->
-            pane.addItem(GuiItem(borderItem.clone()), x, y)
-        }
-    }
-
-    private data class RowItems(
-        val receiveItem: ItemStack,
-        val receiveName: Component,
-        val receiveLore: List<Component>,
-        val giveItem: ItemStack,
-        val giveName: Component,
-        val giveLore: List<Component>,
-    )
 
     @Suppress("CyclomaticComplexMethod")
     private fun buildRowItems(avail: Int, totalCost: Long): RowItems {
@@ -400,18 +362,18 @@ class PurchaseMenu(
         ),
     )
 
-    private fun tradeRow(totalAmount: Long, stockStr: String) = RowItems(
-        receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
-        receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
-        receiveLore = listOf(
-            lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
-        ),
-        giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
-        giveName = Component.empty(),
-        giveLore = emptyList(),
-    )
-
-
+    private fun tradeRow(totalAmount: Long, stockStr: String): RowItems {
+        return RowItems(
+            receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
+            receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
+            receiveLore = listOf(
+                lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
+            ),
+            giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
+            giveName = Component.empty(),
+            giveLore = emptyList(),
+        )
+    }
 
     companion object {
         data class Summary(
@@ -465,3 +427,39 @@ private fun displayAmount(item: ItemStack, requested: Long): ItemStack {
     item.amount = requested.coerceIn(1, item.maxStackSize.coerceAtLeast(1).toLong()).toInt()
     return item
 }
+
+private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
+    return decorateItem(ItemStack(material), name, lore)
+}
+
+private fun decorated(base: ItemStack, name: Component, lore: List<Component> = emptyList()): ItemStack {
+    return decorateItem(base.clone(), name, lore)
+}
+
+private fun decorateItem(item: ItemStack, name: Component, lore: List<Component>): ItemStack {
+    val meta = item.itemMeta ?: return item
+    meta.displayName(name.decoration(TextDecoration.ITALIC, false))
+    if (lore.isNotEmpty()) meta.lore(lore)
+    item.itemMeta = meta
+    return item
+}
+
+/** Visual border around the empty placement slot 15 for TRADE shops. */
+private fun addPlacementSlotBorder(pane: StaticPane) {
+    val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
+        .apply { itemMeta = itemMeta?.apply { displayName(Component.text(" ")) } ?: return }
+    // Left, right, and bottom border around slot 15 (position 6,1).
+    // Row 0 col 6 already holds the YOU GIVE label framing the top.
+    for ((x, y) in listOf(5 to 1, 7 to 1, 6 to 2)) {
+        pane.addItem(GuiItem(borderItem.clone()), x, y)
+    }
+}
+
+private data class RowItems(
+    val receiveItem: ItemStack,
+    val receiveName: Component,
+    val receiveLore: List<Component>,
+    val giveItem: ItemStack,
+    val giveName: Component,
+    val giveLore: List<Component>,
+)

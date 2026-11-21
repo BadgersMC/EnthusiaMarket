@@ -43,16 +43,7 @@ class ShopTransactionRepositorySqlTest {
         val receipt = UUID.randomUUID()
         repo.recordAttributedOnce(receipt, attributed, ShopSaleAttribution("stall17", guildId))
         repo.recordAttributedOnce(receipt, attributed, ShopSaleAttribution("stall17", guildId))
-        ds.connection.use { connection ->
-            connection.prepareStatement("SELECT sale_stall_id,sale_guild_id FROM shop_transactions").use { query ->
-                query.executeQuery().use { rows ->
-                    assertEquals(true, rows.next())
-                    assertEquals("stall17", rows.getString("sale_stall_id"))
-                    assertEquals(guildId.toString(), rows.getString("sale_guild_id"))
-                    assertEquals(false, rows.next())
-                }
-            }
-        }
+        assertHistoricalAttribution(guildId)
     }
 
     @Test fun `verified public sale is archived atomically and survives history pruning`() {
@@ -79,16 +70,7 @@ class ShopTransactionRepositorySqlTest {
         repo.recordAttributedOnce(receipt, sale, ShopSaleAttribution("stall17", null, publicCashEligible = true))
         assertEquals(1, repo.findByOwner(owner, 10, 0).size)
         assertEquals(emptyList(), WebsiteSalesArchiveSql(ds).readAfter(0).items)
-        ds.connection.use { connection ->
-            connection.prepareStatement("SELECT COUNT(*) FROM shop_history_receipts WHERE recording_id=?").use { query ->
-                query.setString(1, receipt.toString())
-                query.executeQuery().use { rows -> rows.next(); assertEquals(1, rows.getInt(1)) }
-            }
-            connection.prepareStatement("SELECT COUNT(*) FROM website_sales_rejections WHERE recording_id=?").use { query ->
-                query.setString(1, receipt.toString())
-                query.executeQuery().use { rows -> rows.next(); assertEquals(1, rows.getInt(1)) }
-            }
-        }
+        assertSingleRejection(receipt)
     }
 
     @Test fun `guild award attribution survives outbox retry`() {
@@ -217,5 +199,31 @@ class ShopTransactionRepositorySqlTest {
         assertEquals(1, repo.countUnnotified(other))
         repo.markNotifiedThrough(owner, summary.lastId)
         assertEquals(1, repo.countUnnotified(owner))
+    }
+
+    private fun assertHistoricalAttribution(guildId: UUID) {
+        ds.connection.use { connection ->
+            connection.prepareStatement("SELECT sale_stall_id,sale_guild_id FROM shop_transactions").use { query ->
+                query.executeQuery().use { rows ->
+                    assertEquals(true, rows.next())
+                    assertEquals("stall17", rows.getString("sale_stall_id"))
+                    assertEquals(guildId.toString(), rows.getString("sale_guild_id"))
+                    assertEquals(false, rows.next())
+                }
+            }
+        }
+    }
+
+    private fun assertSingleRejection(receipt: UUID) {
+        ds.connection.use { connection ->
+            connection.prepareStatement("SELECT COUNT(*) FROM shop_history_receipts WHERE recording_id=?").use { query ->
+                query.setString(1, receipt.toString())
+                query.executeQuery().use { rows -> rows.next(); assertEquals(1, rows.getInt(1)) }
+            }
+            connection.prepareStatement("SELECT COUNT(*) FROM website_sales_rejections WHERE recording_id=?").use { query ->
+                query.setString(1, receipt.toString())
+                query.executeQuery().use { rows -> rows.next(); assertEquals(1, rows.getInt(1)) }
+            }
+        }
     }
 }

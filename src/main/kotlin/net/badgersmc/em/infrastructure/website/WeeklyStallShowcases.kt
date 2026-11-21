@@ -42,12 +42,12 @@ internal class WeeklyStallShowcases private constructor(
     }
 
     fun render(player: StallWeekDisplay, guild: StallWeekDisplay) {
-        entries.forEach { entry ->
+        for (entry in entries) {
             val display = if (entry.key == "player") player else guild
             val winner = display.winner()
             renderNpc(entry, winner)
-            val world = entry.location.world ?: return@forEach
-            if (!world.isChunkLoaded(entry.location.blockX shr 4, entry.location.blockZ shr 4)) return@forEach
+            val world = entry.location.world ?: continue
+            if (!world.isChunkLoaded(entry.location.blockX shr 4, entry.location.blockZ shr 4)) continue
             val hologram = hologram(entry, world)
             updateHologram(entry, hologram, display, winner)
         }
@@ -134,10 +134,8 @@ internal class WeeklyStallShowcases private constructor(
             val section = config.getConfigurationSection(key) ?: return null
             val world = section.getString("world")?.let(Bukkit::getWorld) ?: return null
             val location = position(section, world) ?: return null
-            val guild = key == "guild"
-            return Entry(key, if (guild) "Guild Stall of the Week" else "Stall of the Week",
-                if (guild) NamedTextColor.LIGHT_PURPLE else NamedTextColor.GOLD,
-                location)
+            return if (key == "guild") Entry(key, "Guild Stall of the Week", NamedTextColor.LIGHT_PURPLE, location)
+                else Entry(key, "Stall of the Week", NamedTextColor.GOLD, location)
         }
 
         private fun position(section: org.bukkit.configuration.ConfigurationSection, world: org.bukkit.World): Location? {

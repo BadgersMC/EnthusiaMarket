@@ -28,13 +28,17 @@ object PurchaseFlow {
 
     fun message(result: StallBuyoutService.Result, stallId: StallId, lang: LangService): Component = when (result) {
         is StallBuyoutService.Result.Purchased -> lang.msg(
-            if (result.owner.type == OwnerType.GUILD) "purchase_sign.msg.purchased_guild" else "purchase_sign.msg.purchased",
+            purchasedKey(result.owner.type),
             "stall" to stallId.value, "price" to result.price,
         )
         is StallBuyoutService.Result.Rejected -> lang.msg("purchase_sign.msg.rejected", "reason" to result.reason)
         is StallBuyoutService.Result.NotInGuild -> lang.msg("purchase_sign.msg.not_in_guild")
         is StallBuyoutService.Result.NoGuildPermission -> lang.msg("purchase_sign.msg.no_guild_permission")
         else -> lang.msg(rejectionKey(result), "stall" to stallId.value)
+    }
+
+    private fun purchasedKey(type: OwnerType): String {
+        return if (type == OwnerType.GUILD) "purchase_sign.msg.purchased_guild" else "purchase_sign.msg.purchased"
     }
 
     private fun rejectionKey(result: StallBuyoutService.Result): String = when (result) {

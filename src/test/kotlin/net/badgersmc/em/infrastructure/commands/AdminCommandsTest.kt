@@ -316,38 +316,22 @@ class AdminCommandsTest {
         freeze: net.badgersmc.em.application.MaintenanceFreezeService,
         bulkRentExtension: net.badgersmc.em.application.BulkRentExtensionService? = null,
         regions: RegionFixture = RegionFixture(),
-    ): AdminCommands = AdminCommands(
-        service = mockk(relaxed = true),
-        stalls = regions.stallRepo,
-        config = config,
-        auctionService = mockk(relaxed = true),
-        configManager = mockk(relaxed = true),
-        auctions = mockk(relaxed = true),
-        plugin = mockk(relaxed = true),
-        lang = lang,
-        nexusScheduler = mockk(relaxed = true),
-        stallMembers = mockk(relaxed = true),
-        sellOffers = mockk(relaxed = true),
-        sellback = mockk(relaxed = true),
-        regionMembers = regions.regionMembers,
-        regionProvisioner = regions.regionProvisioner,
-        entityCounter = mockk(relaxed = true),
-        regionProvider = mockk(relaxed = true),
-        stallInfo = mockk(relaxed = true),
-        particleBorders = mockk(relaxed = true),
-        stallEviction = mockk(relaxed = true),
-        limits = mockk(relaxed = true),
-        ownership = mockk(relaxed = true),
-        policyService = mockk(relaxed = true),
-        guildProvider = mockk(relaxed = true),
-        rentResync = mockk(relaxed = true),
-        shopRepository = mockk(relaxed = true),
-        signRenderer = mockk(relaxed = true),
-        maintenanceFreeze = freeze,
-        playerNameResolver = mockk(relaxed = true),
-        bulkRentExtension = bulkRentExtension,
-        mutationGate = regions.mutationGate,
-    )
+    ): AdminCommands {
+        return AdminCommands(
+            service = relaxed(), config = config, configManager = relaxed(), plugin = relaxed(),
+            stalls = regions.stallRepo, stallMembers = relaxed(), stallInfo = relaxed(),
+            auctions = relaxed(), auctionService = relaxed(),
+            lang = lang, nexusScheduler = relaxed(), playerNameResolver = relaxed(),
+            sellOffers = relaxed(), sellback = relaxed(), stallEviction = relaxed(),
+            regionMembers = regions.regionMembers, regionProvisioner = regions.regionProvisioner,
+            regionProvider = relaxed(), entityCounter = relaxed(), particleBorders = relaxed(),
+            limits = relaxed(), ownership = relaxed(), policyService = relaxed(), guildProvider = relaxed(),
+            shopRepository = relaxed(), signRenderer = relaxed(), rentResync = relaxed(),
+            maintenanceFreeze = freeze, bulkRentExtension = bulkRentExtension, mutationGate = regions.mutationGate,
+        )
+    }
+
+    private inline fun <reified T : Any> relaxed(): T = mockk(relaxed = true)
 
     @Test fun `region resync clears forfeited ACLs but never provisions held or reserved stalls`() {
         val repo = mockk<StallRepository>(relaxed = true)

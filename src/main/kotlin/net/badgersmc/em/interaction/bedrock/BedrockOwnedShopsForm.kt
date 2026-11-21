@@ -33,8 +33,9 @@ class BedrockOwnedShopsForm(player: Player, private val shops: ShopRepository,
         }.build()
     }
 
-    private fun isNavigation(clicked: Int, previous: Int, next: Int): Boolean =
-        clicked >= 0 && (clicked == previous || clicked == next)
+    private fun isNavigation(clicked: Int, previous: Int, next: Int): Boolean {
+        return clicked >= 0 && (clicked == previous || clicked == next)
+    }
 
     private fun handleResponse(page: ShopMenuPage<Shop>, clicked: Int, previous: Int, next: Int) {
         if (!player.hasPermission("enthusiamarket.shop.use")) return
@@ -43,6 +44,10 @@ class BedrockOwnedShopsForm(player: Player, private val shops: ShopRepository,
             return
         }
         val selected = page.items.getOrNull(clicked) ?: return
+        openEditable(selected)
+    }
+
+    private fun openEditable(selected: Shop) {
         val current = shops.findById(selected.id)
         if (current == null || !mayManage(current)) {
             open(player)

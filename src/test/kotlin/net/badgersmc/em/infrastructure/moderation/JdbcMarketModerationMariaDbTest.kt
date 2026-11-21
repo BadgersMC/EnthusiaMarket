@@ -333,101 +333,21 @@ class JdbcMarketModerationMariaDbTest {
                 "guild_stock_events", "guild_sale_attribution", "stall_access_settings", "guild_auction_round_wins",
                 "website_public_sales", "website_sales_rejections", "schema_migration",
             ).forEach { table -> connection.prepareStatement("DROP TABLE IF EXISTS $table").use { it.executeUpdate() } }
-            createStallsBaseline(connection)
-            createShopsBaseline(connection)
-            createAuctionsBaseline(connection)
-            connection.createStatement().use { statement ->
-                statement.executeUpdate("""CREATE TABLE rent_ledger (
-                    id BIGINT PRIMARY KEY AUTO_INCREMENT, stall_id VARCHAR(128) NOT NULL,
-                    charged_at BIGINT NOT NULL, amount BIGINT NOT NULL, paid INTEGER NOT NULL DEFAULT 0,
-                    payer_type VARCHAR(16) NOT NULL, payer_id VARCHAR(128) NOT NULL
-                ) ENGINE=InnoDB""")
-                statement.executeUpdate("""CREATE TABLE shop_transactions (
-                    id BIGINT PRIMARY KEY AUTO_INCREMENT, shop_id BIGINT NOT NULL,
-                    owner VARCHAR(36) NOT NULL, buyer VARCHAR(36) NOT NULL,
-                    direction VARCHAR(16) NOT NULL, item TEXT NOT NULL, quantity INTEGER NOT NULL,
-                    total_price BIGINT NOT NULL, created_at BIGINT NOT NULL, notified INTEGER NOT NULL DEFAULT 0
-                ) ENGINE=InnoDB""")
-            }
+            createLegacyTables(connection)
+            seedLegacyAuction(connection)
+            connection.createStatement().use(::createLedgerBaseline)
             createMigrationBaseline(connection)
         }
     }
 
-    private fun createStallsBaseline(connection: java.sql.Connection) {
-        connection.prepareStatement(
-            """CREATE TABLE stalls (
-                   id VARCHAR(128) PRIMARY KEY,
-                   region_id VARCHAR(128) NOT NULL,
-                   world VARCHAR(128) NOT NULL,
-                   state VARCHAR(32) NOT NULL,
-                   owner_type VARCHAR(16) NOT NULL,
-                   owner_id VARCHAR(128) NOT NULL,
-                   owner_since BIGINT,
-                   winning_bid BIGINT NOT NULL DEFAULT 0,
-                   rent_mode VARCHAR(16) NOT NULL,
-                   rent_pct DOUBLE NOT NULL DEFAULT 0,
-                   rent_flat BIGINT NOT NULL DEFAULT 0,
-                   members TEXT NOT NULL,
-                   max_members INTEGER NOT NULL DEFAULT -1,
-                   next_rent_at BIGINT,
-                   kind VARCHAR(64) NOT NULL DEFAULT 'default',
-                   extra_entities TEXT NOT NULL,
-                   extra_total INTEGER NOT NULL DEFAULT 0,
-                   UNIQUE(world, region_id)
-                )""",
-        ).use { it.executeUpdate() }
+    private fun createLegacyTables(connection: java.sql.Connection) {
+        val script = requireNotNull(javaClass.getResource("/mariadb/legacy-market-tables.sql")).readText()
+        connection.createStatement().use { statement ->
+            for (ddl in script.split(';').filter(String::isNotBlank)) statement.executeUpdate(ddl)
+        }
     }
 
-    private fun createShopsBaseline(connection: java.sql.Connection) {
-        connection.prepareStatement(
-            """CREATE TABLE shop_items (
-                   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-                   stall_id VARCHAR(128) NOT NULL,
-                   owner VARCHAR(36) NOT NULL,
-                   sign_world VARCHAR(128) NOT NULL,
-                   sign_x INTEGER NOT NULL,
-                   sign_y INTEGER NOT NULL,
-                   sign_z INTEGER NOT NULL,
-                   container_world VARCHAR(128) NOT NULL,
-                   container_x INTEGER NOT NULL,
-                   container_y INTEGER NOT NULL,
-                   container_z INTEGER NOT NULL,
-                   sell_item TEXT NOT NULL,
-                   sell_amount INTEGER NOT NULL DEFAULT 1,
-                   cost_item TEXT NOT NULL,
-                   cost_amount INTEGER NOT NULL DEFAULT 1,
-                   trusted TEXT NOT NULL,
-                   hopper_allow_in BOOLEAN NOT NULL DEFAULT TRUE,
-                   hopper_allow_out BOOLEAN NOT NULL DEFAULT TRUE,
-                   frozen BOOLEAN NOT NULL DEFAULT FALSE,
-                   admin_shop BOOLEAN NOT NULL DEFAULT FALSE,
-                   direction VARCHAR(16) NOT NULL DEFAULT 'SELL',
-                   search_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                   sell_material VARCHAR(128),
-                   stock_count INTEGER NOT NULL DEFAULT 0,
-                   FOREIGN KEY (stall_id) REFERENCES stalls(id)
-                )""",
-        ).use { it.executeUpdate() }
-    }
-
-    private fun createAuctionsBaseline(connection: java.sql.Connection) {
-        connection.prepareStatement(
-            """CREATE TABLE auctions (
-                   id VARCHAR(128) PRIMARY KEY,
-                   stall_id VARCHAR(128) NOT NULL,
-                   state VARCHAR(32) NOT NULL,
-                   start_at BIGINT NOT NULL,
-                   end_at BIGINT NOT NULL,
-                   starting_bid BIGINT NOT NULL,
-                   high_bid_amount BIGINT,
-                   high_bidder VARCHAR(36),
-                   high_placed_at BIGINT,
-                   anti_snipe_sec INTEGER NOT NULL,
-                   anti_snipe_extend_sec INTEGER NOT NULL DEFAULT 30,
-                   auction_duration_sec INTEGER NOT NULL DEFAULT 0,
-                   FOREIGN KEY (stall_id) REFERENCES stalls(id)
-                )""",
-        ).use { it.executeUpdate() }
+    private fun seedLegacyAuction(connection: java.sql.Connection) {
         connection.prepareStatement(
             """INSERT INTO stalls
                (id, region_id, world, state, owner_type, owner_id,
@@ -527,5 +447,19 @@ class JdbcMarketModerationMariaDbTest {
         @RegisterExtension
         @JvmField
         val database = MarketMariaDbFixture("moderation")
+    }
+
+    private fun createLedgerBaseline(statement: java.sql.Statement) {
+        statement.executeUpdate("""CREATE TABLE rent_ledger (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT, stall_id VARCHAR(128) NOT NULL,
+            charged_at BIGINT NOT NULL, amount BIGINT NOT NULL, paid INTEGER NOT NULL DEFAULT 0,
+            payer_type VARCHAR(16) NOT NULL, payer_id VARCHAR(128) NOT NULL
+        ) ENGINE=InnoDB""")
+        statement.executeUpdate("""CREATE TABLE shop_transactions (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT, shop_id BIGINT NOT NULL,
+            owner VARCHAR(36) NOT NULL, buyer VARCHAR(36) NOT NULL,
+            direction VARCHAR(16) NOT NULL, item TEXT NOT NULL, quantity INTEGER NOT NULL,
+            total_price BIGINT NOT NULL, created_at BIGINT NOT NULL, notified INTEGER NOT NULL DEFAULT 0
+        ) ENGINE=InnoDB""")
     }
 }

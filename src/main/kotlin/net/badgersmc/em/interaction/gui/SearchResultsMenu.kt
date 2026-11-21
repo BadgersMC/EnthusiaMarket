@@ -243,10 +243,9 @@ class SearchResultsMenu(
             meta.displayName(plainStyle(name)); meta.lore(lore.map(::plainStyle))
         } }
 
-    private fun langText(key: String): String = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-        .plainText().serialize(lang.msg(key))
-
-
+    private fun langText(key: String): String {
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(lang.msg(key))
+    }
 
     companion object {
         @JvmOverloads

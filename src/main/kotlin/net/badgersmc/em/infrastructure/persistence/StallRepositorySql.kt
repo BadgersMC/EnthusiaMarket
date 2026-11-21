@@ -80,9 +80,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
     }
 
     private fun recordRentPayment(conn: Connection, stall: Stall, payment: RentPayment) {
-        conn.prepareStatement("""INSERT INTO rent_ledger
-            (stall_id, charged_at, amount, paid, payer_type, payer_id, covered_from, covered_until)
-            VALUES (?, ?, ?, 1, ?, ?, ?, ?)""").use { ps ->
+        conn.prepareStatement(INSERT_RENT_PAYMENT).use { ps ->
             ps.setString(1, stall.id.value)
             ps.setLong(2, payment.paidAt.toEpochMilli())
             ps.setLong(3, payment.amount)
@@ -94,25 +92,27 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         }
     }
 
-    private fun bindStallUpdate(ps: java.sql.PreparedStatement, stall: Stall) {
-        ps.setString(1, stall.regionId)
-        ps.setString(2, stall.world)
-        ps.setString(3, stall.state.name)
-        ps.setString(4, stall.owner.type.name)
-        ps.setString(5, stall.owner.id)
-        if (stall.ownerSince != null) ps.setLong(6, stall.ownerSince.toEpochMilli())
-        else ps.setNull(6, java.sql.Types.INTEGER)
-        ps.setLong(7, stall.winningBid)
-        ps.setString(8, stall.rentTerms.mode.name)
-        ps.setDouble(9, stall.rentTerms.pct)
-        ps.setLong(10, stall.rentTerms.flatAmount)
-        ps.setString(11, encodeMembers(stall.members))
-        ps.setInt(12, stall.maxMembers)
-        if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
-        else ps.setNull(13, java.sql.Types.INTEGER)
-        ps.setString(14, stall.kind)
-        ps.setString(15, encodeExtraEntities(stall.extraEntities))
-        ps.setInt(16, stall.extraTotal)
+    private fun PreparedStatement.setInstant(index: Int, value: java.time.Instant?) {
+        if (value == null) setNull(index, java.sql.Types.INTEGER) else setLong(index, value.toEpochMilli())
+    }
+
+    private fun bindStallFields(ps: PreparedStatement, stall: Stall, offset: Int) {
+        ps.setString(offset + 1, stall.regionId)
+        ps.setString(offset + 2, stall.world)
+        ps.setString(offset + 3, stall.state.name)
+        ps.setString(offset + 4, stall.owner.type.name)
+        ps.setString(offset + 5, stall.owner.id)
+        ps.setInstant(offset + 6, stall.ownerSince)
+        ps.setLong(offset + 7, stall.winningBid)
+        ps.setString(offset + 8, stall.rentTerms.mode.name)
+        ps.setDouble(offset + 9, stall.rentTerms.pct)
+        ps.setLong(offset + 10, stall.rentTerms.flatAmount)
+        ps.setString(offset + 11, encodeMembers(stall.members))
+        ps.setInt(offset + 12, stall.maxMembers)
+        ps.setInstant(offset + 13, stall.nextRentAt)
+        ps.setString(offset + 14, stall.kind)
+        ps.setString(offset + 15, encodeExtraEntities(stall.extraEntities))
+        ps.setInt(offset + 16, stall.extraTotal)
     }
 
     internal fun save(conn: Connection, stall: Stall) {
@@ -127,7 +127,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                      SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
                  )"""
         ).use { ps ->
-            bindStallUpdate(ps, stall)
+            bindStallFields(ps, stall, offset = 0)
             ps.setString(17, stall.id.value)
             ps.setLong(18, stall.moderationRevision)
             ps.setString(19, stall.id.value)
@@ -141,24 +141,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
 
     private fun bind(ps: PreparedStatement, stall: Stall) {
         ps.setString(1, stall.id.value)
-        ps.setString(2, stall.regionId)
-        ps.setString(3, stall.world)
-        ps.setString(4, stall.state.name)
-        ps.setString(5, stall.owner.type.name)
-        ps.setString(6, stall.owner.id)
-        if (stall.ownerSince != null) ps.setLong(7, stall.ownerSince.toEpochMilli())
-        else ps.setNull(7, java.sql.Types.INTEGER)
-        ps.setLong(8, stall.winningBid)
-        ps.setString(9, stall.rentTerms.mode.name)
-        ps.setDouble(10, stall.rentTerms.pct)
-        ps.setLong(11, stall.rentTerms.flatAmount)
-        ps.setString(12, encodeMembers(stall.members))
-        ps.setInt(13, stall.maxMembers)
-        if (stall.nextRentAt != null) ps.setLong(14, stall.nextRentAt.toEpochMilli())
-        else ps.setNull(14, java.sql.Types.INTEGER)
-        ps.setString(15, stall.kind)
-        ps.setString(16, encodeExtraEntities(stall.extraEntities))
-        ps.setInt(17, stall.extraTotal)
+        bindStallFields(ps, stall, offset = 1)
         ps.setLong(18, stall.moderationRevision)
     }
 
@@ -237,3 +220,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         )
     }
 }
+
+private const val INSERT_RENT_PAYMENT = """INSERT INTO rent_ledger
+    (stall_id, charged_at, amount, paid, payer_type, payer_id, covered_from, covered_until)
+    VALUES (?, ?, ?, 1, ?, ?, ?, ?)"""
