@@ -66,10 +66,11 @@ class GuildTradePolicyMenu(
 
     private fun controls(player: Player, gui: ChestGui, pages: PaginatedPane, pageCount: Int): StaticPane {
         val bar = StaticPane(9, 1)
+        bar.addItem(guildPolicyGuide(lang), 1, 0)
         bar.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.common.prev"))) {
             it.isCancelled = true; if (pages.page > 0) { pages.page -= 1; gui.update() }
         }, 0, 0)
-        bar.addItem(GuiItem(named(Material.EMERALD, lang.msg("gui.guildpolicy.add"))) {
+        bar.addItem(GuiItem(named(Material.RAW_GOLD, lang.msg("gui.guildpolicy.add"), lang.msg("gui.guildpolicy.pick_hint"))) {
             it.isCancelled = true
             GuildPickerMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)
         }, 4, 0)
@@ -108,12 +109,15 @@ class GuildTradePolicyMenu(
 
     private fun icon(policy: GuildTradePolicy): ItemStack {
         val target = guildProvider.guildById(policy.targetGuildId)?.name ?: policy.targetGuildId
-        val (mat, line) = if (policy.kind == PolicyKind.EMBARGO) {
-            Material.BARRIER to lang.msg("gui.guildpolicy.icon_embargo", "target" to target)
+        val line = if (policy.kind == PolicyKind.EMBARGO) {
+            lang.msg("gui.guildpolicy.icon_embargo", "target" to target)
         } else {
-            Material.GOLD_INGOT to lang.msg("gui.guildpolicy.icon_tariff", "target" to target, "rate" to policy.ratePct)
+            lang.msg("gui.guildpolicy.icon_tariff", "target" to target, "rate" to policy.ratePct)
         }
-        return named(mat, line, lang.msg("gui.guildpolicy.icon_controls"))
+        return guildPolicyBanner(
+            guildProvider.visualById(policy.targetGuildId)?.banner, line,
+            lang.msg("gui.guildpolicy.adjust"), lang.msg("gui.guildpolicy.block_clear"),
+        )
     }
 
     private fun named(material: Material, name: Component, vararg lore: Component): ItemStack =

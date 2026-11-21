@@ -348,7 +348,16 @@ gui:
     next: "<gray>Next »</gray>"
     back: "<gray>« Back</gray>"
   guildpolicy:
-    title: "<dark_red>Guild Trade Policy</dark_red>"
+    guide_title: "<gold>How guild trade works</gold>"
+    guide_scope: "<gray>Rules apply to the selected guild at your guild's shops.</gray>"
+    guide_tariff: "<yellow>Tariff:</yellow> <gray>Members pay more to buy and earn less when selling.</gray>"
+    guide_barter: "<gray>Item-for-item prices stay the same under a tariff.</gray>"
+    guide_embargo: "<red>Embargo:</red> <gray>Members cannot buy, sell or barter here.</gray>"
+    guide_clear: "<green>Remove a rule</green> <gray>to restore normal trading.</gray>"
+    pick_hint: "<gray>Choose whose members the rule affects.</gray>"
+    adjust: "<yellow>Left click:</yellow> +5 points | <yellow>Right click:</yellow> -5 (clears at 5%)"
+    block_clear: "<red>Shift-left:</red> embargo | <green>Shift-right:</green> remove rule"
+    title: "<gold>Guild trade policies</gold>"
     add: "<green>+ Add a guild</green>"
     invalid: "<red><reason></red>"
     denied: "<red>You no longer have the MANAGE_SHOPS guild permission.</red>"
@@ -356,7 +365,8 @@ gui:
     icon_embargo: "<gold><target></gold> <red>— EMBARGOED</red>"
     icon_controls: "<gray>L +5% · R -5% · Shift-L embargo · Shift-R remove</gray>"
   guildpicker:
-    title: "<dark_aqua>Pick a guild to target</dark_aqua>"
+    title: "<gold>Choose a guild for a tariff</gold>"
+    select_tariff: "<yellow>Left click</yellow> <gray>to apply a <rate>% tariff immediately.</gray>"
     entry: "<yellow><name></yellow>"
     invalid: "<red><reason></red>"
   shop:

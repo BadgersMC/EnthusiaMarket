@@ -45,8 +45,14 @@ class GuildPickerMenu(
         for (p in 0 until pageCount) {
             val pane = OutlinePane(9, 5, Pane.Priority.LOWEST)
             targets.drop(p * PER_PAGE).take(PER_PAGE).forEach { ref ->
-                pane.addItem(GuiItem(named(Material.PAPER, lang.msg("gui.guildpicker.entry", "name" to ref.name))) { ev ->
-                    ev.isCancelled = true; pickTarget(player, ref)
+                val banner = guildPolicyBanner(
+                    guildProvider.visualById(ref.id)?.banner,
+                    lang.msg("gui.guildpicker.entry", "name" to ref.name),
+                    lang.msg("gui.guildpicker.select_tariff", "rate" to DEFAULT_NEW_TARIFF),
+                )
+                pane.addItem(GuiItem(banner) { ev ->
+                    ev.isCancelled = true
+                    if (ev.isLeftClick) pickTarget(player, ref)
                 })
             }
             pages.addPane(p, Slot.fromXY(0, 0), pane)
@@ -67,6 +73,7 @@ class GuildPickerMenu(
 
     private fun navBar(player: Player, gui: ChestGui, pages: PaginatedPane, pageCount: Int): StaticPane {
         val bar = StaticPane(9, 1)
+        bar.addItem(guildPolicyGuide(lang), 1, 0)
         bar.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.common.prev"))) { it.isCancelled = true; if (pages.page > 0) { pages.page -= 1; gui.update() } }, 0, 0)
         bar.addItem(GuiItem(named(Material.BARRIER, lang.msg("gui.common.back"))) {
             it.isCancelled = true; GuildTradePolicyMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)
