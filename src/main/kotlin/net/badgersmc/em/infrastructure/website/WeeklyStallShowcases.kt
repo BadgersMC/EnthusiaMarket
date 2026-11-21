@@ -1,11 +1,11 @@
 package net.badgersmc.em.infrastructure.website
 
+import net.badgersmc.em.interaction.MarketText
 import de.oliver.fancynpcs.api.FancyNpcsPlugin
 import de.oliver.fancynpcs.api.Npc
 import de.oliver.fancynpcs.api.NpcData
 import de.oliver.fancynpcs.api.skins.SkinData
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
@@ -18,7 +18,7 @@ import java.util.UUID
 internal class WeeklyStallShowcases private constructor(
     private val entries: List<Entry>,
 ) : AutoCloseable {
-    private class Entry(val key: String, val title: String, val color: NamedTextColor, val location: Location) {
+    private class Entry(val key: String, val title: String, val color: net.kyori.adventure.text.format.TextColor, val location: Location) {
         var hologram: TextDisplay? = null
         var npc: Npc? = null
         var shownWinner: StallWeekWinner? = null
@@ -55,8 +55,8 @@ internal class WeeklyStallShowcases private constructor(
 
     private fun updateHologram(entry: Entry, hologram: TextDisplay, display: StallWeekDisplay, winner: StallWeekWinner?) {
         val heading = Component.text(entry.title, entry.color)
-        val result = if (winner == null) Component.text(display.line(), NamedTextColor.GRAY) else
-            Component.text(winner.stall, NamedTextColor.WHITE).append(Component.newline())
+        val result = if (winner == null) Component.text(display.line(), MarketText.cream) else
+            Component.text(winner.stall, MarketText.cream).append(Component.newline())
                 .append(Component.text(winner.ownerName, entry.color))
         val text = heading.append(Component.newline()).append(result)
         if (entry.shownText != text) {
@@ -134,8 +134,8 @@ internal class WeeklyStallShowcases private constructor(
             val section = config.getConfigurationSection(key) ?: return null
             val world = section.getString("world")?.let(Bukkit::getWorld) ?: return null
             val location = position(section, world) ?: return null
-            return if (key == "guild") Entry(key, "Guild Stall of the Week", NamedTextColor.LIGHT_PURPLE, location)
-                else Entry(key, "Stall of the Week", NamedTextColor.GOLD, location)
+            return if (key == "guild") Entry(key, "Guild Stall of the Week", MarketText.copper, location)
+                else Entry(key, "Stall of the Week", MarketText.gold, location)
         }
 
         private fun position(section: org.bukkit.configuration.ConfigurationSection, world: org.bukkit.World): Location? {

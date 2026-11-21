@@ -1,5 +1,6 @@
 package net.badgersmc.em.interaction.gui
 
+import net.badgersmc.em.interaction.MarketText
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
@@ -133,7 +134,7 @@ class PurchaseMenu(
         val receiveLabel = lang.msg("gui.shop.receive_label")
         val giveLabel = lang.msg("gui.shop.give_label")
         pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
-        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, if (barter) 0 else 1)
+        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→", MarketText.copper))), 4, if (barter) 0 else 1)
         if (shop.direction == SignDirection.TRADE) {
             pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel, listOf(
                 lang.msg("gui.shop.trade_drop_hint")

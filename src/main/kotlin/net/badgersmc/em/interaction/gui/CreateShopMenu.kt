@@ -84,7 +84,7 @@ class CreateShopMenu(
         )
         SignDirection.entries.forEachIndexed { idx, dir ->
             val mat = dirColors[dir] ?: Material.WHITE_STAINED_GLASS_PANE
-            val sel = if (dir == direction) " \u2714" else ""
+            val sel = if (dir == direction) " (Selected)" else ""
             pane.addItem(GuiItem(decorated(mat, lang.msg("gui.shop.create.dir_${dir.name.lowercase()}", "sel" to sel))) { event ->
                 event.isCancelled = true
                 direction = dir

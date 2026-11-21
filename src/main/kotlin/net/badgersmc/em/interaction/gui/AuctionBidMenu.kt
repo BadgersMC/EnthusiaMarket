@@ -1,5 +1,6 @@
 package net.badgersmc.em.interaction.gui
 
+import net.badgersmc.em.interaction.MarketText
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
@@ -92,7 +93,7 @@ class AuctionBidMenu(private val auction: Auction, private val auctionService: A
         if (!allowed(player)) return
         val session = AuctionBidSession(player.uniqueId, auction.id, auctionService)
         when (val result = session.review(amount, payer)) {
-            is AuctionBidSession.Rejected -> { player.sendMessage(Component.text(result.reason)); open(player) }
+            is AuctionBidSession.Rejected -> { player.sendMessage(Component.text(result.reason, MarketText.error)); open(player) }
             is AuctionBidSession.Ready -> showReview(player, session, result)
         }
     }
@@ -138,7 +139,7 @@ class AuctionBidMenu(private val auction: Auction, private val auctionService: A
             return
         }
         val rows = if (slotPositions == null) 3 else 6
-        val gui = ChestGui(rows, ComponentHolder.of(Component.text(title)))
+        val gui = ChestGui(rows, ComponentHolder.of(Component.text(title, MarketText.copper)))
         val pane = StaticPane(9, rows)
         pane.addItem(GuiItem(icon(Material.PAPER, if (slotPositions == null) title else lines.joinToString(" "), lines)) { it.isCancelled = true }, 4, if (slotPositions == null) 0 else 5)
         for ((index, action) in guarded.withIndex()) {
@@ -156,8 +157,8 @@ class AuctionBidMenu(private val auction: Auction, private val auctionService: A
     private fun icon(material: Material, label: String, lore: List<String> = emptyList()): ItemStack =
         ItemStack(material).also { item ->
             item.itemMeta = item.itemMeta?.apply {
-                displayName(Component.text(label).decoration(TextDecoration.ITALIC, false))
-                lore(lore.map { Component.text(it) })
+                displayName(Component.text(label, MarketText.gold).decoration(TextDecoration.ITALIC, false))
+                lore(lore.map { Component.text(it, MarketText.cream) })
             }
         }
 

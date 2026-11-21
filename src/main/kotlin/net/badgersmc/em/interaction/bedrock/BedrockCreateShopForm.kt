@@ -40,11 +40,11 @@ class BedrockCreateShopForm(
 
     override fun buildForm(): CustomForm {
         return CustomForm.builder()
-            .title("Create Shop")
-            .label("Set your shop's direction, price, and amount.")
-            .dropdown("Shop direction", listOf("Sell", "Buy", "Trade"))
-            .input("Price per trade", "e.g. 100", "100")
-            .input("Amount per trade", "e.g. 1", "1")
+            .title(lang.legacy("bedrock.create.title"))
+            .label(lang.legacy("bedrock.create.intro"))
+            .dropdown(lang.legacy("bedrock.create.direction"), listOf(lang.legacy("bedrock.create.sell"), lang.legacy("bedrock.create.buy"), lang.legacy("bedrock.create.trade")))
+            .input(lang.legacy("bedrock.create.price"), "e.g. 100", "100")
+            .input(lang.legacy("bedrock.create.amount"), "e.g. 1", "1")
             .validResultHandler { handleCreate(it) }
             .build()
     }

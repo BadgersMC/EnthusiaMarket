@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.commands
 
+import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
@@ -43,7 +44,6 @@ import java.time.Instant
 import net.badgersmc.em.websync.WebsiteSyncService
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
-import net.kyori.adventure.text.format.NamedTextColor
 import java.io.IOException
 import java.nio.file.Files
 import java.util.logging.Level
@@ -369,16 +369,16 @@ class AdminCommands(
     }
 
     private fun sendAuctionPreview(sender: CommandSender, plan: net.badgersmc.em.application.AuctionLotPlan, token: String) {
-        sender.sendMessage(Component.text("Auction preview • ${plan.lots.size} lots", NamedTextColor.GOLD))
-        sender.sendMessage(Component.text("Opening round ${plan.round} • Duration ${plan.duration}", NamedTextColor.YELLOW))
+        sender.sendMessage(Component.text("Auction preview • ${plan.lots.size} lots", MarketText.gold))
+        sender.sendMessage(Component.text("Opening round ${plan.round} • Duration ${plan.duration}", MarketText.gold))
         for ((stall, lot) in plan.lots) {
             sender.sendMessage(Component.text(
                 "${stall.id.value} (${stall.world}/${stall.regionId}) • ${lot.minimumBid} raw gold minimum",
-                NamedTextColor.GRAY,
+                MarketText.cream,
             ))
         }
         val command = "/em auction confirm $token"
-        sender.sendMessage(Component.text("Review all lots, then run $command within 5 minutes.", NamedTextColor.GOLD)
+        sender.sendMessage(Component.text("Review all lots, then run $command within 5 minutes.", MarketText.gold)
             .clickEvent(ClickEvent.suggestCommand(command)))
     }
 
@@ -389,7 +389,7 @@ class AdminCommands(
         val ends = auctionService.openImportedLots(plan)
         val receipt = "Opened ${plan.lots.size} lots in opening round ${plan.round}. Scheduled close $ends."
         plugin.logger.info("${sender.name}: $receipt")
-        sender.sendMessage(Component.text(receipt, NamedTextColor.GREEN))
+        sender.sendMessage(Component.text(receipt, MarketText.sage))
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -398,12 +398,12 @@ class AdminCommands(
             require(!maintenanceFreeze.isFrozen()) { "Market maintenance is active." }
             action()
         } catch (failure: IllegalArgumentException) {
-            sender.sendMessage(Component.text(failure.message ?: "Invalid auction import.", NamedTextColor.RED))
+            sender.sendMessage(Component.text(failure.message ?: "Invalid auction import.", MarketText.error))
         } catch (failure: IOException) {
-            sender.sendMessage(Component.text("Could not read the UTF-8 auction CSV. Check the server log.", NamedTextColor.RED))
+            sender.sendMessage(Component.text("Could not read the UTF-8 auction CSV. Check the server log.", MarketText.error))
             plugin.logger.log(Level.WARNING, "Auction import file error", failure)
         } catch (failure: Exception) {
-            sender.sendMessage(Component.text("Auction import failed. Check the server log and auction state.", NamedTextColor.RED))
+            sender.sendMessage(Component.text("Auction import failed. Check the server log and auction state.", MarketText.error))
             plugin.logger.log(Level.WARNING, "Auction import failed", failure)
         }
     }
