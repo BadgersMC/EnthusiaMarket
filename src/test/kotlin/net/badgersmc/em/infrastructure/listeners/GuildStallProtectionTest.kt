@@ -87,4 +87,40 @@ class GuildStallProtectionTest {
         listener.onClick(click)
         verify(exactly = 0) { click.isCancelled = true }
     }
+
+    @Test fun `block placement follows the current stock rank`() {
+        val place = mockk<org.bukkit.event.block.BlockPlaceEvent>(relaxed = true)
+        every { place.player } returns player
+        every { place.block.location } returns location
+        every { guilds.hasShopPermission(actor, guildId, GuildPermission.MODIFY_SHOP_PRICES) } returns true
+        listener.onPlace(place)
+        verify(exactly = 1) { place.isCancelled = true }
+        clearMocks(place, answers = false)
+        every { guilds.hasShopPermission(actor, guildId, GuildPermission.EDIT_SHOP_STOCK) } returns true
+        listener.onPlace(place)
+        verify(exactly = 0) { place.isCancelled = true }
+    }
+
+    @Test fun `stock drag into the guild chest checks rank again after demotion`() {
+        val drag = mockk<org.bukkit.event.inventory.InventoryDragEvent>(relaxed = true)
+        every { drag.whoClicked } returns player
+        every { drag.view.topInventory } returns inventory
+        every { inventory.size } returns 27
+        every { drag.rawSlots } returns setOf(0, 27)
+        every { guilds.hasShopPermission(actor, guildId, GuildPermission.EDIT_SHOP_STOCK) } returns true
+        listener.onDrag(drag)
+        verify(exactly = 0) { drag.isCancelled = true }
+        every { guilds.hasShopPermission(actor, guildId, GuildPermission.EDIT_SHOP_STOCK) } returns false
+        listener.onDrag(drag)
+        verify(exactly = 1) { drag.isCancelled = true }
+    }
+
+    @Test fun `shop creation requires active guild membership and management permission`() {
+        val creation = ShopCreateListener(mockk(), mockk(), mockk(), mockk(), mockk(), guilds)
+        assertFalse(creation.canManageStall(stall, player))
+        every { guilds.hasShopPermission(actor, guildId, GuildPermission.MANAGE_SHOPS) } returns true
+        assertTrue(creation.canManageStall(stall, player))
+        every { guilds.isMember(actor, guildId) } returns false
+        assertFalse(creation.canManageStall(stall, player))
+    }
 }
