@@ -32,6 +32,21 @@ admin:
     success: "<prefix><shadow:#000000:1>config reloaded <gray>(world=<world>, prefix=<region_prefix>)</shadow>"
     failure: "<prefix><shadow:#000000:1><red>reload failed: <reason></shadow>"
   list:
+    header: "<gold>Market stalls</gold> <gray>· <count> total · <page>/<pages></gray>"
+    empty: "<gray>No market stalls are registered.</gray>"
+    invalid: "<yellow>Choose a page from 1 to <pages>.</yellow>"
+    row: "<aqua><label></aqua> <dark_gray>· </dark_gray>"
+    details: "<gold><id></gold><newline><gray><world> / <region></gray>"
+    previous: "<gold>[Previous]</gold>"
+    next: "<gold>[Next]</gold>"
+    states:
+      unowned: "<green>Available</green>"
+      auctioning: "<gold>At auction</gold>"
+      owned: "<gray>Owned</gray>"
+      grace: "<yellow>Rent overdue</yellow>"
+      moderation_hold: "<red>On hold</red>"
+      re_auctioning: "<gold>At re-auction</gold>"
+      emergency_auctioning: "<red>Emergency auction</red>"
     line: "<shadow:#000000:1>  <aqua><id></aqua> <gray>[<state>]</gray> region=<world>:<region></shadow>"
   rg_resync:
     result: "<prefix><shadow:#000000:1>WG resync: fixed=<green><fixed></green> skipped=<yellow><skipped></yellow> errors=<red><errors></shadow>"
