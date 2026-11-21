@@ -78,11 +78,11 @@ class AdminCommandsTest {
         val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), lang, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.domain.ports.RegionProvisioner>(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), playerNameResolver = mockk(relaxed = true))
         cmd.list(player)
         assertEquals(8, messages.size)
-        assertEquals((1..6).map { "/em stall info stall_cm_$it" }, messages.subList(1, 7).map { it.clickEvent()?.value() })
+        assertEquals((1..6).map { net.kyori.adventure.text.event.ClickEvent.runCommand("/em stall info stall_cm_$it") }, messages.subList(1, 7).map { it.clickEvent() })
         messages.clear()
         cmd.listPage(player, 2)
         assertEquals(3, messages.size)
-        assertEquals("/em stall info stall_cm_10", messages[1].clickEvent()?.value())
+        assertEquals(net.kyori.adventure.text.event.ClickEvent.runCommand("/em stall info stall_cm_10"), messages[1].clickEvent())
     }
 
     // --- REQ-202 — member command routing through StallMemberService ---
