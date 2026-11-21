@@ -8,5 +8,7 @@ interface StallRepository {
     fun all(): List<Stall>
     fun byState(state: StallState): List<Stall>
     fun save(stall: Stall)
+    /** Persist the guild award and consume its opening-round win in one transaction. */
+    fun saveOpeningRoundGuildAward(stall: Stall, roundId: String)
     fun create(stall: Stall)
 }

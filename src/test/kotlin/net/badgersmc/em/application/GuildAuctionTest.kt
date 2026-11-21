@@ -42,12 +42,25 @@ class GuildAuctionTest {
         setupEconomyAndService()
     }
 
+    @Test fun openingRoundAwardRecordsTheRoundWithTheGuildStall() {
+        auction = auction.copy(openingRoundId = "new-market")
+        val bid = AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId)
+        assertIs<AuctionResult.Success>(service.placeBid(auction.id, bid))
+
+        service.settleExpired()
+
+        verify(exactly = 1) {
+            stalls.saveOpeningRoundGuildAward(match { it.owner == OwnerRef.guild(guildId) }, "new-market")
+        }
+        verify(exactly = 0) { guilds.bankDeposit(any(), any()) }
+    }
+
     private fun setupEconomyAndService() {
         every { economy.withdraw(any(), any()) } returns true
         every { economy.deposit(any(), any()) } returns true
         every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
-        val ip = mockk<IpLimiter>(relaxed = true)
-        every { ip.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null)
+        every { limits.canClaimForGuild(any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        val ip = IpLimiter(EnthusiaMarketConfig())
         val offers = mockk<SellOfferRepository>(relaxed = true)
         every { offers.findByStall(any()) } returns null
         val shops = mockk<ShopRepository>(relaxed = true)
@@ -71,6 +84,53 @@ class GuildAuctionTest {
         service.placeBid(auction.id, AuctionLifecycleService.BidRequest(secondActor, 120, "ip", guildId))
         verify { guilds.bankWithdraw(guildId, 20) }
         verify(exactly = 0) { guilds.bankDeposit(any(), any()) }
+    }
+
+    @Test fun `different IPs cannot give one guild two leading bids`() {
+        val secondAuction = auction.copy(id = AuctionId("a2"), stallId = StallId("s2"))
+        every { auctions.findById(secondAuction.id) } returns secondAuction
+        every { auctions.hasOtherOpenGuildBid(guildId, secondAuction.id) } answers {
+            auction.state == AuctionState.OPEN && auction.highBid?.guildId == guildId
+        }
+        assertIs<AuctionResult.Success>(
+            service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "first-ip", guildId))
+        )
+        val nextBid = AuctionLifecycleService.BidRequest(secondActor, 100, "second-ip", guildId)
+        assertEquals("Your guild is already leading another stall auction.",
+            assertIs<AuctionResult.Failure>(service.placeBid(secondAuction.id, nextBid)).reason)
+        verify(exactly = 1) { guilds.bankWithdraw(guildId, 100) }
+
+        assertIs<AuctionResult.Success>(service.placeBid(auction.id, actor, 120, "first-ip"))
+        assertIs<AuctionResult.Success>(service.placeBid(secondAuction.id, nextBid))
+    }
+
+    @Test fun `guild and personal bids still share the existing IP lock`() {
+        val secondAuction = auction.copy(id = AuctionId("a2"), stallId = StallId("s2"))
+        every { auctions.findById(secondAuction.id) } returns secondAuction
+        assertIs<AuctionResult.Success>(
+            service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "shared", guildId))
+        )
+        val result = service.placeBid(secondAuction.id, secondActor, 100, "shared")
+        assertEquals("You already have an active bid on another auction.", assertIs<AuctionResult.Failure>(result).reason)
+        verify(exactly = 0) { economy.withdraw(any(), any()) }
+    }
+
+    @Test fun `opening round winner is blocked before charge and refunded if already leading at settlement`() {
+        auction = auction.copy(openingRoundId = "new-market")
+        val bid = AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId)
+        assertIs<AuctionResult.Success>(service.placeBid(auction.id, bid))
+        every { auctions.hasGuildOpeningRoundWin("new-market", guildId) } returns true
+
+        val secondAuction = auction.copy(id = AuctionId("a2"), stallId = StallId("s2"), highBid = null)
+        every { auctions.findById(secondAuction.id) } returns secondAuction
+        val result = service.placeBid(secondAuction.id, bid.copy(actor = secondActor, ip = "other-ip"))
+        assertEquals("Your guild has already won a stall in this opening round.",
+            assertIs<AuctionResult.Failure>(result).reason)
+        verify(exactly = 1) { guilds.bankWithdraw(guildId, 100) }
+
+        service.settleExpired()
+        verify(exactly = 1) { guilds.bankDeposit(guildId, 100) }
+        verify(exactly = 0) { stalls.saveOpeningRoundGuildAward(any(), any()) }
     }
 
     @Test fun `switching same actor from guild to personal refunds guild`() {
@@ -101,6 +161,14 @@ class GuildAuctionTest {
     @Test fun `unauthorised guild bids never move money`() {
         every { guilds.hasShopPermission(actor, guildId, any()) } returns false
         assertIs<AuctionResult.Failure>(service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId)))
+        verify(exactly = 0) { guilds.bankWithdraw(any(), any()) }
+    }
+
+    @Test fun `a guild at its stall cap cannot bid and is never charged (REQ-399)`() {
+        every { guilds.extraGuildStalls(guildId) } returns 1
+        every { limits.canClaimForGuild(actor, 0, 1) } returns LimitResolutionService.ClaimDecision.Rejected.GuildCapReached(2)
+        val result = service.placeBid(auction.id, AuctionLifecycleService.BidRequest(actor, 100, "ip", guildId))
+        assertEquals("Your guild already owns its stall limit (2)", assertIs<AuctionResult.Failure>(result).reason)
         verify(exactly = 0) { guilds.bankWithdraw(any(), any()) }
     }
 }

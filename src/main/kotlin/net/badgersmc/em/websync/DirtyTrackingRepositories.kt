@@ -54,6 +54,11 @@ class DirtyTrackingStallRepository(
         notify(stall.id.value)
     }
 
+    override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
+        delegate.saveOpeningRoundGuildAward(stall, roundId)
+        notify(stall.id.value)
+    }
+
     override fun create(stall: Stall) {
         delegate.create(stall)
         notify(stall.id.value)

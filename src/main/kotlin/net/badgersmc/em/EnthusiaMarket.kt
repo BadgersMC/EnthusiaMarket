@@ -104,6 +104,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // i18n service — wired manually since LangService lives outside the EM scan package.
         val lang = LangService(this, Locale(cfg.lang.locale), EnthusiaMarketLang::class.java)
         ctx.registerBean("langService", LangService::class, lang)
+        net.badgersmc.em.interaction.StallAccessUi.configure(lang, logger)
         finderTrail = ctx.getBean<net.badgersmc.em.infrastructure.listeners.FinderTrailService>()
 
         // Database via nexus-persistence
@@ -297,6 +298,7 @@ open class EnthusiaMarket : JavaPlugin() {
         val sched = NexusScheduler(this)
         ctx.registerBean("nexusScheduler", NexusScheduler::class, sched)
         scheduler = sched
+        net.badgersmc.em.interaction.AuctionBidUi.configure(sched, ctx.getBean<net.badgersmc.em.interaction.MenuFactory>())
 
         // Provisioning priority for stall regions (REQ Workstream F) — a
         // plain Int bean so ImportStallsService can be DI-constructed.
@@ -421,6 +423,12 @@ open class EnthusiaMarket : JavaPlugin() {
         // M-19: one-time best-effort backfill of stock_count for shops written before V019.
         scheduleStockBackfill(shopRepoForBackfill)
 
+        // REQ-400: tell LumaGuilds' guild page whether a guild owns a stall.
+        val stallCounter = ctx.getBean<net.badgersmc.em.application.StallOwnershipCounter>()
+        val shopApi = net.badgersmc.em.infrastructure.lumaguilds.GuildShopLookupRegistration.lumaGuildsApi()
+        if (net.badgersmc.em.infrastructure.lumaguilds.GuildShopLookupRegistration.register(this, shopApi) { stallCounter.guildCount(it.toString()) > 0 }) {
+            logger.info("Registered GuildShopLookup for LumaGuilds")
+        }
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }
 
@@ -555,6 +563,9 @@ open class EnthusiaMarket : JavaPlugin() {
     }
 
     override fun onDisable() {
+        net.badgersmc.em.interaction.StallAccessUi.reset()
+        net.badgersmc.em.interaction.AuctionBidUi.reset()
+        net.badgersmc.em.interaction.gui.AuctionBidMenu.clearPending()
         stallAccounting?.close()
         shopHistory?.close()
         shopNotifications?.close()

@@ -155,6 +155,8 @@ class SellOfferService(
                 "Stall limit reached (${decision.cap})"
             is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
                 "Limit reached for ${decision.kind} stalls (${decision.cap})"
+            is LimitResolutionService.ClaimDecision.Rejected.GuildCapReached ->
+                "Stall limit reached (${decision.cap})"
             LimitResolutionService.ClaimDecision.Allowed -> null
         }
     }

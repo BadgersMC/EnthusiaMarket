@@ -223,4 +223,34 @@ class LimitResolutionServiceTest {
             service.canClaim(player, kind = "premium", currentTotal = 999, currentForKind = 999),
         )
     }
+
+    // REQ-399: guild-owned stalls.
+    private fun guildLimits(base: Int, bypass: Boolean = false): LimitResolutionService {
+        val perms = mockk<PermissionChecker>()
+        every { perms.has(player, "enthusiamarket.admin.bypasslimit") } returns bypass
+        return LimitResolutionService(EnthusiaMarketConfig().apply { guildStallLimit = base }, perms)
+    }
+
+    @Test fun `a guild may own one stall by default`() {
+        assertEquals(LimitResolutionService.ClaimDecision.Allowed, guildLimits(1).canClaimForGuild(player, 0, 0))
+        assertEquals(LimitResolutionService.ClaimDecision.Rejected.GuildCapReached(1), guildLimits(1).canClaimForGuild(player, 1, 0))
+    }
+
+    @Test fun `the prestige bonus adds one more`() {
+        assertEquals(LimitResolutionService.ClaimDecision.Allowed, guildLimits(1).canClaimForGuild(player, 1, 1))
+        assertEquals(LimitResolutionService.ClaimDecision.Rejected.GuildCapReached(2), guildLimits(1).canClaimForGuild(player, 2, 1))
+    }
+
+    @Test fun `a guild above the cap stays blocked but keeps what it owns`() {
+        assertEquals(LimitResolutionService.ClaimDecision.Rejected.GuildCapReached(1), guildLimits(1).canClaimForGuild(player, 4, 0))
+    }
+
+    @Test fun `minus one is unlimited and the bypass permission skips the cap`() {
+        assertEquals(LimitResolutionService.ClaimDecision.Allowed, guildLimits(-1).canClaimForGuild(player, 9, 0))
+        assertEquals(LimitResolutionService.ClaimDecision.Allowed, guildLimits(1, bypass = true).canClaimForGuild(player, 9, 0))
+    }
+
+    @Test fun `a negative bonus never lowers the cap`() {
+        assertEquals(LimitResolutionService.ClaimDecision.Allowed, guildLimits(1).canClaimForGuild(player, 0, -3))
+    }
 }

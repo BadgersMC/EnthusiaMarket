@@ -28,6 +28,9 @@ interface GuildProvider {
     /** Public visual data when supported by the backing guild plugin. */
     fun visualById(id: String): GuildVisual? = null
     fun isMember(player: UUID, guildId: String): Boolean
+    /** REQ-399: extra guild stalls the guild plugin grants (prestige); 0 when unsupported. */
+    fun extraGuildStalls(guildId: String): Int = 0
+
     /** Optional live alliance lookup; absence never grants allied access. */
     fun areAllied(guildId: String, otherGuildId: String): Boolean = false
 
@@ -60,6 +63,13 @@ interface GuildProvider {
     fun bankBalance(guildId: String): Long
     fun bankWithdraw(guildId: String, amount: Long): Boolean
     fun bankDeposit(guildId: String, amount: Long): Boolean
+
+    /** Shop settlement context is separate from the system bank actor. */
+    fun shopBankWithdraw(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
+        bankWithdraw(guildId, amount)
+
+    fun shopBankDeposit(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
+        bankDeposit(guildId, amount)
 
     /** Every guild known to the backing system (for pickers). */
     fun listGuilds(): List<GuildRef>

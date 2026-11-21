@@ -21,6 +21,11 @@ class StallAccessIndex(private val delegate: StallRepository) : StallRepository 
     @Synchronized override fun create(stall: Stall) { delegate.create(stall); publish(stall) }
     @Synchronized override fun save(stall: Stall) { delegate.save(stall); publish(stall) }
 
+    @Synchronized override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
+        delegate.saveOpeningRoundGuildAward(stall, roundId)
+        publish(stall)
+    }
+
     private fun publish(stall: Stall) {
         snapshots[stall.id.value] = stall
         byRegion[stall.world to stall.regionId] = stall.id.value

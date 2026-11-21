@@ -32,6 +32,12 @@ Requires the `enthusiamarket.auction.bid` permission (granted to players by defa
 
 When you bid, the previous high bidder gets their money back automatically.
 
+## Guild bidding
+
+A guild can lead one stall auction at a time, regardless of which authorized member places the bid. Another authorized member can raise the guild's bid on the same stall. If the guild is outbid, it can bid elsewhere when the submitting member's IP is eligible. Existing IP checks also apply to guild bids.
+
+During a designated market opening round, each guild can win one stall across all batches. The win counts for the rest of that round even if the guild later gives up or transfers the stall.
+
 ## Winning
 
 When the auction timer ends, the highest bidder wins. You'll receive a confirmation message. The stall sign updates to show your name, and rent collection begins.
