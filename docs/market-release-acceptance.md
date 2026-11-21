@@ -1,5 +1,13 @@
 # Market release acceptance reconciliation
 
+## November 21 TEST reconciliation
+
+The plugin source, resources, build and tests at release commit `8dff11a7` matched TEST source `8b419a3f7`. The diagnostics workflow was the sole tree difference. This brought the stall finder, stall command suggestions, directory and Guild Policy menus into the release. Player confirmation on TEST covers the finder on that build.
+
+Subsequent static-analysis fixes refactored command providers, receipts, auctions and weekly award handling. The replacement code requires its own CI results. The October checklist in [upstream PR #217](https://github.com/BadgersMC/EnthusiaMarket/pull/217) remains a historical manual test plan.
+
+## October 30 reconciliation
+
 Evidence reviewed on 2026-10-30. This ledger separates automated, historical
 native and current native evidence. It does not approve a production rollout.
 Canonical main was freshly fetched as57704f1acfaf8aacfdd65cb4ae74c0f36b55712d.
