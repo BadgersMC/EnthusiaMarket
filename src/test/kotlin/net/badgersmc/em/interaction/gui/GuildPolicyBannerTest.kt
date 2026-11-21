@@ -1,5 +1,6 @@
 package net.badgersmc.em.interaction.gui
 
+import io.papermc.paper.datacomponent.DataComponentTypes
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
@@ -20,7 +21,10 @@ class GuildPolicyBannerTest {
             GuildProvider.BannerPattern("UNKNOWN_PATTERN", "WHITE"),
             GuildProvider.BannerPattern("CROSS", "BLACK"),
         ))
-        val item = guildPolicyBanner(design, Component.text("Guild"))
+        val hint = Component.text("Set a tariff")
+        val item = guildPolicyBanner(design, Component.text("Guild"), hint)
+        assertEquals(setOf(DataComponentTypes.BANNER_PATTERNS), item.getData(DataComponentTypes.TOOLTIP_DISPLAY)?.hiddenComponents())
+        assertEquals(listOf(hint), item.itemMeta.lore())
         assertEquals(Material.BLUE_BANNER, item.type)
         val patterns = (item.itemMeta as BannerMeta).patterns
         assertEquals(listOf("stripe_top", "cross"), patterns.map { it.pattern.key.key })
