@@ -82,10 +82,14 @@ class StallBuyoutService(
     private fun enforceLimit(request: BuyRequest, stall: Stall): Result? {
         if (request.owner.type == OwnerType.GUILD) return enforceGuildLimit(request)
         if (request.owner.type != OwnerType.SOLO) return null
-        val counts = ownership.counts(request.actor)
+        return enforcePersonalLimit(request.actor, stall)
+    }
+
+    private fun enforcePersonalLimit(actor: UUID, stall: Stall): Result? {
+        val counts = ownership.counts(actor)
         return when (
             val decision = limits.canClaim(
-                request.actor,
+                actor,
                 stall.kind,
                 counts.total,
                 counts.byKind[stall.kind] ?: 0,
@@ -181,6 +185,22 @@ class StallBuyoutService(
     }
 
     private fun executePurchase(stall: Stall, request: BuyRequest): Result {
+        snapshotRejection(stall)?.let { return it }
+        if (request.owner.type == OwnerType.GUILD) {
+            if (!guildProvider.bankWithdraw(request.owner.id, request.price)) {
+                return Result.Rejected("Guild bank payment declined: ${request.price} required")
+            }
+        } else if (!economy.withdraw(request.actor, request.price)) {
+            return Result.Rejected("Insufficient funds: ${request.price} required")
+        }
+        val updated = persistAward(stall, request)
+        cleanupLingeringOffer(request.stallId)
+        syncRegionOwnership(updated, request)
+        fireStateChanged(request.stallId.value, stall.state, updated.state)
+        return Result.Purchased(updated, request.price, request.owner)
+    }
+
+    private fun snapshotRejection(stall: Stall): Result.Rejected? {
         if (config.schematics.enabled) {
             val capture = try {
                 schematics.capture(stall.id.value, stall.world, stall.regionId)
@@ -204,18 +224,7 @@ class StallBuyoutService(
                 return Result.Rejected("Stall snapshot failed; please contact staff")
             }
         }
-        if (request.owner.type == OwnerType.GUILD) {
-            if (!guildProvider.bankWithdraw(request.owner.id, request.price)) {
-                return Result.Rejected("Guild bank payment declined: ${request.price} required")
-            }
-        } else if (!economy.withdraw(request.actor, request.price)) {
-            return Result.Rejected("Insufficient funds: ${request.price} required")
-        }
-        val updated = persistAward(stall, request)
-        cleanupLingeringOffer(request.stallId)
-        syncRegionOwnership(updated, request)
-        fireStateChanged(request.stallId.value, stall.state, updated.state)
-        return Result.Purchased(updated, request.price, request.owner)
+        return null
     }
 
     private fun persistAward(stall: Stall, request: BuyRequest): Stall {

@@ -41,9 +41,7 @@ internal class StallWeekDisplay(
         if (!coverage.isBoolean) return null
         if (!coverage.asBoolean) return Award(week, "Awaiting verified sales")
         val winner = response.get("winner") ?: return null
-        if (winner.isJsonNull) return Award(week, "No qualifying sales")
-        val data = winner.asJsonObject
-        return parseWinner(data, week)
+        return if (winner.isJsonNull) Award(week, "No qualifying sales") else parseWinner(winner.asJsonObject, week)
     }
 
     private fun parseWinner(data: com.google.gson.JsonObject, week: LocalDate): Award? {
@@ -57,11 +55,13 @@ internal class StallWeekDisplay(
 
     private fun attributedWinner(data: com.google.gson.JsonObject, week: LocalDate, label: String): Award? {
         val owner = data.getAsJsonPrimitive("ownerName")?.takeIf { it.isString }?.asString
-            ?.takeIf { it.isNotBlank() && it.length <= 48 && it.none(Char::isISOControl) } ?: return null
+            ?.takeIf(::validOwnerName) ?: return null
         val identity = data.getAsJsonPrimitive("representativeUuid")?.takeIf { it.isString }?.asString ?: return null
         val representative = UUID.fromString(identity).takeIf { it.toString() == identity } ?: return null
         return Award(week, "$label • $owner", StallWeekWinner(label, owner, representative))
     }
+
+    private fun validOwnerName(name: String) = name.isNotBlank() && name.length <= 48 && name.none(Char::isISOControl)
 
     companion object {
         fun guild() = StallWeekDisplay { readPublicAward(guild = true) }

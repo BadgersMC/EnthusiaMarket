@@ -66,7 +66,7 @@ class FinderTrailTracker {
 
     private fun origin(entry: Active, context: RenderContext,
                        location: Pair<String, Point>?): Point? {
-        if (location == null || location.first != entry.trail.world) return null
+        if (location?.first != entry.trail.world) return null
         val distance = location.second.distance(entry.trail.target)
         if (!distance.isFinite() || distance > context.settings.range) return null
         advanceRoute(entry, location.second)
@@ -84,12 +84,17 @@ class FinderTrailTracker {
         val now = context.now
         val options = context.settings.outline
         if (expiredBeforeArrival(entry, now)) return false
-        if (distance <= ARRIVAL_RADIUS && entry.arrivedAt == null) {
-            if (!canLinger(entry, options) && !context.settings.feedbackWithoutOutline) return false
-            entry.arrivedAt = now
-        }
+        if (!registerArrival(entry, distance, context)) return false
         if (context.settings.feedbackWithoutOutline && entry.arrivedAt == now) return true
         return !arrivalEnded(entry, now, options)
+    }
+
+    private fun registerArrival(entry: Active, distance: Double, context: RenderContext): Boolean {
+        if (distance <= ARRIVAL_RADIUS && entry.arrivedAt == null) {
+            if (!canLinger(entry, context.settings.outline) && !context.settings.feedbackWithoutOutline) return false
+            entry.arrivedAt = context.now
+        }
+        return true
     }
 
     private fun expiredBeforeArrival(entry: Active, now: Instant): Boolean =

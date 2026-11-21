@@ -384,17 +384,19 @@ class AuctionLifecycleService(
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
         if (mutationGate.isStallLocked(auction.stallId.value)) return AuctionResult.Failure("This stall is temporarily unavailable")
         if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is not open")
-        request.guildId?.let { guildId ->
-            if (guildAlreadyWonOpeningRound(auction, guildId)) {
-                return AuctionResult.Failure("Your guild has already won a stall in this opening round.")
-            }
-            if (auctionRepository.hasOtherOpenGuildBid(guildId, auction.id)) {
-                return AuctionResult.Failure("Your guild is already leading another stall auction.")
-            }
-        }
+        guildBidRejection(auction, request.guildId)?.let { return it }
         val reservation = ipLimiter.acquireAuction(request.ip, auction.id.value)
         if (!reservation.allowed) return AuctionResult.Failure("You already have an active bid on another auction.")
         return applyReservedBid(auction, request, reservation)
+    }
+
+    private fun guildBidRejection(auction: Auction, guildId: String?): AuctionResult.Failure? = when {
+        guildId == null -> null
+        guildAlreadyWonOpeningRound(auction, guildId) ->
+            AuctionResult.Failure("Your guild has already won a stall in this opening round.")
+        auctionRepository.hasOtherOpenGuildBid(guildId, auction.id) ->
+            AuctionResult.Failure("Your guild is already leading another stall auction.")
+        else -> null
     }
 
     private fun guildAlreadyWonOpeningRound(auction: Auction, guildId: String): Boolean =
@@ -442,6 +444,16 @@ class AuctionLifecycleService(
             return AuctionResult.Failure("Could not withdraw $charge. Check your balance.")
         }
         val refund = previousBid?.takeUnless { samePayer(it, newBid) }?.let { refundPayment(original, it) }
+        if (!commitChargedBid(original, updated, charge, refund)) return AuctionResult.Failure("Bid could not be saved")
+        refund?.let(::deliverPayment)
+        val newBidderName = runCatching { Bukkit.getPlayer(playerUuid) }.getOrNull()?.name ?: "Unknown"
+        notifyPreviousBidderIfOutbid(previousBid, newBid, original.stallId, newBidderName)
+        return AuctionResult.Success(updated)
+
+    }
+
+    private fun commitChargedBid(original: Auction, updated: Auction, charge: Long, refund: AuctionPayment?): Boolean {
+        val newBid = requireNotNull(updated.highBid)
         try {
             auctionRepository.commitTransition(original, updated, null, refund)
         } catch (failure: Exception) {
@@ -449,15 +461,11 @@ class AuctionLifecycleService(
             val saved = auctionRepository.findById(original.id)
             if (saved != null && saved.highBid == original.highBid) {
                 refundBid(newBid, charge, "bid persistence failed for ${original.id}")
-                return AuctionResult.Failure("Bid could not be saved")
+                return false
             }
             if (saved?.highBid?.copy(placedAt = newBid.placedAt) != newBid) throw failure
         }
-        refund?.let(::deliverPayment)
-        val newBidderName = runCatching { Bukkit.getPlayer(playerUuid) }.getOrNull()?.name ?: "Unknown"
-        notifyPreviousBidderIfOutbid(previousBid, newBid, original.stallId, newBidderName)
-        return AuctionResult.Success(updated)
-
+        return true
     }
 
     /**
@@ -785,6 +793,10 @@ class AuctionLifecycleService(
             }
         }
 
+        awardWinner(auction, stall, bid)
+    }
+
+    private fun awardWinner(auction: Auction, stall: Stall, bid: Bid) {
         val awardAt = clock.instant()
         val updatedStall = stall.awardTo(
             if (bid.guildId != null) OwnerRef(OwnerType.GUILD, bid.guildId) else OwnerRef.solo(bid.bidder),

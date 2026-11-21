@@ -1,8 +1,6 @@
 package net.badgersmc.em
 
 import java.time.Instant
-import net.badgersmc.em.infrastructure.persistence.WebsiteSalesArchiveSql
-import net.badgersmc.em.infrastructure.website.SalesGenerationFile
 import net.badgersmc.em.infrastructure.website.WebsiteSalesHttpServer
 import org.bukkit.configuration.file.YamlConfiguration
 import net.badgersmc.em.application.ItemStackMatch
@@ -587,15 +585,19 @@ open class EnthusiaMarket : JavaPlugin() {
         runCatching { moderationProvider?.close() }
         runCatching { stallEffectGuard?.close() }
         runCatching { stallAccessRefresh?.close() }
+        closeBedrockIntegrations()
+        websiteSync?.close()
+        scheduler?.cancelAll()
+        nexus?.close()
+        logger.info("EnthusiaMarket disabled")
+    }
+
+    private fun closeBedrockIntegrations() {
         runCatching { geyserHeadIntegration?.close() }
         runCatching { floodgateHeadIntegration?.close() }
         runCatching { floodgateSkinCapture?.close() }
         bedrockHeadStore?.close()
         headUploadClientCache?.clear()
-        websiteSync?.close()
-        scheduler?.cancelAll()
-        nexus?.close()
-        logger.info("EnthusiaMarket disabled")
     }
 
     private fun applyStallAccessPolicies(
@@ -621,58 +623,8 @@ open class EnthusiaMarket : JavaPlugin() {
         }
     }
     private fun startWebsiteSales(ds: DataSource, config: EnthusiaMarketConfig) {
-        try {
-            val file = File(dataFolder, "website-sales.yml")
-            if (!file.exists()) saveResource("website-sales.yml", false)
-            val settings = YamlConfiguration.loadConfiguration(file)
-            if (!settings.getBoolean("enabled", false)) return
-            require(net.badgersmc.em.infrastructure.website.salesCurrencyVerified())
-            val server = websiteServer(ds, config, settings)
-            try { server.start(); websiteSales = server } catch (failure: Exception) { server.close(); throw failure }
-        } catch (_: Exception) { logger.warning("Website sales feed disabled: invalid configuration or unavailable listener") }
-    }
-
-    private fun websiteServer(ds: DataSource, config: EnthusiaMarketConfig, settings: YamlConfiguration): WebsiteSalesHttpServer {
-        val generation = salesGeneration(settings)
-        val configuredGeneration = generation.read() // Fail closed if control state is unavailable.
-        val archive = WebsiteSalesArchiveSql(ds)
-        return WebsiteSalesHttpServer(
-            settings.getInt("port", 8124), websiteToken(settings),
-            generation::read,
-            settings.getString("bind-address", "127.0.0.1") ?: "127.0.0.1",
-            reader = archive,
-            coverage = {
-                coverageWindow(config, settings, archive) {
-                    settings.getString("award-generation") == configuredGeneration.toString() &&
-                        generation.read() == configuredGeneration
-                }
-            },
-        )
-    }
-
-    private fun websiteToken(settings: YamlConfiguration): String {
-        return System.getenv("ENTHUSIA_MARKET_SALES_TOKEN")
-            ?: settings.getString("token-file")?.takeIf(String::isNotBlank)?.let { File(dataFolder, it).readText().trim() }
-            ?: ""
-    }
-
-    private fun salesGeneration(settings: YamlConfiguration): SalesGenerationFile {
-        val generationPath = (System.getenv("ENTHUSIA_MARKET_SALES_GENERATION_FILE")
-            ?: settings.getString("generation-file"))
-            ?.takeIf { it.isNotBlank() } ?: error("Missing sales generation control file")
-        return SalesGenerationFile(java.nio.file.Path.of(generationPath))
-    }
-
-    private fun coverageWindow(
-        config: EnthusiaMarketConfig,
-        settings: YamlConfiguration,
-        archive: WebsiteSalesArchiveSql,
-        generationMatches: () -> Boolean,
-    ): Pair<Instant, Instant>? {
-        val through = Instant.now()
-        val start = settings.getString("award-capture-from")?.takeIf { it.isNotBlank() }?.let(Instant::parse)
-        if (!config.shop.archiveCaptureEnabled || start == null || start >= through) return null
-        if (!generationMatches() || shopHistory?.drained() != true) return null
-        return if (archive.hasRejectionsSince(start.toEpochMilli())) null else start to through
+        websiteSales = net.badgersmc.em.infrastructure.website.WebsiteSalesBootstrap(this) {
+            shopHistory?.drained() == true
+        }.start(ds, config)
     }
 }

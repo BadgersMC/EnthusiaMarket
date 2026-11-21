@@ -25,8 +25,9 @@ class WebsiteSalesHttpServerTest {
         val token = "test-only-" + "a".repeat(32)
         val generation = UUID.randomUUID()
         val recording = UUID.randomUUID()
+        val award = net.badgersmc.em.domain.shop.SaleAwardOwner(UUID.randomUUID(), "Test Guild", UUID.randomUUID())
         val server = WebsiteSalesHttpServer(port, token, { generation }) { after ->
-            WebsitePublicSalePage(listOf(WebsitePublicSale(after + 1, "stall1", "Guild", "stone", 2, 5, 1_700_000_000_000, recording)), null, after + 1)
+            WebsitePublicSalePage(listOf(WebsitePublicSale(after + 1, "stall1", "Guild", "stone", 2, 5, 1_700_000_000_000, recording, award)), null, after + 1)
         }
         server.start()
         try {
@@ -58,6 +59,9 @@ class WebsiteSalesHttpServerTest {
             assertTrue(result.body().contains("\"id\":\"market-$recording\""))
             assertTrue(result.body().contains("\"checkpointCursor\":\"11\""))
             assertTrue(result.body().contains("\"complete\":false"))
+            val sale = com.google.gson.JsonParser.parseString(result.body()).asJsonObject.getAsJsonArray("items")[0].asJsonObject
+            assertEquals("market-$recording", sale.get("id").asString)
+            assertEquals(award.id.toString(), sale.getAsJsonObject("awardOwner").get("id").asString)
             assertFalse(result.body().contains("buyer"))
             assertFalse(result.body().contains("owner"))
         } finally { server.close() }

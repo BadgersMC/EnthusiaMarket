@@ -25,18 +25,7 @@ open class ShopTransactionRecorder(
             if (config.shop.archiveCaptureEnabled && event.awardCaptureIncomplete) {
                 runCatching { transactions.markCaptureFailure() }
             }
-            val transaction =
-                ShopTransaction(
-                    shopId = event.shopId,
-                    owner = event.landlordId,
-                    buyer = event.buyer.uniqueId,
-                    direction = event.direction,
-                    item = event.item.type.name.lowercase(),
-                    quantity = event.quantity,
-                    totalPrice = event.grossPayment ?: event.pricePaid.toLong(),
-                    createdAt = System.currentTimeMillis(),
-                    notified = config.shop.notifyEnabled && Bukkit.getPlayer(event.landlordId)?.isOnline == true,
-                )
+            val transaction = transaction(event)
             if (!config.shop.archiveCaptureEnabled || (event.stallId == null && event.guildId == null)) transactions.record(transaction)
             else transactions.recordAttributed(transaction, ShopSaleAttribution(event.stallId, event.guildId, event.publicCashEligible, event.awardOwner))
         } catch (e: Exception) {
@@ -45,4 +34,16 @@ open class ShopTransactionRecorder(
             org.bukkit.Bukkit.getLogger().warning("Failed to record shop transaction: ${e.message}")
         }
     }
+
+    private fun transaction(event: PostShopTransactionEvent) = ShopTransaction(
+        shopId = event.shopId,
+        owner = event.landlordId,
+        buyer = event.buyer.uniqueId,
+        direction = event.direction,
+        item = event.item.type.name.lowercase(),
+        quantity = event.quantity,
+        totalPrice = event.grossPayment ?: event.pricePaid.toLong(),
+        createdAt = System.currentTimeMillis(),
+        notified = config.shop.notifyEnabled && Bukkit.getPlayer(event.landlordId)?.isOnline == true,
+    )
 }

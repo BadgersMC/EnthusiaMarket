@@ -2,7 +2,22 @@ package net.badgersmc.em.domain.ports
 
 import java.util.UUID
 
-interface GuildProvider {
+interface GuildBankProvider {
+    fun canWithdrawForStall(player: UUID, guildId: String): Boolean = false
+
+    fun bankBalance(guildId: String): Long
+    fun bankWithdraw(guildId: String, amount: Long): Boolean
+    fun bankDeposit(guildId: String, amount: Long): Boolean
+
+    /** Shop settlement context is separate from the system bank actor. */
+    fun shopBankWithdraw(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
+        bankWithdraw(guildId, amount)
+
+    fun shopBankDeposit(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
+        bankDeposit(guildId, amount)
+}
+
+interface GuildProvider : GuildBankProvider {
     data class BannerPattern(val type: String, val color: String)
 
     data class BannerDesign(val baseColor: String, val patterns: List<BannerPattern>)
@@ -61,19 +76,6 @@ interface GuildProvider {
         /** Can change prices on shop signs */
         MODIFY_SHOP_PRICES
     }
-
-    fun canWithdrawForStall(player: UUID, guildId: String): Boolean = false
-
-    fun bankBalance(guildId: String): Long
-    fun bankWithdraw(guildId: String, amount: Long): Boolean
-    fun bankDeposit(guildId: String, amount: Long): Boolean
-
-    /** Shop settlement context is separate from the system bank actor. */
-    fun shopBankWithdraw(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
-        bankWithdraw(guildId, amount)
-
-    fun shopBankDeposit(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
-        bankDeposit(guildId, amount)
 
     /** Every guild known to the backing system (for pickers). */
     fun listGuilds(): List<GuildRef>

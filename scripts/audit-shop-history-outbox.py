@@ -148,9 +148,14 @@ def valid_attribution(reader, version):
     owner = read_award_owner(reader) if version >= 4 else None
     if version >= 4 and owner is None:
         return False
-    if eligible and (stall is None or (guild is not None and owner != guild)):
-        raise ValueError("invalid_public_attribution")
+    if eligible:
+        require_public_owner(stall, guild, owner)
     return True
+
+
+def require_public_owner(stall, guild, owner):
+    if stall is None or (guild is not None and owner != guild):
+        raise ValueError("invalid_public_attribution")
 
 
 def read_stall_keys(reader):

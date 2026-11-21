@@ -68,18 +68,28 @@ internal object StallCommandSuggestions {
             val viewer = source.sender as? Player
             source.sender.server.onlinePlayers.filter { viewer == null || viewer.canSee(it) }.map { it.name }
         },
-        "rosterMembers" to contextual { context ->
-            val player = context.source.sender as? Player ?: return@contextual emptyList()
-            val stall = index.cached(context.getArgument("stall", String::class.java)) ?: return@contextual emptyList()
-            if (!index.isFresh(stall.id.value) || !stall.canManage(player.uniqueId, nexus.getBean(GuildProvider::class))) {
-                return@contextual emptyList()
-            }
-            stall.members.mapNotNull { uuid ->
-                val online = player.server.getPlayer(uuid)
-                if (online == null) player.server.getOfflinePlayer(uuid).name else online.name.takeIf { player.canSee(online) }
-            }
-        },
+        "rosterMembers" to contextual { rosterMembers(nexus, index, it) },
     )
+
+    private fun rosterMembers(nexus: NexusContext, index: StallAccessIndex, context: CommandContext<CommandSourceStack>): List<String> {
+        val player = context.source.sender as? Player ?: return emptyList()
+        val stall = index.cached(context.getArgument("stall", String::class.java)) ?: return emptyList()
+        if (!index.isFresh(stall.id.value) || !stall.canManage(player.uniqueId, nexus.getBean(GuildProvider::class))) {
+            return emptyList()
+        }
+        return stall.members.mapNotNull { uuid ->
+            val online = player.server.getPlayer(uuid)
+            if (online == null) player.server.getOfflinePlayer(uuid).name else online.name.takeIf { player.canSee(online) }
+        }
+    }
+
+    private fun nextBid(nexus: NexusContext, context: CommandContext<CommandSourceStack>): List<String> {
+        val id = context.getArgument("auction", String::class.java)
+        val auction = nexus.getBean(AuctionLifecycleService::class).auctionForBid(AuctionId(id)) ?: return emptyList()
+        val high = auction.highBid?.amount
+        if (auction.state != AuctionState.OPEN || high == Long.MAX_VALUE) return emptyList()
+        return listOf((high?.plus(1) ?: auction.startingBid).toString())
+    }
 
     private fun offers(nexus: NexusContext, index: StallAccessIndex) = mapOf(
         "buyOffers" to choices { source ->
@@ -96,13 +106,7 @@ internal object StallCommandSuggestions {
     )
 
     private fun auction(nexus: NexusContext) = mapOf(
-        "nextBid" to contextual { context ->
-            val id = context.getArgument("auction", String::class.java)
-            val auction = nexus.getBean(AuctionLifecycleService::class).auctionForBid(AuctionId(id)) ?: return@contextual emptyList()
-            val high = auction.highBid?.amount
-            if (auction.state != AuctionState.OPEN || high == Long.MAX_VALUE) return@contextual emptyList()
-            listOf((high?.plus(1) ?: auction.startingBid).toString())
-        },
+        "nextBid" to contextual { nextBid(nexus, it) },
         "bidGuilds" to choices { source ->
             val player = source.sender as? Player ?: return@choices emptyList()
             nexus.getBean(AuctionLifecycleService::class).eligibleGuilds(player.uniqueId).map { it.id }
