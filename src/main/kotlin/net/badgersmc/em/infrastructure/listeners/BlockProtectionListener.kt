@@ -108,7 +108,7 @@ class BlockProtectionListener(
         try {
             shopRepository.deleteByContainer(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ)
             for (shop in shops) {
-                Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
+                Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner, shop))
             }
             logger.info("Deleted ${shops.size} shop(s) at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ}")
             player.sendMessage(lang.msg("shop.protect.deleted", "count" to shops.size))

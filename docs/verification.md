@@ -154,3 +154,9 @@ No repository-local EARS/state helpers or Codacy MCP analysis tools were exposed
 Trust shorthand follow-up REQ-393: native pass2549 supplied the failure evidence. The focused real-registrar regression, final CI and TEST deployment/client receipts are tracked separately in [trust-command-verification.md](trust-command-verification.md) and PR226. This entry alone asserts no new-build test or deployment success.
 
 Hosted Codacy refinement: exact-head annotations identified complexity 7 in sync, complexity 6 and 21 lines in resyncStalls. Extracted the system-auction decision and world selection, retaining the same state matrix. 25 affected application/listener/admin tests passed with zero failures/errors/skips after refinement. Hosted CI is rerun on the follow-up head; no CodeRabbit automated review is claimed because its bot reports reviews disabled for this repository.
+
+### Deleted shop sign cleanup (REQ-026)
+
+When a shop is deleted through the management menu, its front-facing listing shall clear and the attached stock and reverse-side writing shall remain available. Native reproduction on the TEST build at aa697d16 used a non-operator member in isolated stall 69. The database row disappeared but the sign still displayed its item and price after reconnect.
+
+The deletion event carries the removed shop to a Paper listener. The listener checks the current registration, attached block coordinates, and listing header before clearing the front. An unloaded chunk in an available world is requested without generation. The original owner-only event constructor remains available for other plugins. DeletedShopSignListenerTest exercises sign cleanup and replacement registration protection. Historical deletions have no stored location for this event to replay.
