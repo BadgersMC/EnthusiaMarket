@@ -74,21 +74,8 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ds.connection.use { conn ->
             conn.inMarketTransaction {
                 save(conn, stall)
-                recordRentPayment(conn, stall, payment)
+                conn.recordRentPayment(stall, payment)
             }
-        }
-    }
-
-    private fun recordRentPayment(conn: Connection, stall: Stall, payment: RentPayment) {
-        conn.prepareStatement(INSERT_RENT_PAYMENT).use { ps ->
-            ps.setString(1, stall.id.value)
-            ps.setLong(2, payment.paidAt.toEpochMilli())
-            ps.setLong(3, payment.amount)
-            ps.setString(4, payment.payer.type.name)
-            ps.setString(5, payment.payer.id)
-            ps.setLong(6, payment.coveredFrom.toEpochMilli())
-            ps.setLong(7, requireNotNull(stall.nextRentAt).toEpochMilli())
-            check(ps.executeUpdate() == 1)
         }
     }
 
@@ -223,4 +210,17 @@ private const val INSERT_RENT_PAYMENT = """INSERT INTO rent_ledger
 
 private fun PreparedStatement.setInstant(index: Int, value: java.time.Instant?) {
     if (value == null) setNull(index, java.sql.Types.INTEGER) else setLong(index, value.toEpochMilli())
+}
+
+private fun Connection.recordRentPayment(stall: Stall, payment: RentPayment) {
+    prepareStatement(INSERT_RENT_PAYMENT).use { ps ->
+        ps.setString(1, stall.id.value)
+        ps.setLong(2, payment.paidAt.toEpochMilli())
+        ps.setLong(3, payment.amount)
+        ps.setString(4, payment.payer.type.name)
+        ps.setString(5, payment.payer.id)
+        ps.setLong(6, payment.coveredFrom.toEpochMilli())
+        ps.setLong(7, requireNotNull(stall.nextRentAt).toEpochMilli())
+        check(ps.executeUpdate() == 1)
+    }
 }
