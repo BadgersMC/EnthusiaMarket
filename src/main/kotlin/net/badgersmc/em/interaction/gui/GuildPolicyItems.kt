@@ -1,5 +1,7 @@
 package net.badgersmc.em.interaction.gui
 
+import io.papermc.paper.datacomponent.DataComponentTypes
+import io.papermc.paper.datacomponent.item.TooltipDisplay
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.i18n.LangService
@@ -22,6 +24,7 @@ internal fun guildPolicyBanner(design: GuildProvider.BannerDesign?, name: Compon
     meta.displayName(name)
     meta.lore(lore.toList())
     item.itemMeta = meta
+    item.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay().addHiddenComponents(DataComponentTypes.BANNER_PATTERNS))
     return item
 }
 
