@@ -62,6 +62,29 @@ class AdminCommandsTest {
         verify { sender.sendMessage(any<Component>()) }
     }
 
+    @Test fun `player pages retain numeric order and real stall info actions`(@org.junit.jupiter.api.io.TempDir dir: java.nio.file.Path) {
+        val service = mockk<ImportStallsService>()
+        val repo = mockk<StallRepository>()
+        val lang = net.badgersmc.nexus.i18n.LangService(object : net.badgersmc.nexus.i18n.LangHost {
+            override val dataFolder = dir.toFile()
+            override val resourceClassLoader = javaClass.classLoader
+        }, net.badgersmc.nexus.i18n.Locale("en_US"), net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang::class.java)
+        val player = mockk<Player>()
+        val messages = mutableListOf<Component>()
+        every { player.sendMessage(capture(messages)) } returns Unit
+        val ids = listOf(10, 5, 2, 1, 6, 3, 4).map { "stall_cm_$it" }
+        every { repo.all() } returns ids.map { Stall(StallId(it), it, "market", StallState.AUCTIONING,
+            OwnerRef.unowned(), null, 0L, RentTerms.formula(1.0)) }
+        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), lang, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.domain.ports.RegionProvisioner>(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), playerNameResolver = mockk(relaxed = true))
+        cmd.list(player)
+        assertEquals(8, messages.size)
+        assertEquals((1..6).map { net.kyori.adventure.text.event.ClickEvent.runCommand("/em stall info stall_cm_$it") }, messages.subList(1, 7).map { it.clickEvent() })
+        messages.clear()
+        cmd.listPage(player, 2)
+        assertEquals(3, messages.size)
+        assertEquals(net.kyori.adventure.text.event.ClickEvent.runCommand("/em stall info stall_cm_10"), messages[1].clickEvent())
+    }
+
     // --- REQ-202 — member command routing through StallMemberService ---
 
     /**
