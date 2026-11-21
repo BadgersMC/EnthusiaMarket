@@ -818,6 +818,12 @@ class AdminCommands(
             sender.sendMessage(lang.msg("stall.recount.missing", "stall" to stallId))
             return
         }
+        val counts = entityCounts(stall)
+        entityCounter.recount(stallId, counts)
+        sender.sendMessage(lang.msg("stall.recount.ok", "stall" to stallId, "total" to counts.values.sum()))
+    }
+
+    private fun entityCounts(stall: net.badgersmc.em.domain.stall.Stall): Map<String, Int> {
         val world = org.bukkit.Bukkit.getWorld(stall.world)
         val bounds = regionProvider.bounds(stall.world, stall.regionId)
         val counts = HashMap<String, Int>()
@@ -833,8 +839,7 @@ class AdminCommands(
                 counts[t] = (counts[t] ?: 0) + 1
             }
         }
-        entityCounter.recount(stallId, counts)
-        sender.sendMessage(lang.msg("stall.recount.ok", "stall" to stallId, "total" to counts.values.sum()))
+        return counts
     }
 
     @Subcommand("stall info")
@@ -870,6 +875,10 @@ class AdminCommands(
             sender.sendMessage(lang.msg("stall.outline.player_only"))
             return
         }
+        outline(player, stallId, seconds)
+    }
+
+    private fun outline(sender: Player, stallId: String, seconds: Int) {
         val stall = stalls.findById(StallId(stallId))
         if (stall == null) {
             sender.sendMessage(lang.msg("stall.outline.missing", "stall" to stallId))
@@ -882,7 +891,7 @@ class AdminCommands(
         }
         val dur = if (seconds <= 0) 10 else seconds
         particleBorders.addOutline(
-            player.uniqueId, stallId, stall.world, bounds,
+            sender.uniqueId, stallId, stall.world, bounds,
             java.time.Instant.now().plusSeconds(dur.toLong())
         )
         sender.sendMessage(lang.msg("stall.outline.ok", "stall" to stallId, "seconds" to dur))

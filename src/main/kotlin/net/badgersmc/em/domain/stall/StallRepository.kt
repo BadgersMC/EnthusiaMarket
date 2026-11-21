@@ -1,5 +1,14 @@
 package net.badgersmc.em.domain.stall
 
+import java.time.Instant
+
+data class RentPayment(
+    val payer: OwnerRef,
+    val amount: Long,
+    val paidAt: Instant,
+    val coveredFrom: Instant,
+)
+
 interface StallRepository {
     fun findById(id: StallId): Stall?
     fun findByIds(ids: Collection<StallId>): Map<StallId, Stall> =
@@ -8,7 +17,7 @@ interface StallRepository {
     fun all(): List<Stall>
     fun byState(state: StallState): List<Stall>
     fun save(stall: Stall)
-    fun savePaidExtension(stall: Stall, payer: OwnerRef, amount: Long, paidAt: java.time.Instant, coveredFrom: java.time.Instant)
+    fun savePaidExtension(stall: Stall, payment: RentPayment)
     /** Persist the guild award and consume its opening-round win in one transaction. */
     fun saveOpeningRoundGuildAward(stall: Stall, roundId: String)
     /** Notify projections after another repository commits a stall state change. */

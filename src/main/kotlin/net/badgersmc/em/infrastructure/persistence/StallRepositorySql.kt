@@ -70,23 +70,27 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         save(conn, stall)
     }
 
-    override fun savePaidExtension(stall: Stall, payer: OwnerRef, amount: Long, paidAt: Instant, coveredFrom: Instant) {
+    override fun savePaidExtension(stall: Stall, payment: RentPayment) {
         ds.connection.use { conn ->
             conn.inMarketTransaction {
                 save(conn, stall)
-                conn.prepareStatement("""INSERT INTO rent_ledger
-                    (stall_id, charged_at, amount, paid, payer_type, payer_id, covered_from, covered_until)
-                    VALUES (?, ?, ?, 1, ?, ?, ?, ?)""").use { ps ->
-                    ps.setString(1, stall.id.value)
-                    ps.setLong(2, paidAt.toEpochMilli())
-                    ps.setLong(3, amount)
-                    ps.setString(4, payer.type.name)
-                    ps.setString(5, payer.id)
-                    ps.setLong(6, coveredFrom.toEpochMilli())
-                    ps.setLong(7, requireNotNull(stall.nextRentAt).toEpochMilli())
-                    check(ps.executeUpdate() == 1)
-                }
+                recordRentPayment(conn, stall, payment)
             }
+        }
+    }
+
+    private fun recordRentPayment(conn: Connection, stall: Stall, payment: RentPayment) {
+        conn.prepareStatement("""INSERT INTO rent_ledger
+            (stall_id, charged_at, amount, paid, payer_type, payer_id, covered_from, covered_until)
+            VALUES (?, ?, ?, 1, ?, ?, ?, ?)""").use { ps ->
+            ps.setString(1, stall.id.value)
+            ps.setLong(2, payment.paidAt.toEpochMilli())
+            ps.setLong(3, payment.amount)
+            ps.setString(4, payment.payer.type.name)
+            ps.setString(5, payment.payer.id)
+            ps.setLong(6, payment.coveredFrom.toEpochMilli())
+            ps.setLong(7, requireNotNull(stall.nextRentAt).toEpochMilli())
+            check(ps.executeUpdate() == 1)
         }
     }
 

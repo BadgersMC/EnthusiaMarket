@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.persistence
 
+import net.badgersmc.em.domain.stall.RentPayment
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import net.badgersmc.em.domain.auction.Auction
@@ -147,7 +148,7 @@ class AuctionRepositorySqlTest {
         val stalls = StallRepositorySql(ds)
         stalls.create(stall)
         val extended = stall.copy(nextRentAt = stall.nextRentAt!!.plusSeconds(3600))
-        stalls.savePaidExtension(extended, payer, 77, paidAt, stall.nextRentAt!!)
+        stalls.savePaidExtension(extended, RentPayment(payer, 77, paidAt, stall.nextRentAt!!))
         ds.connection.use { conn -> conn.createStatement().use { statement ->
             statement.executeQuery("SELECT * FROM rent_ledger").use { row ->
                 assertTrue(row.next())
@@ -160,7 +161,7 @@ class AuctionRepositorySqlTest {
             }
             statement.execute("CREATE TRIGGER reject_receipt BEFORE INSERT ON rent_ledger BEGIN SELECT RAISE(ABORT,'unavailable'); END")
         } }
-        assertFailsWith<java.sql.SQLException> { stalls.savePaidExtension(stall, payer, 77, paidAt, paidAt) }
+        assertFailsWith<java.sql.SQLException> { stalls.savePaidExtension(stall, RentPayment(payer, 77, paidAt, paidAt)) }
         assertEquals(extended.nextRentAt, stalls.findById(stall.id)?.nextRentAt)
     }
 

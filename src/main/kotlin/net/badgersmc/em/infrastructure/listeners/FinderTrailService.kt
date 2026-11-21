@@ -36,10 +36,10 @@ class FinderTrailService(
     fun start(player: Player, shop: Shop) {
         if (!config.finderTrail.enabled) { player.sendMessage(lang.msg("finder_trail.disabled")); return }
         val target = FinderTrailTracker.Point(shop.signX + 0.5, shop.signY + 0.5, shop.signZ + 0.5)
-        begin(player, shop.signWorld, target, "finder_trail.started",
+        begin(player, Destination(shop.signWorld, target, "finder_trail.started",
             { regions.footprint(shop.signWorld, shop.stallId) },
             { player.sendMessage(lang.msg("finder_trail.out_of_range")) },
-            { navigation.start(player, shop) })
+            { navigation.start(player, shop) }))
     }
 
     fun startStall(player: Player, stall: net.badgersmc.em.domain.stall.Stall) {
@@ -57,14 +57,19 @@ class FinderTrailService(
         }
         val y = pos.y.coerceIn(shape.minY + 0.5, shape.maxY - 0.5)
         val target = FinderTrailTracker.Point(corner.x, y, corner.z)
-        begin(player, stall.world, target, "stall_finder.started", { shape }, {
+        begin(player, Destination(stall.world, target, "stall_finder.started", { shape }, {
             player.sendMessage(lang.msg("stall_finder.location", "stall" to stall.id.value, "world" to stall.world,
                 "x" to floor(target.x).toInt(), "y" to floor(y).toInt(), "z" to floor(target.z).toInt()))
-        }, { navigation.startStall(player, stall.id.value) })
+        }, { navigation.startStall(player, stall.id.value) }))
     }
 
-    private fun begin(player: Player, world: String, target: FinderTrailTracker.Point, startedKey: String,
-                      footprint: () -> RegionProvider.Footprint?, onOutOfRange: () -> Unit, startHud: () -> Unit) {
+    private data class Destination(
+        val world: String, val target: FinderTrailTracker.Point, val startedKey: String,
+        val footprint: () -> RegionProvider.Footprint?, val onOutOfRange: () -> Unit, val startHud: () -> Unit,
+    )
+
+    private fun begin(player: Player, destination: Destination) {
+        val (world, target, startedKey, footprint, onOutOfRange, startHud) = destination
         val position = player.location
         val current = FinderTrailTracker.Point(position.x, position.y, position.z)
         if (position.world?.name != world || current.distance(target) > range()) {

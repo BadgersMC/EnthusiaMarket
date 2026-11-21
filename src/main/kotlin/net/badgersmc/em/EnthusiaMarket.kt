@@ -1,5 +1,10 @@
 package net.badgersmc.em
 
+import java.time.Instant
+import net.badgersmc.em.infrastructure.persistence.WebsiteSalesArchiveSql
+import net.badgersmc.em.infrastructure.website.SalesGenerationFile
+import net.badgersmc.em.infrastructure.website.WebsiteSalesHttpServer
+import org.bukkit.configuration.file.YamlConfiguration
 import net.badgersmc.em.application.ItemStackMatch
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.shop.Shop
@@ -36,7 +41,7 @@ open class EnthusiaMarket : JavaPlugin() {
     private var scheduler: NexusScheduler? = null
     private var websiteSync: net.badgersmc.em.websync.WebsiteSyncService? = null
     private var weeklyStallShowcases: net.badgersmc.em.infrastructure.website.WeeklyStallShowcases? = null
-    private var websiteSales: net.badgersmc.em.infrastructure.website.WebsiteSalesHttpServer? = null
+    private var websiteSales: WebsiteSalesHttpServer? = null
     private var bedrockHeadStore: net.badgersmc.em.websync.heads.BedrockHeadStore? = null
     private var geyserHeadIntegration: AutoCloseable? = null
     private var floodgateHeadIntegration: AutoCloseable? = null
@@ -391,7 +396,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // player. Purges expired outlines first.
         val particleService = ctx.getBean<net.badgersmc.em.application.ParticleBorderService>()
         org.bukkit.Bukkit.getScheduler().runTaskTimer(this, Runnable {
-            particleService.purgeExpired(java.time.Instant.now())
+            particleService.purgeExpired(Instant.now())
             particleService.renderTick(cfg.particles.maxPerTick, this)
         }, 0L, 4L)
 
@@ -513,7 +518,7 @@ open class EnthusiaMarket : JavaPlugin() {
             return null
         }
         return try {
-            val yaml = org.bukkit.configuration.file.YamlConfiguration()
+            val yaml = YamlConfiguration()
             yaml.options().pathSeparator('/')
             yaml.load(java.io.InputStreamReader(stream, Charsets.UTF_8))
             yaml.getConfigurationSection("permissions")
@@ -619,34 +624,55 @@ open class EnthusiaMarket : JavaPlugin() {
         try {
             val file = File(dataFolder, "website-sales.yml")
             if (!file.exists()) saveResource("website-sales.yml", false)
-            val settings = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file)
+            val settings = YamlConfiguration.loadConfiguration(file)
             if (!settings.getBoolean("enabled", false)) return
             require(net.badgersmc.em.infrastructure.website.salesCurrencyVerified())
-            val token = System.getenv("ENTHUSIA_MARKET_SALES_TOKEN")
-                ?: settings.getString("token-file")?.takeIf(String::isNotBlank)?.let { File(dataFolder, it).readText().trim() }
-                ?: ""
-            val generationPath = (System.getenv("ENTHUSIA_MARKET_SALES_GENERATION_FILE")
-                ?: settings.getString("generation-file"))
-                ?.takeIf { it.isNotBlank() } ?: error("Missing sales generation control file")
-            val generation = net.badgersmc.em.infrastructure.website.SalesGenerationFile(java.nio.file.Path.of(generationPath))
-            val configuredGeneration = generation.read() // Fail closed if control state is unavailable.
-            val archive = net.badgersmc.em.infrastructure.persistence.WebsiteSalesArchiveSql(ds)
-            val server = net.badgersmc.em.infrastructure.website.WebsiteSalesHttpServer(
-                settings.getInt("port", 8124), token,
-                generation::read,
-                settings.getString("bind-address", "127.0.0.1") ?: "127.0.0.1",
-                reader = archive,
-                coverage = {
-                    val through = java.time.Instant.now()
-                    val start = settings.getString("award-capture-from")?.takeIf { it.isNotBlank() }
-                        ?.let { java.time.Instant.parse(it) }
-                    if (config.shop.archiveCaptureEnabled && start != null && start < through &&
-                        settings.getString("award-generation") == configuredGeneration.toString() &&
-                        generation.read() == configuredGeneration && shopHistory?.drained() == true &&
-                        !archive.hasRejectionsSince(start.toEpochMilli())) start to through else null
-                },
-            )
+            val server = websiteServer(ds, config, settings)
             try { server.start(); websiteSales = server } catch (failure: Exception) { server.close(); throw failure }
         } catch (_: Exception) { logger.warning("Website sales feed disabled: invalid configuration or unavailable listener") }
+    }
+
+    private fun websiteServer(ds: DataSource, config: EnthusiaMarketConfig, settings: YamlConfiguration): WebsiteSalesHttpServer {
+        val generation = salesGeneration(settings)
+        val configuredGeneration = generation.read() // Fail closed if control state is unavailable.
+        val archive = WebsiteSalesArchiveSql(ds)
+        return WebsiteSalesHttpServer(
+            settings.getInt("port", 8124), websiteToken(settings),
+            generation::read,
+            settings.getString("bind-address", "127.0.0.1") ?: "127.0.0.1",
+            reader = archive,
+            coverage = {
+                coverageWindow(config, settings, archive) {
+                    settings.getString("award-generation") == configuredGeneration.toString() &&
+                        generation.read() == configuredGeneration
+                }
+            },
+        )
+    }
+
+    private fun websiteToken(settings: YamlConfiguration): String {
+        return System.getenv("ENTHUSIA_MARKET_SALES_TOKEN")
+            ?: settings.getString("token-file")?.takeIf(String::isNotBlank)?.let { File(dataFolder, it).readText().trim() }
+            ?: ""
+    }
+
+    private fun salesGeneration(settings: YamlConfiguration): SalesGenerationFile {
+        val generationPath = (System.getenv("ENTHUSIA_MARKET_SALES_GENERATION_FILE")
+            ?: settings.getString("generation-file"))
+            ?.takeIf { it.isNotBlank() } ?: error("Missing sales generation control file")
+        return SalesGenerationFile(java.nio.file.Path.of(generationPath))
+    }
+
+    private fun coverageWindow(
+        config: EnthusiaMarketConfig,
+        settings: YamlConfiguration,
+        archive: WebsiteSalesArchiveSql,
+        generationMatches: () -> Boolean,
+    ): Pair<Instant, Instant>? {
+        val through = Instant.now()
+        val start = settings.getString("award-capture-from")?.takeIf { it.isNotBlank() }?.let(Instant::parse)
+        if (!config.shop.archiveCaptureEnabled || start == null || start >= through) return null
+        if (!generationMatches() || shopHistory?.drained() != true) return null
+        return if (archive.hasRejectionsSince(start.toEpochMilli())) null else start to through
     }
 }

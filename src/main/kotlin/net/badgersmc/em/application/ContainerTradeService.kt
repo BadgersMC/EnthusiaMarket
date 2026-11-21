@@ -439,13 +439,15 @@ open class ContainerTradeService(
             OwnerType.SOLO -> weeklyPlayerNames.nameOf(owner)?.let {
                 net.badgersmc.em.domain.shop.SaleAwardOwner(owner, it, owner)
             }
-            OwnerType.GUILD -> {
-                val guild = guildProvider?.guildById(owner.toString()) ?: return null
-                val leader = guildProvider.visualById(guild.id)?.leaderId ?: return null
-                net.badgersmc.em.domain.shop.SaleAwardOwner(owner, guild.name, leader)
-            }
+            OwnerType.GUILD -> guildAwardOwner(owner)
             OwnerType.NONE -> null
         }
+    }
+
+    private fun guildAwardOwner(owner: UUID): net.badgersmc.em.domain.shop.SaleAwardOwner? {
+        val guild = guildProvider?.guildById(owner.toString()) ?: return null
+        val leader = guildProvider.visualById(guild.id)?.leaderId ?: return null
+        return net.badgersmc.em.domain.shop.SaleAwardOwner(owner, guild.name, leader)
     }
 
     private fun ownerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? =

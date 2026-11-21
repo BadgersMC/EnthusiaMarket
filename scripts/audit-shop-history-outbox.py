@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Read-only inventory of an OFFLINE Market history-outbox snapshot.
+"""
+Read-only inventory of an OFFLINE Market history-outbox snapshot.
 
 An empty result is not proof of database rollback safety or server quiescence.
 """
@@ -20,6 +21,7 @@ MAX_ENTRIES = 100_000
 
 class PayloadReader:
     def __init__(self, payload):
+        """Start at the first byte of a framed payload."""
         self.payload = payload
         self.offset = 0
 
@@ -39,21 +41,22 @@ class PayloadReader:
         data = self.take(length)
         index = 0
         while index < len(data):
-            first = data[index]
-            if first <= 0x7f:
-                index += 1
-            elif 0xc0 <= first <= 0xdf:
-                if index + 1 >= len(data) or data[index + 1] & 0xc0 != 0x80:
-                    raise ValueError("invalid_modified_utf")
-                index += 2
-            elif 0xe0 <= first <= 0xef:
-                if (index + 2 >= len(data) or data[index + 1] & 0xc0 != 0x80
-                        or data[index + 2] & 0xc0 != 0x80):
-                    raise ValueError("invalid_modified_utf")
-                index += 3
-            else:
+            width = modified_utf_width(data[index])
+            tail = data[index + 1:index + width]
+            if len(tail) != width - 1 or any(byte & 0xc0 != 0x80 for byte in tail):
                 raise ValueError("invalid_modified_utf")
+            index += width
         return data
+
+
+def modified_utf_width(first):
+    if first <= 0x7f:
+        return 1
+    if 0xc0 <= first <= 0xdf:
+        return 2
+    if 0xe0 <= first <= 0xef:
+        return 3
+    raise ValueError("invalid_modified_utf")
 
 
 def read_uuid(raw):
@@ -76,12 +79,17 @@ def identity(info):
     return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns)
 
 
-def read_stable(path):
+def check_record(path):
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode):
         raise ValueError("not_regular_file")
     if before.st_size < 33 or before.st_size > MAX_RECORD_BYTES:
         raise ValueError("invalid_size")
+    return before
+
+
+def read_stable(path):
+    before = check_record(path)
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags)
     try:
@@ -111,6 +119,15 @@ def inspect_pending(path):
         raise ValueError("record_id_mismatch")
     if version not in (1, 2, 3, 4):
         return "unknown_version"
+    read_transaction(reader)
+    if not valid_attribution(reader, version):
+        return "invalid"
+    if reader.offset != len(payload):
+        raise ValueError("unexpected_trailing_data")
+    return f"version_{version}"
+
+
+def read_transaction(reader):
     reader.take(8)  # shop ID
     read_uuid(reader.utf())  # owner
     read_uuid(reader.utf())  # buyer
@@ -119,21 +136,40 @@ def inspect_pending(path):
     reader.utf()  # item key, using Java's modified UTF framing
     reader.take(4 + 8 + 8)  # quantity, total price, creation time
     reader.boolean()  # notified
+
+
+def valid_attribution(reader, version):
     stall = reader.utf() if version >= 2 and reader.boolean() else None
     guild = read_uuid(reader.utf()) if version >= 2 and reader.boolean() else None
     eligible = reader.boolean() if version >= 3 else False
-    owner = None
-    if version >= 4:
-        owner = read_uuid(reader.utf())
-        name = reader.utf().decode("utf-8", errors="surrogatepass")
-        read_uuid(reader.utf())
-        if not name.strip() or len(name) > 48 or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in name):
-            return "invalid"
+    owner = read_award_owner(reader) if version >= 4 else None
+    if version >= 4 and owner is None:
+        return False
     if eligible and (stall is None or (guild is not None and owner != guild)):
         raise ValueError("invalid_public_attribution")
-    if reader.offset != len(payload):
-        raise ValueError("unexpected_trailing_data")
-    return f"version_{version}"
+    return True
+
+
+def read_award_owner(reader):
+    owner = read_uuid(reader.utf())
+    name = reader.utf().decode("utf-8", errors="surrogatepass")
+    read_uuid(reader.utf())
+    if not name.strip() or len(name) > 48 or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in name):
+        return None
+    return owner
+
+
+def entry_kind(path):
+    if path.name.endswith(".pending"):
+        try:
+            return inspect_pending(path)
+        except (OSError, ValueError):
+            return "invalid"
+    if path.name.endswith(".tmp"):
+        return "temporary"
+    if path.name.endswith(".corrupt"):
+        return "corrupt"
+    return "other"
 
 
 def audit(directory):
@@ -147,17 +183,7 @@ def audit(directory):
     counts = {"version_1": 0, "version_2": 0, "version_3": 0, "version_4": 0,
               "unknown_version": 0, "invalid": 0, "temporary": 0, "corrupt": 0, "other": 0}
     for path in entries:
-        if path.name.endswith(".pending"):
-            try:
-                counts[inspect_pending(path)] += 1
-            except (OSError, ValueError):
-                counts["invalid"] += 1
-        elif path.name.endswith(".tmp"):
-            counts["temporary"] += 1
-        elif path.name.endswith(".corrupt"):
-            counts["corrupt"] += 1
-        else:
-            counts["other"] += 1
+        counts[entry_kind(path)] += 1
     if signature(info) != signature(directory.lstat()) or [p.name for p in entries] != sorted(p.name for p in directory.iterdir()):
         raise ValueError("directory_changed_during_audit")
     return counts
@@ -174,7 +200,8 @@ def main():
         return 2
     print(json.dumps({"status": "review_required" if any(counts.values()) else "no_entries_observed",
                       "counts": counts,
-                      "note": "Conservative structure and checksum inventory only; does not prove server quiescence, semantic validity, or database rollback safety."}))
+                      "note": ("Conservative structure and checksum inventory only; does not prove server quiescence, "
+                               "semantic validity, or database rollback safety.")}))
     return 2 if any(counts.values()) else 0
 
 

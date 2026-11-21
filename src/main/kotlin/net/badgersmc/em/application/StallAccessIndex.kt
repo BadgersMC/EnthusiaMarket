@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.domain.stall.RentPayment
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
@@ -31,8 +32,8 @@ class StallAccessIndex(private val delegate: StallRepository) : StallRepository 
     @Synchronized override fun create(stall: Stall) { delegate.create(stall); publish(stall) }
     @Synchronized override fun save(stall: Stall) { delegate.save(stall); publish(stall) }
 
-    @Synchronized override fun savePaidExtension(stall: Stall, payer: net.badgersmc.em.domain.stall.OwnerRef, amount: Long, paidAt: java.time.Instant, coveredFrom: java.time.Instant) {
-        delegate.savePaidExtension(stall, payer, amount, paidAt, coveredFrom)
+    @Synchronized override fun savePaidExtension(stall: Stall, payment: RentPayment) {
+        delegate.savePaidExtension(stall, payment)
         publish(stall)
     }
 

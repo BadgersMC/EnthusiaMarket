@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.moderation
 
+import net.badgersmc.em.domain.stall.RentPayment
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import net.badgersmc.em.domain.auction.AuctionId
@@ -96,7 +97,7 @@ class JdbcMarketModerationMariaDbTest {
         val stalls = StallRepositorySql(dataSource)
         val stall = assertNotNull(stalls.findById(StallId("stall-maria")))
         val start = stall.nextRentAt!!
-        stalls.savePaidExtension(stall.copy(nextRentAt = start.plusSeconds(DAY_SECONDS)), stall.owner, 75, now, start)
+        stalls.savePaidExtension(stall.copy(nextRentAt = start.plusSeconds(DAY_SECONDS)), RentPayment(stall.owner, 75, now, start))
         assertEquals(75, scalarInt("SELECT amount FROM rent_ledger WHERE covered_from=${start.toEpochMilli()}"))
     }
 

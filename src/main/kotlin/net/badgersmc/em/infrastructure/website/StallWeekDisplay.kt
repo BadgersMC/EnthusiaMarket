@@ -43,11 +43,19 @@ internal class StallWeekDisplay(
         val winner = response.get("winner") ?: return null
         if (winner.isJsonNull) return Award(week, "No qualifying sales")
         val data = winner.asJsonObject
+        return parseWinner(data, week)
+    }
+
+    private fun parseWinner(data: com.google.gson.JsonObject, week: LocalDate): Award? {
         val stall = data.getAsJsonPrimitive("name")?.takeIf { it.isString }?.asString
             ?.takeIf { it.matches(Regex("[A-Za-z0-9_.:-]{1,80}")) } ?: return null
         val label = Regex("stall([0-9]+)", RegexOption.IGNORE_CASE).matchEntire(stall)
             ?.let { "Stall ${it.groupValues[1]}" } ?: stall
         if (!data.has("ownerName") && !data.has("representativeUuid")) return Award(week, label)
+        return attributedWinner(data, week, label)
+    }
+
+    private fun attributedWinner(data: com.google.gson.JsonObject, week: LocalDate, label: String): Award? {
         val owner = data.getAsJsonPrimitive("ownerName")?.takeIf { it.isString }?.asString
             ?.takeIf { it.isNotBlank() && it.length <= 48 && it.none(Char::isISOControl) } ?: return null
         val identity = data.getAsJsonPrimitive("representativeUuid")?.takeIf { it.isString }?.asString ?: return null
@@ -88,7 +96,8 @@ internal fun awardAccessHeaders(configuredEndpoint: String?, environment: Map<St
     val secret = environment["ENTHUSIA_MARKET_STALL_WEEK_ACCESS_CLIENT_SECRET"]
     if (id == null && secret == null) return emptyMap()
     val credential = Regex("[!-~]{1,512}")
-    require(configuredEndpoint != null && id != null && secret != null &&
-        credential.matches(id) && credential.matches(secret))
+    requireNotNull(configuredEndpoint)
+    require(credential.matches(requireNotNull(id)))
+    require(credential.matches(requireNotNull(secret)))
     return mapOf("CF-Access-Client-Id" to id, "CF-Access-Client-Secret" to secret)
 }

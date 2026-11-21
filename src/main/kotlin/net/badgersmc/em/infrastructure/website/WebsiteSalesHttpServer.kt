@@ -26,7 +26,8 @@ internal class WebsiteSalesHttpServer(private val port: Int, private val token: 
     private var server: HttpServer? = null
 
     fun start() {
-        require(port in 1..65535 && token.length in 32..8192 && token.none { it == '\r' || it == '\n' })
+        require(port in 1..65535)
+        require(validToken())
         check(server == null)
         require(bindAddress == "127.0.0.1" || bindAddress == "0.0.0.0")
         val listener = HttpServer.create(InetSocketAddress(bindAddress, port), 16)
@@ -35,6 +36,8 @@ internal class WebsiteSalesHttpServer(private val port: Int, private val token: 
             listener.executor = executor; listener.start(); server = listener
         } catch (failure: Exception) { listener.stop(0); throw failure }
     }
+
+    private fun validToken() = token.length in 32..8192 && token.none { it in "\r\n" }
 
     private fun handle(exchange: HttpExchange) {
         try {

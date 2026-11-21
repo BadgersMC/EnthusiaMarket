@@ -21,7 +21,7 @@ object PurchaseFlow {
     }
 
     fun execute(player: Player, stallId: StallId, price: Long, guild: GuildOption?, buyout: StallBuyoutService) =
-        if (guild != null) buyout.buyForGuild(stallId, player.uniqueId, price, playerIp(player), guild.id)
+        if (guild != null) buyout.buyForGuild(StallBuyoutService.GuildQuote(stallId, price, guild.id), player.uniqueId, playerIp(player))
         else buyout.buy(stallId, player.uniqueId, price, playerIp(player))
 
     fun message(result: StallBuyoutService.Result, stallId: StallId, lang: LangService): Component = when (result) {

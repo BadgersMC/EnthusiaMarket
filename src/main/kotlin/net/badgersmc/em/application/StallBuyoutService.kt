@@ -66,15 +66,17 @@ class StallBuyoutService(
     fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result =
         buyForOwner(BuyRequest(stallId, buyer, OwnerRef.solo(buyer), price, ip))
 
-    fun buyForGuild(stallId: StallId, actor: UUID, price: Long, ip: String, expectedGuildId: String): Result {
+    data class GuildQuote(val stallId: StallId, val price: Long, val guildId: String)
+
+    fun buyForGuild(quote: GuildQuote, actor: UUID, ip: String): Result {
         val guild = guildProvider.guildOf(actor) ?: return Result.NotInGuild
-        if (guild.id != expectedGuildId) return Result.Rejected("Your guild changed. Reopen the purchase sign.")
+        if (guild.id != quote.guildId) return Result.Rejected("Your guild changed. Reopen the purchase sign.")
         if (!guildProvider.hasShopPermission(actor, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS) ||
             !guildProvider.canWithdrawForStall(actor, guild.id)
         ) {
             return Result.NoGuildPermission
         }
-        return buyForOwner(BuyRequest(stallId, actor, OwnerRef.guild(guild.id), price, ip))
+        return buyForOwner(BuyRequest(quote.stallId, actor, OwnerRef.guild(guild.id), quote.price, ip))
     }
 
     private fun enforceLimit(request: BuyRequest, stall: Stall): Result? {

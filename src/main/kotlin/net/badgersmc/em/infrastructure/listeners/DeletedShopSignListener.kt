@@ -33,12 +33,16 @@ class DeletedShopSignListener(private val shops: ShopRepository) : Listener {
         }
     }
 
+    private fun attachedToContainer(shop: Shop, facing: org.bukkit.block.BlockFace) =
+        shop.signX - facing.modX == shop.containerX && shop.signY - facing.modY == shop.containerY &&
+            shop.signZ - facing.modZ == shop.containerZ
+
     internal fun clearListing(world: World, shop: Shop) {
         if (shops.findBySign(shop.signWorld, shop.signX, shop.signY, shop.signZ) != null) return
         val block = world.getBlockAt(shop.signX, shop.signY, shop.signZ)
         val facing = (block.blockData as? WallSign)?.facing ?: return
-        if (shop.containerWorld != shop.signWorld || shop.signX - facing.modX != shop.containerX ||
-            shop.signY - facing.modY != shop.containerY || shop.signZ - facing.modZ != shop.containerZ) return
+        if (shop.containerWorld != shop.signWorld) return
+        if (!attachedToContainer(shop, facing)) return
         val sign = block.state as? Sign ?: return
         val side = sign.getSide(Side.FRONT)
         val header = PlainTextComponentSerializer.plainText().serialize(side.line(0))

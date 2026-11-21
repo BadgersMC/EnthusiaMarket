@@ -30,36 +30,42 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
             connection.autoCommit = false
             try {
                 if (!hasReceipt(connection, recordingId)) {
-                    connection.prepareStatement(
-                        "INSERT INTO shop_history_receipts (recording_id, recorded_at) VALUES (?, ?)"
-                    ).use { statement ->
-                        statement.setString(1, recordingId.toString())
-                        statement.setLong(2, tx.createdAt)
-                        statement.executeUpdate()
-                    }
-                    val stored = insert(connection, tx, attribution)
-                    if (attribution?.publicCashEligible == true) {
-                        val facts = WebsiteSaleFacts(tx.direction, tx.totalPrice, tx.quantity, attribution.stallId,
-                            cashCurrencyVerified = true, adminShop = false, ownShop = tx.owner == tx.buyer,
-                            modifiedItem = false, guildOwned = attribution.guildId != null, guildMemberBuyer = attribution.awardOwner?.let { false })
-                        try {
-                            WebsiteSalesArchiveSql(ds).insert(connection, stored.id, recordingId, facts, tx.item, attribution.guildId?.let { attribution.awardOwner?.name },
-                                tx.createdAt, attribution.awardOwner)
-                        } catch (_: IllegalArgumentException) {
-                            connection.prepareStatement("INSERT INTO website_sales_rejections (recording_id,reason,recorded_at) VALUES (?,?,?)").use { rejected ->
-                                rejected.setString(1, recordingId.toString())
-                                rejected.setString(2, "invalid_public_projection")
-                                rejected.setLong(3, tx.createdAt)
-                                rejected.executeUpdate()
-                            }
-                        }
-                    }
+                    insertWithReceipt(connection, recordingId, tx, attribution)
                 }
                 connection.commit()
             } catch (failure: Exception) {
                 try { connection.rollback() } catch (rollback: java.sql.SQLException) { failure.addSuppressed(rollback) }
                 // Leave ambiguous commits for replay on a fresh connection, never guess success.
                 throw failure
+            }
+        }
+    }
+
+    private fun insertWithReceipt(connection: java.sql.Connection, recordingId: UUID, tx: ShopTransaction, attribution: ShopSaleAttribution?) {
+        connection.prepareStatement(
+            "INSERT INTO shop_history_receipts (recording_id, recorded_at) VALUES (?, ?)"
+        ).use { statement ->
+            statement.setString(1, recordingId.toString())
+            statement.setLong(2, tx.createdAt)
+            statement.executeUpdate()
+        }
+        val stored = insert(connection, tx, attribution)
+        if (attribution?.publicCashEligible == true) archiveSale(connection, recordingId, stored, attribution)
+    }
+
+    private fun archiveSale(connection: java.sql.Connection, recordingId: UUID, tx: ShopTransaction, attribution: ShopSaleAttribution) {
+        val facts = WebsiteSaleFacts(tx.direction, tx.totalPrice, tx.quantity, attribution.stallId,
+            cashCurrencyVerified = true, adminShop = false, ownShop = tx.owner == tx.buyer,
+            modifiedItem = false, guildOwned = attribution.guildId != null, guildMemberBuyer = attribution.awardOwner?.let { false })
+        try {
+            WebsiteSalesArchiveSql(ds).insert(connection, tx.id, recordingId, facts, tx.item, attribution.guildId?.let { attribution.awardOwner?.name },
+                tx.createdAt, attribution.awardOwner)
+        } catch (_: IllegalArgumentException) {
+            connection.prepareStatement("INSERT INTO website_sales_rejections (recording_id,reason,recorded_at) VALUES (?,?,?)").use { rejected ->
+                rejected.setString(1, recordingId.toString())
+                rejected.setString(2, "invalid_public_projection")
+                rejected.setLong(3, tx.createdAt)
+                rejected.executeUpdate()
             }
         }
     }

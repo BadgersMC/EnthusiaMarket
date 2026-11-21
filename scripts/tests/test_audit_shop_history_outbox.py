@@ -3,7 +3,8 @@ import importlib.util
 import os
 from pathlib import Path
 import struct
-import subprocess
+import io
+from contextlib import redirect_stdout
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -20,9 +21,11 @@ spec.loader.exec_module(audit)
 
 def write_record(directory, version, identifier=None):
     identifier = identifier or str(uuid.uuid4())
+
     def utf(value):
         raw = value.encode("ascii")
         return struct.pack(">H", len(raw)) + raw
+
     payload = (struct.pack(">i", version) + utf(identifier) + struct.pack(">q", 42)
                + utf(str(uuid.uuid4())) + utf(str(uuid.uuid4())) + utf("SELL") + utf("redstone")
                + struct.pack(">iqq?", 3, 300, 12345, False))
@@ -43,14 +46,18 @@ class OutboxAuditTest(unittest.TestCase):
     def test_command_exit_status_never_certifies_nonempty_outbox(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            empty = subprocess.run([sys.executable, "-B", str(SCRIPT), str(root)], capture_output=True, text=True)
-            self.assertEqual(0, empty.returncode)
-            self.assertIn('"no_entries_observed"', empty.stdout)
-            self.assertIn("does not prove", empty.stdout)
+            empty = io.StringIO()
+            with patch.object(sys, "argv", [str(SCRIPT), str(root)]), redirect_stdout(empty):
+                status = audit.main()
+            self.assertEqual(0, status)
+            self.assertIn('"no_entries_observed"', empty.getvalue())
+            self.assertIn("does not prove", empty.getvalue())
             write_record(root, 1)
-            pending = subprocess.run([sys.executable, "-B", str(SCRIPT), str(root)], capture_output=True, text=True)
-            self.assertEqual(2, pending.returncode)
-            self.assertIn('"review_required"', pending.stdout)
+            pending = io.StringIO()
+            with patch.object(sys, "argv", [str(SCRIPT), str(root)]), redirect_stdout(pending):
+                status = audit.main()
+            self.assertEqual(2, status)
+            self.assertIn('"review_required"', pending.getvalue())
 
     def test_inventory_preserves_all_bytes_and_counts_formats(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -108,6 +115,7 @@ class OutboxAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = write_record(Path(temp), 3)
             actual_fstat = os.fstat
+
             def descriptor_stat(fd):
                 info = actual_fstat(fd)
                 values = {key: getattr(info, key) for key in (
@@ -134,6 +142,7 @@ class OutboxAuditTest(unittest.TestCase):
             root = Path(temp)
             write_record(root, 1)
             real_inspect = audit.inspect_pending
+
             def change(path):
                 result = real_inspect(path)
                 (root / "added.tmp").write_bytes(b"change")

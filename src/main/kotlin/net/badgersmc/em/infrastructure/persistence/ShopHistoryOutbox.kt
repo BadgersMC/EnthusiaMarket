@@ -116,17 +116,21 @@ internal class ShopHistoryOutbox(
                 direction = SignDirection.valueOf(input.readUTF()), item = input.readUTF(), quantity = input.readInt(),
                 totalPrice = input.readLong(), createdAt = input.readLong(), notified = input.readBoolean(),
             )
-            val stall = if (version >= 2 && input.readBoolean()) input.readUTF() else null
-            val guild = if (version >= 2 && input.readBoolean()) UUID.fromString(input.readUTF()) else null
-            val eligible = version >= 3 && input.readBoolean()
-            val owner = if (version >= 4) net.badgersmc.em.domain.shop.SaleAwardOwner(
-                UUID.fromString(input.readUTF()), input.readUTF(), UUID.fromString(input.readUTF()),
-            ) else null
-            require(!eligible || (stall != null && (guild == null || owner?.id == guild))) { "Invalid public attribution" }
-            val attribution = if (stall == null && guild == null) null else ShopSaleAttribution(stall, guild, eligible, owner)
+            val attribution = readAttribution(input, version)
             require(input.available() == 0) { "Unexpected trailing history data" }
             Triple(id, base, attribution)
         }
+    }
+
+    private fun readAttribution(input: DataInputStream, version: Int): ShopSaleAttribution? {
+        val stall = if (version >= 2 && input.readBoolean()) input.readUTF() else null
+        val guild = if (version >= 2 && input.readBoolean()) UUID.fromString(input.readUTF()) else null
+        val eligible = version >= 3 && input.readBoolean()
+        val owner = if (version >= 4) net.badgersmc.em.domain.shop.SaleAwardOwner(
+            UUID.fromString(input.readUTF()), input.readUTF(), UUID.fromString(input.readUTF()),
+        ) else null
+        require(!eligible || (stall != null && (guild == null || owner?.id == guild))) { "Invalid public attribution" }
+        return if (stall == null && guild == null) null else ShopSaleAttribution(stall, guild, eligible, owner)
     }
 
     private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes)

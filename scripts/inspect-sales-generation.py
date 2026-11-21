@@ -9,7 +9,11 @@ import sys
 import uuid
 
 
-def inspect_generation(path):
+def identity(value):
+    return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns)
+
+
+def read_control(path):
     before = os.lstat(path)
     if not stat.S_ISREG(before.st_mode):
         raise ValueError("control path must be a regular, non-symlink file")
@@ -19,12 +23,15 @@ def inspect_generation(path):
         raw = stream.read(65)
         after = os.fstat(stream.fileno())
     final = os.lstat(path)
-    def identity(value):
-        return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns)
     if any(identity(item) != identity(before) for item in (opened, after, final)):
         raise ValueError("control file changed during inspection")
     if not 36 <= len(raw) <= 64:
         raise ValueError("invalid control file size")
+    return raw
+
+
+def inspect_generation(path):
+    raw = read_control(path)
     value = raw.decode("ascii").strip()
     parsed = uuid.UUID(value)
     if str(parsed) != value:

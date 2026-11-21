@@ -60,21 +60,25 @@ internal class WebsiteSalesArchiveSql(private val ds: DataSource) : WebsitePubli
                 WHERE s.sale_id>? ORDER BY s.sale_id ASC LIMIT 251""".trimIndent()).use { statement ->
                 statement.setLong(1, after)
                 statement.executeQuery().use { rows ->
-                    val items = mutableListOf<WebsitePublicSale>()
-                    var more = false
-                    while (rows.next()) {
-                        if (items.size == 250) { more = true; break }
-                        items += WebsitePublicSale(rows.getLong(1), rows.getString(2), rows.getString(3),
-                            rows.getString(4), rows.getInt(5), rows.getLong(6), rows.getLong(7),
-                            UUID.fromString(rows.getString(8)), rows.getString(9)?.let {
-                                net.badgersmc.em.domain.shop.SaleAwardOwner(
-                                    UUID.fromString(it), rows.getString(10), UUID.fromString(rows.getString(11)),
-                                )
-                            })
-                    }
-                    WebsitePublicSalePage(items, if (more) items.last().id else null, items.lastOrNull()?.id ?: after)
+                    readPage(rows, after)
                 }
             }
         }
+    }
+
+    private fun readPage(rows: java.sql.ResultSet, after: Long): WebsitePublicSalePage {
+        val items = mutableListOf<WebsitePublicSale>()
+        var more = false
+        while (rows.next()) {
+            if (items.size == 250) { more = true; break }
+            items += WebsitePublicSale(rows.getLong(1), rows.getString(2), rows.getString(3),
+                rows.getString(4), rows.getInt(5), rows.getLong(6), rows.getLong(7),
+                UUID.fromString(rows.getString(8)), rows.getString(9)?.let {
+                    net.badgersmc.em.domain.shop.SaleAwardOwner(
+                        UUID.fromString(it), rows.getString(10), UUID.fromString(rows.getString(11)),
+                    )
+                })
+        }
+        return WebsitePublicSalePage(items, if (more) items.last().id else null, items.lastOrNull()?.id ?: after)
     }
 }

@@ -455,7 +455,7 @@ class AuctionLifecycleService(
         }
         refund?.let(::deliverPayment)
         val newBidderName = runCatching { Bukkit.getPlayer(playerUuid) }.getOrNull()?.name ?: "Unknown"
-        notifyPreviousBidderIfOutbid(previousBid, newBid, original.stallId, amount, newBidderName)
+        notifyPreviousBidderIfOutbid(previousBid, newBid, original.stallId, newBidderName)
         return AuctionResult.Success(updated)
 
     }
@@ -490,12 +490,11 @@ class AuctionLifecycleService(
         previousBid: Bid?,
         next: Bid,
         stallId: StallId,
-        newAmount: Long,
         newBidderName: String,
     ) {
         if (previousBid != null && !samePayer(previousBid, next)) {
             runCatching { Bukkit.getPlayer(previousBid.bidder) }?.getOrNull()?.sendMessage(
-                lang.msg("auction.outbid", "stall" to stallId.value, "amount" to newAmount, "bidder" to newBidderName)
+                lang.msg("auction.outbid", "stall" to stallId.value, "amount" to next.amount, "bidder" to newBidderName)
             )
         }
     }

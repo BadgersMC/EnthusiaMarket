@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.domain.stall.RentPayment
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
@@ -127,7 +128,7 @@ class StallRentExtensionService(
         try {
             val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
             val payer = if (isGuild) stall.owner else net.badgersmc.em.domain.stall.OwnerRef.solo(actor)
-            stalls.savePaidExtension(updated, payer, amount, paidAt, coveredFrom)
+            stalls.savePaidExtension(updated, RentPayment(payer, amount, paidAt, coveredFrom))
             fireStateChanged(stallId.value, stall.state, updated.state)
         } catch (e: Exception) {
             val refunded = try {
