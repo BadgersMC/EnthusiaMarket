@@ -1,8 +1,5 @@
 package net.badgersmc.em.infrastructure.commands
 
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.event.ClickEvent
-
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
