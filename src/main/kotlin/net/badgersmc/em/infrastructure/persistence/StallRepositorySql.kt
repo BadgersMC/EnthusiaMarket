@@ -94,6 +94,27 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         }
     }
 
+    private fun bindStallUpdate(ps: java.sql.PreparedStatement, stall: Stall) {
+        ps.setString(1, stall.regionId)
+        ps.setString(2, stall.world)
+        ps.setString(3, stall.state.name)
+        ps.setString(4, stall.owner.type.name)
+        ps.setString(5, stall.owner.id)
+        if (stall.ownerSince != null) ps.setLong(6, stall.ownerSince.toEpochMilli())
+        else ps.setNull(6, java.sql.Types.INTEGER)
+        ps.setLong(7, stall.winningBid)
+        ps.setString(8, stall.rentTerms.mode.name)
+        ps.setDouble(9, stall.rentTerms.pct)
+        ps.setLong(10, stall.rentTerms.flatAmount)
+        ps.setString(11, encodeMembers(stall.members))
+        ps.setInt(12, stall.maxMembers)
+        if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
+        else ps.setNull(13, java.sql.Types.INTEGER)
+        ps.setString(14, stall.kind)
+        ps.setString(15, encodeExtraEntities(stall.extraEntities))
+        ps.setInt(16, stall.extraTotal)
+    }
+
     internal fun save(conn: Connection, stall: Stall) {
         conn.prepareStatement(
             """UPDATE stalls SET
@@ -106,24 +127,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                      SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
                  )"""
         ).use { ps ->
-            ps.setString(1, stall.regionId)
-            ps.setString(2, stall.world)
-            ps.setString(3, stall.state.name)
-            ps.setString(4, stall.owner.type.name)
-            ps.setString(5, stall.owner.id)
-            if (stall.ownerSince != null) ps.setLong(6, stall.ownerSince.toEpochMilli())
-            else ps.setNull(6, java.sql.Types.INTEGER)
-            ps.setLong(7, stall.winningBid)
-            ps.setString(8, stall.rentTerms.mode.name)
-            ps.setDouble(9, stall.rentTerms.pct)
-            ps.setLong(10, stall.rentTerms.flatAmount)
-            ps.setString(11, encodeMembers(stall.members))
-            ps.setInt(12, stall.maxMembers)
-            if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
-            else ps.setNull(13, java.sql.Types.INTEGER)
-            ps.setString(14, stall.kind)
-            ps.setString(15, encodeExtraEntities(stall.extraEntities))
-            ps.setInt(16, stall.extraTotal)
+            bindStallUpdate(ps, stall)
             ps.setString(17, stall.id.value)
             ps.setLong(18, stall.moderationRevision)
             ps.setString(19, stall.id.value)

@@ -124,16 +124,7 @@ class AuctionBrowserMenu(
 
     @Suppress("LongMethod")
     override fun render(gui: ChestGui) {
-        // Block raw item theft (shift/double-click/drag/drop) while letting single
-        // left/right clicks reach GuiItem handlers so controls function.
-        gui.setOnGlobalClick { event ->
-            if (event.click != org.bukkit.event.inventory.ClickType.LEFT &&
-                event.click != org.bukkit.event.inventory.ClickType.RIGHT
-            ) {
-                event.isCancelled = true
-            }
-        }
-        gui.setOnGlobalDrag { it.isCancelled = true }
+        guardClicks(gui)
         val snapshot = latest.get()
         val now = Instant.now()
         val sorted = snapshot.entries.sortedWith(entryComparator(sortMode))
@@ -156,6 +147,19 @@ class AuctionBrowserMenu(
         gui.addPane(Slot.fromXY(0, 0), itemsPane)
 
         gui.addPane(Slot.fromXY(0, 5), buildControls(gui, pageCount, sorted.size))
+    }
+
+    private fun guardClicks(gui: ChestGui) {
+        // Block raw item theft (shift/double-click/drag/drop) while letting single
+        // left/right clicks reach GuiItem handlers so controls function.
+        gui.setOnGlobalClick { event ->
+            if (event.click != org.bukkit.event.inventory.ClickType.LEFT &&
+                event.click != org.bukkit.event.inventory.ClickType.RIGHT
+            ) {
+                event.isCancelled = true
+            }
+        }
+        gui.setOnGlobalDrag { it.isCancelled = true }
     }
 
     private fun auctionItem(entry: EntryView, now: Instant, visible: Boolean): GuiItem {

@@ -21,6 +21,10 @@ class ShopPlaceholders(
         "shops_total" -> shops.countAll().toString()
         "shops_owned" -> player?.let { shops.countByOwner(it.uniqueId).toString() }
         "sales_unseen" -> player?.let { transactions.countUnnotified(it.uniqueId).toString() }
+        else -> weeklyDisplay(params.lowercase())
+    }
+
+    private fun weeklyDisplay(key: String): String? = when (key) {
         "stall_of_the_week" -> stallWeekDisplay.line()
         "guild_stall_of_the_week" -> guildStallWeekDisplay.line()
         else -> null

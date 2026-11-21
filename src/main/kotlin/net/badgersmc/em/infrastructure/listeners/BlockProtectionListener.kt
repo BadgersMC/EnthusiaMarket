@@ -38,27 +38,7 @@ class BlockProtectionListener(
         val block = event.block
 
         if (block.state is Sign) {
-            val shop = findShopBySign(block)
-            if (shop != null) {
-                val player = event.player
-                when {
-                    // Owner breaks their own sign -> delete the shop and let the break proceed,
-                    // so a broken sign never leaves an orphan row blocking the spot (REQ-015).
-                    management.canDelete(shop, player.uniqueId) -> {
-                        val deleted = management.delete(player.uniqueId, shop.id)
-                        event.isCancelled = !deleted
-                        player.sendMessage(lang.msg(if (deleted) "shop.protect.sign_broken_deleted" else "shop.protect.delete_error"))
-                    }
-                    // Admin in break-others mode -> admin delete and allow the break.
-                    player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId) -> {
-                        val deleted = management.adminDelete(shop.id)
-                        event.isCancelled = !deleted
-                        player.sendMessage(lang.msg(if (deleted) "shop.admin.breakothers.deleted" else "shop.protect.delete_error"))
-                    }
-                    // Anyone else -> protect the sign from being broken.
-                    else -> cancelSignBreak(event, shop, event.player)
-                }
-            }
+            findShopBySign(block)?.let { breakShopSign(event, it) }
             return
         }
 
@@ -67,6 +47,27 @@ class BlockProtectionListener(
             if (shops.isNotEmpty()) {
                 handleContainerBreak(event, block, shops)
             }
+        }
+    }
+
+    private fun breakShopSign(event: BlockBreakEvent, shop: net.badgersmc.em.domain.shop.Shop) {
+        val player = event.player
+        when {
+            // Owner breaks their own sign -> delete the shop and let the break proceed,
+            // so a broken sign never leaves an orphan row blocking the spot (REQ-015).
+            management.canDelete(shop, player.uniqueId) -> {
+                val deleted = management.delete(player.uniqueId, shop.id)
+                event.isCancelled = !deleted
+                player.sendMessage(lang.msg(if (deleted) "shop.protect.sign_broken_deleted" else "shop.protect.delete_error"))
+            }
+            // Admin in break-others mode -> admin delete and allow the break.
+            player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId) -> {
+                val deleted = management.adminDelete(shop.id)
+                event.isCancelled = !deleted
+                player.sendMessage(lang.msg(if (deleted) "shop.admin.breakothers.deleted" else "shop.protect.delete_error"))
+            }
+            // Anyone else -> protect the sign from being broken.
+            else -> cancelSignBreak(event, shop, event.player)
         }
     }
 

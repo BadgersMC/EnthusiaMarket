@@ -29,8 +29,8 @@ class PurchaseFlowTest {
         every { buyout.buy(any(), any(), any(), any()) } returns StallBuyoutService.Result.Rejected("test")
         every { buyout.buyForGuild(any(), any(), any()) } returns StallBuyoutService.Result.Rejected("test")
 
-        PurchaseFlow.execute(player, stallId, 500, null, buyout)
-        PurchaseFlow.execute(player, stallId, 500, PurchaseFlow.GuildOption("guild-1", "Badgers"), buyout)
+        PurchaseFlow.execute(player, PurchaseFlow.Offer(stallId, 500), null, buyout)
+        PurchaseFlow.execute(player, PurchaseFlow.Offer(stallId, 500), PurchaseFlow.GuildOption("guild-1", "Badgers"), buyout)
 
         verify(exactly = 1) { buyout.buy(stallId, playerId, 500, any()) }
         verify(exactly = 1) { buyout.buyForGuild(StallBuyoutService.GuildQuote(stallId, 500, "guild-1"), playerId, any()) }

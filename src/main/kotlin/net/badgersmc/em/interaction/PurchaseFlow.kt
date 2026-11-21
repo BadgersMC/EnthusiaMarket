@@ -20,9 +20,11 @@ object PurchaseFlow {
         return GuildOption(guild.id, guild.name)
     }
 
-    fun execute(player: Player, stallId: StallId, price: Long, guild: GuildOption?, buyout: StallBuyoutService) =
-        if (guild != null) buyout.buyForGuild(StallBuyoutService.GuildQuote(stallId, price, guild.id), player.uniqueId, playerIp(player))
-        else buyout.buy(stallId, player.uniqueId, price, playerIp(player))
+    data class Offer(val stallId: StallId, val price: Long)
+
+    fun execute(player: Player, offer: Offer, guild: GuildOption?, buyout: StallBuyoutService) =
+        if (guild != null) buyout.buyForGuild(StallBuyoutService.GuildQuote(offer.stallId, offer.price, guild.id), player.uniqueId, playerIp(player))
+        else buyout.buy(offer.stallId, player.uniqueId, offer.price, playerIp(player))
 
     fun message(result: StallBuyoutService.Result, stallId: StallId, lang: LangService): Component = when (result) {
         is StallBuyoutService.Result.Purchased -> lang.msg(

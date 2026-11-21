@@ -46,7 +46,7 @@ class PurchaseConfirmMenu(
         pane.addItem(
             GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("purchase_sign.msg.confirm_yes"))) { event ->
                 event.isCancelled = true
-                val result = PurchaseFlow.execute(player, stallId, price, guild, buyout)
+                val result = PurchaseFlow.execute(player, PurchaseFlow.Offer(stallId, price), guild, buyout)
                 player.sendMessage(PurchaseFlow.message(result, stallId, lang))
                 player.closeInventory()
             },

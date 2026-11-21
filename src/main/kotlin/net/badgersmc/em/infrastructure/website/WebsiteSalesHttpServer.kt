@@ -79,12 +79,16 @@ internal class WebsiteSalesHttpServer(private val port: Int, private val token: 
         val expected = runCatching { UUID.fromString(value) }.getOrNull()
         if (expected?.toString() != value) return errorReply(400, "invalid_generation")
         if (expected != before) return errorReply(409, "generation_changed")
+        return salePage(after, before)
+    }
+
+    private fun salePage(after: Long, before: UUID): Reply {
         val window = runCatching { coverage() }.getOrNull()
         val page = reader.readAfter(after)
         validatePage(page, after)
         val items = page.items.map(::salePayload)
         if (generation() != before) return errorReply(409, "generation_changed")
-        return Reply(200, mapOf("protocol" to 2, "generation" to value, "items" to items, "complete" to false,
+        return Reply(200, mapOf("protocol" to 2, "generation" to before.toString(), "items" to items, "complete" to false,
             "nextCursor" to page.nextCursor?.toString(), "checkpointCursor" to page.checkpointCursor.toString(),
             "awardCoverage" to verifiedWindow(page, window)))
     }

@@ -47,13 +47,16 @@ class BedrockPurchaseForm(
 
         return builder
             .validResultHandler { response: SimpleFormResponse ->
-                val index = response.clickedButtonId()
-                if (Bukkit.isPrimaryThread()) handleButton(index)
-                else Bukkit.getScheduler().runTask(org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(javaClass), Runnable {
-                    if (player.isOnline) handleButton(index)
-                })
+                dispatchButton(response.clickedButtonId())
             }
             .build()
+    }
+
+    private fun dispatchButton(index: Int) {
+        if (Bukkit.isPrimaryThread()) handleButton(index)
+        else Bukkit.getScheduler().runTask(org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(javaClass), Runnable {
+            if (player.isOnline) handleButton(index)
+        })
     }
 
     internal fun handleButton(buttonId: Int) {

@@ -35,11 +35,7 @@ class AuctionBidMenu(private val auction: Auction, private val auctionService: A
         if (!allowed(player)) return
         cancelPrompt(player.uniqueId)
         val current = auctionService.auctionForBid(auction.id) ?: return unavailable(player)
-        val guilds = auctionService.eligibleGuilds(player.uniqueId)
-        val selected = guilds.firstOrNull { it.id == guildTarget }
-        val payer = if (guildTarget == null) text("personal") else selected?.let {
-            text("guild", "name" to AuctionBidPresentation.name(it.name))
-        } ?: text("guild_unavailable")
+        val payer = selectedPayer(player)
         val minimum = AuctionBidPresentation.minimum(current.startingBid, current.highBid?.amount)
         val summary = summary(current, payer, minimum)
         val actions = mutableListOf<Pair<String, () -> Unit>>(
@@ -52,6 +48,14 @@ class AuctionBidMenu(private val auction: Auction, private val auctionService: A
         }
         actions += text("close") to { player.closeInventory() }
         show(player, text("title", "stall" to current.stallId.value), summary, actions)
+    }
+
+    private fun selectedPayer(player: Player): String {
+        val guilds = auctionService.eligibleGuilds(player.uniqueId)
+        val selected = guilds.firstOrNull { it.id == guildTarget }
+        return if (guildTarget == null) text("personal") else selected?.let {
+            text("guild", "name" to AuctionBidPresentation.name(it.name))
+        } ?: text("guild_unavailable")
     }
 
     private fun chooseGuild(player: Player, requested: Int) {

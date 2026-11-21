@@ -71,18 +71,7 @@ class PurchaseMenu(
         val gui = ChestGui(rows, ComponentHolder.of(lang.msg("gui.shop.title", "amount" to (shop.sellAmount.toLong() * multiplier))))
         val pane = StaticPane(9, rows)
 
-        // --- Row 0: YOU RECEIVE / arrow / YOU GIVE labels ---
-        val receiveLabel = lang.msg("gui.shop.receive_label")
-        val giveLabel = lang.msg("gui.shop.give_label")
-        pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
-        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, if (barter) 0 else 1)
-        if (shop.direction == SignDirection.TRADE) {
-            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel, listOf(
-                lang.msg("gui.shop.trade_drop_hint")
-            ))), 6, 0)
-        } else {
-            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
-        }
+        addTradeLabels(pane, barter)
 
         // --- Row 1: the actual items ---
         val summary = summary(shop, player, tradeService)
@@ -139,6 +128,21 @@ class PurchaseMenu(
         }
     }
 
+    private fun addTradeLabels(pane: StaticPane, barter: Boolean) {
+        // --- Row 0: YOU RECEIVE / arrow / YOU GIVE labels ---
+        val receiveLabel = lang.msg("gui.shop.receive_label")
+        val giveLabel = lang.msg("gui.shop.give_label")
+        pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
+        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, if (barter) 0 else 1)
+        if (shop.direction == SignDirection.TRADE) {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel, listOf(
+                lang.msg("gui.shop.trade_drop_hint")
+            ))), 6, 0)
+        } else {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
+        }
+    }
+
     internal fun returnPlacementItem(player: Player, item: ItemStack?) {
         if (placementReturned || item == null || item.type.isAir) return
         placementReturned = true
@@ -165,16 +169,19 @@ class PurchaseMenu(
                 "cost" to summary.costFor(multiplier), "item" to sellName), buttonLore,
         )) { event ->
             event.isCancelled = true
-            if (!canPurchase) return@GuiItem
-            if (!tradeService.offerIsCurrent(shop) || tradeService.priceFactor(shop, player.uniqueId) != summary.factor) {
-                player.closeInventory()
-                player.sendMessage(lang.msg("shop.trade.failure", "reason" to "The offer changed. Reopen the shop to review it."))
-                return@GuiItem
-            }
-            executeTrade(player)
-            multiplier = 1
-            render(player)
+            if (canPurchase) confirmOffer(player, summary)
         }, if (shop.direction == SignDirection.TRADE) 4 else 5, 2)
+    }
+
+    private fun confirmOffer(player: Player, summary: Summary) {
+        if (!tradeService.offerIsCurrent(shop) || tradeService.priceFactor(shop, player.uniqueId) != summary.factor) {
+            player.closeInventory()
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "The offer changed. Reopen the shop to review it."))
+            return
+        }
+        executeTrade(player)
+        multiplier = 1
+        render(player)
     }
 
     private fun unavailableReason(summary: Summary): Component {

@@ -44,6 +44,10 @@ class DeletedShopSignListener(private val shops: ShopRepository) : Listener {
         if (shop.containerWorld != shop.signWorld) return
         if (!attachedToContainer(shop, facing)) return
         val sign = block.state as? Sign ?: return
+        clearListingText(sign, shop)
+    }
+
+    private fun clearListingText(sign: Sign, shop: Shop) {
         val side = sign.getSide(Side.FRONT)
         val header = PlainTextComponentSerializer.plainText().serialize(side.line(0))
         if (header != "[${shop.direction.name}]") return

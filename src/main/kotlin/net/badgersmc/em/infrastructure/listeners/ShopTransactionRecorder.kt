@@ -26,13 +26,17 @@ open class ShopTransactionRecorder(
                 runCatching { transactions.markCaptureFailure() }
             }
             val transaction = transaction(event)
-            if (!config.shop.archiveCaptureEnabled || (event.stallId == null && event.guildId == null)) transactions.record(transaction)
-            else transactions.recordAttributed(transaction, ShopSaleAttribution(event.stallId, event.guildId, event.publicCashEligible, event.awardOwner))
+            record(event, transaction)
         } catch (e: Exception) {
             if (config.shop.archiveCaptureEnabled) runCatching { transactions.markCaptureFailure() }
             // History is best-effort: a log write must never disturb the completed trade.
             org.bukkit.Bukkit.getLogger().warning("Failed to record shop transaction: ${e.message}")
         }
+    }
+
+    private fun record(event: PostShopTransactionEvent, transaction: ShopTransaction) {
+        if (!config.shop.archiveCaptureEnabled || (event.stallId == null && event.guildId == null)) transactions.record(transaction)
+        else transactions.recordAttributed(transaction, ShopSaleAttribution(event.stallId, event.guildId, event.publicCashEligible, event.awardOwner))
     }
 
     private fun transaction(event: PostShopTransactionEvent) = ShopTransaction(

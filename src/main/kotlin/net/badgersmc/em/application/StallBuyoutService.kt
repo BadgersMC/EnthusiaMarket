@@ -201,30 +201,34 @@ class StallBuyoutService(
     }
 
     private fun snapshotRejection(stall: Stall): Result.Rejected? {
-        if (config.schematics.enabled) {
-            val capture = try {
-                schematics.capture(stall.id.value, stall.world, stall.regionId)
-            } catch (failure: Exception) {
-                SchematicService.Result.Failure(failure)
-            }
-            val failure = when (capture) {
-                is SchematicService.Result.Failure -> capture.cause
-                SchematicService.Result.Disabled -> IllegalStateException("Snapshot provider is unavailable")
-                SchematicService.Result.Success -> null
-            }
-            if (failure != null) {
-                log.warning("Stall snapshot failed for ${stall.id.value}; purchase cancelled: ${failure.message}")
-                try {
-                    Bukkit.getServer()?.pluginManager?.callEvent(
-                        SchematicCaptureFailedEvent(stall.id.value, stall.world, stall.regionId, failure),
-                    )
-                } catch (failure: Exception) {
-                    log.warning("Failed to notify staff of snapshot failure: ${failure.message}")
-                }
-                return Result.Rejected("Stall snapshot failed; please contact staff")
-            }
+        if (!config.schematics.enabled) return null
+        val failure = captureFailure(stall) ?: return null
+        reportCaptureFailure(stall, failure)
+        return Result.Rejected("Stall snapshot failed; please contact staff")
+    }
+
+    private fun captureFailure(stall: Stall): Throwable? {
+        val capture = try {
+            schematics.capture(stall.id.value, stall.world, stall.regionId)
+        } catch (failure: Exception) {
+            SchematicService.Result.Failure(failure)
         }
-        return null
+        return when (capture) {
+            is SchematicService.Result.Failure -> capture.cause
+            SchematicService.Result.Disabled -> IllegalStateException("Snapshot provider is unavailable")
+            SchematicService.Result.Success -> null
+        }
+    }
+
+    private fun reportCaptureFailure(stall: Stall, failure: Throwable) {
+        log.warning("Stall snapshot failed for ${stall.id.value}; purchase cancelled: ${failure.message}")
+        try {
+            Bukkit.getServer()?.pluginManager?.callEvent(
+                SchematicCaptureFailedEvent(stall.id.value, stall.world, stall.regionId, failure),
+            )
+        } catch (failure: Exception) {
+            log.warning("Failed to notify staff of snapshot failure: ${failure.message}")
+        }
     }
 
     private fun persistAward(stall: Stall, request: BuyRequest): Stall {

@@ -65,12 +65,7 @@ open class EnthusiaMarket : JavaPlugin() {
 
         // Phase 1: Detect Vault availability before Nexus DI context is created,
         // so that schedulers/listeners see the correct VaultHealth value (REQ-041).
-        val vaultHealth = VaultHealth()
-        val vaultRsp = Bukkit.getServicesManager().getRegistration(Economy::class.java)
-        vaultHealth.isAvailable = vaultRsp != null
-        if (vaultRsp == null) {
-            logger.severe("Vault Economy not found — rent collection, shop signs, and auctions disabled")
-        }
+        val vaultHealth = detectVault()
 
         // Phase 2: Create Nexus DI context — generates enthusiamarket.yaml with defaults
         // if it doesn't exist yet (ConfigLoader handles this).
@@ -582,14 +577,28 @@ open class EnthusiaMarket : JavaPlugin() {
         rentWarnings?.close()
         finderTrail?.close()
         server.servicesManager.unregisterAll(this)
-        runCatching { moderationProvider?.close() }
-        runCatching { stallEffectGuard?.close() }
-        runCatching { stallAccessRefresh?.close() }
+        closeStallServices()
         closeBedrockIntegrations()
         websiteSync?.close()
         scheduler?.cancelAll()
         nexus?.close()
         logger.info("EnthusiaMarket disabled")
+    }
+
+    private fun detectVault(): VaultHealth {
+        val vaultHealth = VaultHealth()
+        val vaultRsp = Bukkit.getServicesManager().getRegistration(Economy::class.java)
+        vaultHealth.isAvailable = vaultRsp != null
+        if (vaultRsp == null) {
+            logger.severe("Vault Economy not found — rent collection, shop signs, and auctions disabled")
+        }
+        return vaultHealth
+    }
+
+    private fun closeStallServices() {
+        runCatching { moderationProvider?.close() }
+        runCatching { stallEffectGuard?.close() }
+        runCatching { stallAccessRefresh?.close() }
     }
 
     private fun closeBedrockIntegrations() {

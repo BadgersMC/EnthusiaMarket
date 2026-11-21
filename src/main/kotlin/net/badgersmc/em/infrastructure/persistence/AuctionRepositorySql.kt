@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.persistence
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
+import net.badgersmc.em.domain.auction.AuctionPaymentRepository
 import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.stall.StallId
@@ -20,7 +21,7 @@ import java.util.UUID
 import javax.sql.DataSource
 
 @Repository
-class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
+class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, AuctionPaymentRepository by AuctionPaymentSql(ds) {
 
     override fun findById(id: AuctionId): Auction? = queryOne("SELECT * FROM auctions WHERE id = ?") {
         setString(1, id.value)
@@ -191,36 +192,6 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
                         ps.executeUpdate()
                     }
                 }
-            }
-        }
-    }
-
-    override fun pendingPayments(now: Long): List<AuctionPayment> = ds.connection.use { conn ->
-        conn.prepareStatement("""SELECT * FROM auction_payments WHERE status='PENDING' AND next_attempt<=?
-            ORDER BY next_attempt,id LIMIT 32""").use { ps ->
-            ps.setLong(1, now)
-            ps.executeQuery().use { rows -> buildList {
-                while (rows.next()) add(AuctionPayment(AuctionId(rows.getString("auction_id")), rows.getString("purpose"),
-                    OwnerRef(OwnerType.valueOf(rows.getString("payer_type")), rows.getString("recipient")),
-                    rows.getLong("amount"), rows.getString("id")))
-            } }
-        }
-    }
-
-    override fun claimPayment(id: String): Boolean = ds.connection.use { conn ->
-        conn.prepareStatement("UPDATE auction_payments SET status='IN_FLIGHT' WHERE id=? AND status='PENDING'").use { ps ->
-            ps.setString(1, id)
-            ps.executeUpdate() == 1
-        }
-    }
-
-    override fun finishPayment(id: String, paid: Boolean, nextAttempt: Long) {
-        ds.connection.use { conn ->
-            conn.prepareStatement("UPDATE auction_payments SET status=?,next_attempt=? WHERE id=? AND status='IN_FLIGHT'").use { ps ->
-                ps.setString(1, if (paid) "PAID" else "PENDING")
-                ps.setLong(2, nextAttempt)
-                ps.setString(3, id)
-                check(ps.executeUpdate() == 1)
             }
         }
     }

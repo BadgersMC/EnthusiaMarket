@@ -47,11 +47,13 @@ class BedrockOwnedShopsForm(player: Player, private val shops: ShopRepository,
         }
         val selected = page.items.getOrNull(clicked) ?: return
         val current = shops.findById(selected.id)
-        if (current == null || !(management.canEdit(current, player.uniqueId) ||
-                management.canDelete(current, player.uniqueId))) {
+        if (current == null || !mayManage(current)) {
             open(player)
             return
         }
         BedrockShopEditForm(player, current, shops, logger, lang, management).open(player)
     }
+
+    private fun mayManage(shop: Shop) =
+        management.canEdit(shop, player.uniqueId) || management.canDelete(shop, player.uniqueId)
 }

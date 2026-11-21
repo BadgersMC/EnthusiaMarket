@@ -48,15 +48,7 @@ internal class WeeklyStallShowcases private constructor(
             renderNpc(entry, winner)
             val world = entry.location.world ?: return@forEach
             if (!world.isChunkLoaded(entry.location.blockX shr 4, entry.location.blockZ shr 4)) return@forEach
-            val hologram = entry.hologram?.takeIf { it.isValid } ?: world.spawn(
-                entry.location.clone().add(0.0, 2.55, 0.0), TextDisplay::class.java,
-            ) {
-                it.isPersistent = false
-                it.billboard = org.bukkit.entity.Display.Billboard.CENTER
-                it.isShadowed = true
-                entry.hologram = it
-                entry.shownText = null
-            }
+            val hologram = hologram(entry, world)
             val heading = Component.text(entry.title, entry.color)
             val result = if (winner == null) Component.text(display.line(), NamedTextColor.GRAY) else
                 Component.text(winner.stall, NamedTextColor.WHITE).append(Component.newline())
@@ -66,6 +58,18 @@ internal class WeeklyStallShowcases private constructor(
                 hologram.text(text)
                 entry.shownText = text
             }
+        }
+    }
+
+    private fun hologram(entry: Entry, world: org.bukkit.World): TextDisplay {
+        return entry.hologram?.takeIf { it.isValid } ?: world.spawn(
+            entry.location.clone().add(0.0, 2.55, 0.0), TextDisplay::class.java,
+        ) {
+            it.isPersistent = false
+            it.billboard = org.bukkit.entity.Display.Billboard.CENTER
+            it.isShadowed = true
+            entry.hologram = it
+            entry.shownText = null
         }
     }
 
@@ -113,21 +117,25 @@ internal class WeeklyStallShowcases private constructor(
                 return null
             }
             val entries = listOf("player", "guild").mapNotNull { key ->
-                val section = config.getConfigurationSection(key) ?: return@mapNotNull null
-                val world = section.getString("world")?.let(Bukkit::getWorld) ?: return@mapNotNull null
-                val coords = listOf("x", "y", "z").map { section.getDouble(it, Double.NaN) }
-                val yaw = section.getDouble("yaw", 0.0).toFloat()
-                if (coords.any { !it.isFinite() } || !yaw.isFinite()) return@mapNotNull null
-                val guild = key == "guild"
-                Entry(key, if (guild) "Guild Stall of the Week" else "Stall of the Week",
-                    if (guild) NamedTextColor.LIGHT_PURPLE else NamedTextColor.GOLD,
-                    Location(world, coords[0], coords[1], coords[2], yaw, 0f))
+                entry(config, key)
             }
             if (entries.size != 2 || entries[0].location.distanceSquaredIfSameWorld(entries[1].location) < 1.0) {
                 plugin.logger.warning("Configure two distinct, loaded-world positions for weekly stall displays.")
                 return null
             }
             return WeeklyStallShowcases(entries)
+        }
+
+        private fun entry(config: YamlConfiguration, key: String): Entry? {
+            val section = config.getConfigurationSection(key) ?: return null
+            val world = section.getString("world")?.let(Bukkit::getWorld) ?: return null
+            val coords = listOf("x", "y", "z").map { section.getDouble(it, Double.NaN) }
+            val yaw = section.getDouble("yaw", 0.0).toFloat()
+            if (coords.any { !it.isFinite() } || !yaw.isFinite()) return null
+            val guild = key == "guild"
+            return Entry(key, if (guild) "Guild Stall of the Week" else "Stall of the Week",
+                if (guild) NamedTextColor.LIGHT_PURPLE else NamedTextColor.GOLD,
+                Location(world, coords[0], coords[1], coords[2], yaw, 0f))
         }
 
         private fun Location.distanceSquaredIfSameWorld(other: Location) =

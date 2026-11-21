@@ -36,7 +36,7 @@ class BedrockPurchaseConfirmForm(
 
     internal fun handleButton(button: Int) {
         if (button != 0) return
-        val result = PurchaseFlow.execute(player, stallId, price, guild, buyout)
+        val result = PurchaseFlow.execute(player, PurchaseFlow.Offer(stallId, price), guild, buyout)
         player.sendMessage(PurchaseFlow.message(result, stallId, lang))
     }
 

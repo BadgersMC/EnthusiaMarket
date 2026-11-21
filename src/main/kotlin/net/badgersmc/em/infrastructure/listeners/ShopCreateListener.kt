@@ -67,13 +67,14 @@ open class ShopCreateListener(
             return
         }
 
-        val signLoc = block.location
-        val containerLoc = attachedBlock.location
-        val player = event.player
+        showCreationMenu(event.player, stall, target, sellItemB64)
+    }
+
+    private fun showCreationMenu(player: Player, stall: Stall, target: Pair<org.bukkit.block.Block, org.bukkit.block.Block>, sellItemB64: String) {
+        val signLoc = target.first.location
+        val containerLoc = target.second.location
         val authorised: (Player) -> Boolean = { actor ->
-            val current = stallRepository.findById(stall.id)
-            current != null && current.state in setOf(net.badgersmc.em.domain.stall.StallState.OWNED, net.badgersmc.em.domain.stall.StallState.GRACE) &&
-                findStallAt(signLoc)?.id == current.id && findStallAt(containerLoc)?.id == current.id && canManageStall(current, actor)
+            mayStillCreate(stall, signLoc, containerLoc, actor)
         }
         if (menuFactory.shouldUseBedrockMenus(player)) {
             net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
@@ -88,6 +89,12 @@ open class ShopCreateListener(
                 authorised = authorised,
             ).open(player)
         }
+    }
+
+    private fun mayStillCreate(stall: Stall, sign: Location, container: Location, actor: Player): Boolean {
+        val current = stallRepository.findById(stall.id) ?: return false
+        if (current.state !in setOf(net.badgersmc.em.domain.stall.StallState.OWNED, net.badgersmc.em.domain.stall.StallState.GRACE)) return false
+        return findStallAt(sign)?.id == current.id && findStallAt(container)?.id == current.id && canManageStall(current, actor)
     }
 
     private fun interactionBlock(event: PlayerInteractEvent): org.bukkit.block.Block? {

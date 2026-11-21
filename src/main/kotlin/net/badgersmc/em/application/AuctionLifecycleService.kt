@@ -376,11 +376,7 @@ class AuctionLifecycleService(
     }
 
     private fun placeBidWithPermit(auctionId: AuctionId, request: BidRequest): AuctionResult {
-        if (request.guildId != null) {
-            (guildClaimDecision(request.actor, request.guildId) as? LimitResolutionService.ClaimDecision.Rejected)?.let {
-                return AuctionResult.Failure("Your guild already owns its stall limit (${it.cap})")
-            }
-        }
+        guildCapRejection(request)?.let { return it }
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
         if (mutationGate.isStallLocked(auction.stallId.value)) return AuctionResult.Failure("This stall is temporarily unavailable")
         if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is not open")
@@ -388,6 +384,14 @@ class AuctionLifecycleService(
         val reservation = ipLimiter.acquireAuction(request.ip, auction.id.value)
         if (!reservation.allowed) return AuctionResult.Failure("You already have an active bid on another auction.")
         return applyReservedBid(auction, request, reservation)
+    }
+
+    private fun guildCapRejection(request: BidRequest): AuctionResult.Failure? {
+        val guildId = request.guildId ?: return null
+        val decision = guildClaimDecision(request.actor, guildId)
+        return (decision as? LimitResolutionService.ClaimDecision.Rejected)?.let {
+            AuctionResult.Failure("Your guild already owns its stall limit (${it.cap})")
+        }
     }
 
     private fun guildBidRejection(auction: Auction, guildId: String?): AuctionResult.Failure? = when {
@@ -745,29 +749,7 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
-        // REQ-212 — limit gate. The winner already paid at bid time, so close
-        // the auction first to avoid retry/double-refund loops, then refund.
-        if (bid.guildId != null && !mayManageGuild(bid.bidder, bid.guildId)) {
-            closeWithoutAward(auction, stall)
-            return
-        }
-        if (bid.guildId != null && guildAlreadyWonOpeningRound(auction, bid.guildId)) {
-            closeWithoutAward(auction, stall)
-            return
-        }
-        val counts = ownership.counts(bid.bidder)
-        // Personal limits do not apply to guild holdings; the guild cap does (REQ-399).
-        val decision = if (bid.guildId != null) guildClaimDecision(bid.bidder, bid.guildId) else limits.canClaim(
-            player = bid.bidder,
-            kind = stall.kind,
-            currentTotal = counts.total,
-            currentForKind = counts.byKind[stall.kind] ?: 0,
-        )
-        if (decision is LimitResolutionService.ClaimDecision.Rejected) {
-            logger.info(
-                "Auction ${auction.id} winner ${bid.bidder} over limit " +
-                    "($decision); refunding and reverting without award."
-            )
+        if (!winnerEligible(auction, stall, bid)) {
             closeWithoutAward(auction, stall)
             return
         }
@@ -796,6 +778,33 @@ class AuctionLifecycleService(
         awardWinner(auction, stall, bid)
     }
 
+    private fun winnerEligible(auction: Auction, stall: Stall, bid: Bid): Boolean {
+        // REQ-212 — limit gate. The winner already paid at bid time, so close
+        // the auction first to avoid retry/double-refund loops, then refund.
+        if (bid.guildId != null && !mayManageGuild(bid.bidder, bid.guildId)) {
+            return false
+        }
+        if (bid.guildId != null && guildAlreadyWonOpeningRound(auction, bid.guildId)) {
+            return false
+        }
+        val counts = ownership.counts(bid.bidder)
+        // Personal limits do not apply to guild holdings; the guild cap does (REQ-399).
+        val decision = if (bid.guildId != null) guildClaimDecision(bid.bidder, bid.guildId) else limits.canClaim(
+            player = bid.bidder,
+            kind = stall.kind,
+            currentTotal = counts.total,
+            currentForKind = counts.byKind[stall.kind] ?: 0,
+        )
+        if (decision is LimitResolutionService.ClaimDecision.Rejected) {
+            logger.info(
+                "Auction ${auction.id} winner ${bid.bidder} over limit " +
+                    "($decision); refunding and reverting without award."
+            )
+            return false
+        }
+        return true
+    }
+
     private fun awardWinner(auction: Auction, stall: Stall, bid: Bid) {
         val awardAt = clock.instant()
         val updatedStall = stall.awardTo(
@@ -804,10 +813,7 @@ class AuctionLifecycleService(
             awardAt,
             awardAt.plus(RentTimingPolicy.collectionInterval(config)),
         )
-        val proceeds = bid.amount - (bid.amount * config.auction.feePct).toLong()
-        val seller = stall.owner.takeIf { it.type == OwnerType.SOLO ||
-            (it.type == OwnerType.GUILD && stall.state != StallState.EMERGENCY_AUCTIONING) }
-        val payout = seller?.takeIf { proceeds > 0 }?.let { AuctionPayment(auction.id, "SELLER", it, proceeds) }
+        val payout = sellerPayment(auction, stall, bid)
         auctionRepository.commitTransition(auction, auction.close(), updatedStall, payout)
         stallRepository.onExternalStateCommit(stall.id)
         payout?.let(::deliverPayment)
@@ -819,6 +825,17 @@ class AuctionLifecycleService(
             lang.msg("auction.won", "stall" to stall.id.value, "amount" to bid.amount)
         )
 
+        syncAwardRegion(updatedStall, bid)
+    }
+
+    private fun sellerPayment(auction: Auction, stall: Stall, bid: Bid): AuctionPayment? {
+        val proceeds = bid.amount - (bid.amount * config.auction.feePct).toLong()
+        val seller = stall.owner.takeIf { it.type == OwnerType.SOLO ||
+            (it.type == OwnerType.GUILD && stall.state != StallState.EMERGENCY_AUCTIONING) }
+        return seller?.takeIf { proceeds > 0 }?.let { AuctionPayment(auction.id, "SELLER", it, proceeds) }
+    }
+
+    private fun syncAwardRegion(updatedStall: Stall, bid: Bid) {
         // 2. Sync region AFTER persist (best-effort).
         // If this fails, the DB is correct; /em rg resync can fix WG.
         try {
