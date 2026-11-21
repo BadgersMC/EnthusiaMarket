@@ -1,5 +1,6 @@
 package net.badgersmc.em.interaction.bedrock
 
+import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.interaction.ShopMenuPage
 import net.badgersmc.em.domain.shop.Shop
@@ -23,7 +24,7 @@ class BedrockOwnedShopsForm(player: Player, private val shops: ShopRepository,
         val builder = SimpleForm.builder().title(lang.legacy("gui.shop.owned.title"))
         builder.content(lang.legacy("gui.shop.search.page", "page" to page.index + 1,
             "pages" to page.pages, "count" to page.count))
-        editable.forEach { builder.button("${it.stallId}: ${it.sellAmount}x / ${it.costAmount}") }
+        editable.forEach { builder.button(MarketText.bedrock("${it.stallId}: ${it.sellAmount}x / ${it.costAmount}", MarketText.gold)) }
         val previous = if (page.index > 0) editable.size else -1
         val next = if (page.index + 1 < page.pages) editable.size + (if (previous >= 0) 1 else 0) else -1
         if (previous >= 0) builder.button(lang.legacy("gui.shop.search.prev"))

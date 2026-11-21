@@ -60,7 +60,7 @@ class BedrockOwnedShopsPaginationTest {
                 assertTrue(form.content().contains("(page, ${index + 1})"))
                 assertTrue(form.content().contains("(pages, $pages)"))
                 ids.addAll(form.buttons().mapNotNull { button ->
-                    button?.text()?.substringBefore(":")?.removePrefix("stall")?.toIntOrNull()
+                    button?.text()?.let(org.bukkit.ChatColor::stripColor)?.substringBefore(":")?.removePrefix("stall")?.toIntOrNull()
                 })
                 val next = form.buttons().indexOfFirst { it?.text()?.startsWith("gui.shop.search.next") == true }
                 assertEquals(index + 1 < pages, next >= 0)

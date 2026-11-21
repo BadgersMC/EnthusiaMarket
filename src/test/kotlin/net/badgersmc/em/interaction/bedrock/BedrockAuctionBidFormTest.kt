@@ -33,7 +33,7 @@ class BedrockAuctionBidFormTest {
 
     @Test fun `form preserves review content and defers selected action to main`() {
         val form = form()
-        assertEquals("Personal\nFULL bid: 100", form.content())
+        assertEquals("Personal\nFULL bid: 100", org.bukkit.ChatColor.stripColor(form.content()))
         respond(form, 0)
         assertEquals(0, clicks)
         queued.single().invoke()

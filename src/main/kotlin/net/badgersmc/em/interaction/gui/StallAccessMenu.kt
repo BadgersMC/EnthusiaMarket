@@ -1,5 +1,7 @@
 package net.badgersmc.em.interaction.gui
 
+import net.badgersmc.em.interaction.MarketText
+import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.OutlinePane
@@ -42,7 +44,8 @@ class StallAccessMenu(
         val title = if (stall.owner.type == OwnerType.GUILD) {
             OptionalGuildMenuTitleLookup.title(stall.owner.id, player.uniqueId, 6, plainTitle)
         } else plainTitle
-        val gui = ChestGui(6, title)
+        val gui = if (title == plainTitle) ChestGui(6, ComponentHolder.of(Component.text(title, MarketText.copper)))
+            else ChestGui(6, title)
         val pane = OutlinePane(9, 6)
         choices.drop(current * 45).take(45).forEach { choice ->
             pane.addItem(button(choice.icon, choice.title, choice.select))
@@ -69,7 +72,7 @@ class StallAccessMenu(
             }
         }
         section == "blacklist" -> listOf(Choice(Material.NAME_TAG, labels.text("blacklist.add")) {
-            player.closeInventory(); player.sendMessage(labels.text("blacklist.command", "stall" to id))
+            player.closeInventory(); player.sendMessage(Component.text(labels.text("blacklist.command", "stall" to id), MarketText.cream))
         }) + settings.blacklist.sortedBy { it.toString() }.mapIndexed { number, uuid ->
             val name = labels.player(org.bukkit.Bukkit.getOfflinePlayer(uuid).name, number + 1)
             Choice(Material.PLAYER_HEAD, labels.text("player.unblock", "name" to name)) {
@@ -108,13 +111,13 @@ class StallAccessMenu(
     private fun mutate(player: Player, id: String, section: String, change: (StallAccessSettings) -> StallAccessSettings) {
         runCatching { service.edit(player.uniqueId, id, change) }
             .onSuccess { policy -> index.cached(id)?.let { projection.apply(it, policy) } }
-            .onFailure { player.sendMessage(StallAccessUi.failure("menu stall=$id actor=${player.uniqueId}", it)) }
+            .onFailure { player.sendMessage(Component.text(StallAccessUi.failure("menu stall=$id actor=${player.uniqueId}", it), MarketText.error)) }
         open(player, id, section)
     }
 
     private fun button(icon: Material, title: String, select: () -> Unit): GuiItem {
         val item = ItemStack(icon)
-        item.editMeta { it.displayName(Component.text(title)) }
+        item.editMeta { it.displayName(Component.text(title, MarketText.copper)) }
         return GuiItem(item) { event -> event.isCancelled = true; if (event.isLeftClick) select() }
     }
 

@@ -102,6 +102,7 @@ open class EnthusiaMarket : JavaPlugin() {
         }
 
         // i18n service — wired manually since LangService lives outside the EM scan package.
+        net.badgersmc.em.infrastructure.i18n.BalancedLocaleUpgrade.apply(dataFolder.toPath(), logger)
         val lang = LangService(this, Locale(cfg.lang.locale), EnthusiaMarketLang::class.java)
         ctx.registerBean("langService", LangService::class, lang)
         net.badgersmc.em.interaction.StallAccessUi.configure(lang, logger)

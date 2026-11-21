@@ -1,6 +1,8 @@
 
 # Tasks — EnthusiaMarket
 
+- Market text uses the Balanced palette for chat, menus, signs and weekly showcases. Shop creation spells out the selected direction. Verify stock locale upgrades, preserved overrides and repeat startup with BalancedLocaleUpgradeTest. Native Java and Bedrock visual acceptance remains pending.
+
 - [~] WEEKLY-STALL-DISPLAYS — Add independent closed-week player and guild holograms and representative NPCs. Automatic awards use archived sale-time identities and a verified closed-week coverage interval. See weekly-stall-displays.md for configuration and native acceptance.
 
 - [~] WEBSITE-SALES-ATTRIBUTION — REQ-402/403/404/405: preserve sale-time stall and guild IDs through history and legacy-compatible outbox; prepare a bounded authenticated public exporter without guessing historical ownership. Solo-only feed is incomplete; assess binary compatibility, guild eligibility and restore handling before delivery. Evidence: website-sale-attribution-plan.md. TEST recorded one redstone purchase at 11 raw gold and verified one tracker trade across consecutive scheduled polls. The full server rollback rehearsal and a complete qualifying week are still open.
