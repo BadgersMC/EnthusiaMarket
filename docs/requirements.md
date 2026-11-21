@@ -811,3 +811,7 @@ WHEN the sales exporter runs behind a managed HTTPS proxy THE SYSTEM SHALL allow
 When a customer confirms a shop offer, Market must compare it with the stored listing and the customer's current tariff. A changed or deleted listing requires reopening the shop. Stock changes alone may leave the offer valid. A bulk confirmation requires the full selected quantity. Java and Bedrock must quote the same rounded currency total used at settlement.
 
 Creating a guild shop requires current membership, the owning guild's stock-management permission and stall stock access. The sign and linked container must belong to the same stall. Breaking a guild shop requires the current guild permission. Multi-block placement must pass the build check at every affected position. Staff overrides remain subject to the existing server protections.
+
+## Polygonal stall measurement
+
+When a stall has a simple WorldGuard polygon with one inclusive height range, auction volume and volume-based rent shall count each claimed block column through that height. Auction dimensions remain the outer spans. Floor material, furniture and free air do not affect the count. Explicit importer minimum bids and previously saved rent terms remain in force until separately changed.

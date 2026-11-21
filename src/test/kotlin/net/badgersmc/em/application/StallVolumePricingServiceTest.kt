@@ -57,6 +57,14 @@ class StallVolumePricingServiceTest {
     }
 
     @Test
+    fun `polygon rent excludes the public aisle`() {
+        val bounds = RegionProvider.RegionBounds(0, 100, 0, 5, 103, 5, claimedColumns = 32)
+        val (svc, _, _) = service(bounds = mapOf("stall69" to bounds))
+        assertEquals(128L, svc.volumeOf("world", "stall69"))
+        assertEquals(114L, svc.termsFor("world", "stall69")?.dailyRent(0L))
+    }
+
+    @Test
     fun `volume is the inclusive block count of the region cuboid`() {
         val (svc, _, _) = service(
             bounds = mapOf("stall1" to RegionProvider.RegionBounds(0, 0, 0, 5, 3, 4))

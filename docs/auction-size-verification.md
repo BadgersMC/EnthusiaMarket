@@ -32,3 +32,9 @@ unverified. Icons and data are illustrative; no bids can be placed in preview.
 
 Local Gradle and hosted CI need current capacity dispositions. Native Java and
 Bedrock acceptance, final review, PR, merge and TEST activation are not claimed.
+
+### Polygon rehearsal
+
+The previous width × length × height calculation includes the public cutout. Trace a six-by-six footprint through (0,0), (5,0), (5,3), (3,3), (3,5), (0,5). At Y=100 through 103 the region covers 32 columns and 128 blocks. (3,5) belongs to the alcove and (4,5) belongs to the aisle. Public paths need their own build protection if the surrounding world otherwise allows building.
+
+The WorldGuard adapter counts interior and boundary lattice points using Pick's theorem, caches the result by outline and supplies the same measurement to auction lore and rent pricing. Self-intersecting or degenerate outlines have no quoted volume. Regression coverage uses actual WorldGuard containment for a concave boundary and a diagonal polygon, and checks the rent and rendered auction lore.

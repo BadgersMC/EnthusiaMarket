@@ -8,6 +8,14 @@ import org.bukkit.Bukkit
 @Component
 class WorldGuardRegionProvider : RegionProvider {
 
+    // Key by the immutable outline so WorldGuard redefinitions invalidate the measured area.
+    private val floorAreas = java.util.WeakHashMap<List<com.sk89q.worldedit.math.BlockVector2>, Long?>()
+
+    private fun floorArea(points: List<com.sk89q.worldedit.math.BlockVector2>): Long? = synchronized(floorAreas) {
+        if (!floorAreas.containsKey(points)) floorAreas[points] = claimedPolygonColumns(points)
+        floorAreas[points]
+    }
+
     override fun footprint(world: String, id: String): RegionProvider.Footprint? {
         val bukkitWorld = Bukkit.getWorld(world) ?: return null
         val manager = WorldGuard.getInstance().platform.regionContainer.get(
@@ -71,6 +79,12 @@ class WorldGuardRegionProvider : RegionProvider {
         val region = regionManager.getRegion(id) ?: return null
         val min = region.minimumPoint
         val max = region.maximumPoint
-        return RegionProvider.RegionBounds(min.x(), min.y(), min.z(), max.x(), max.y(), max.z())
+        val bounds = RegionProvider.RegionBounds(min.x(), min.y(), min.z(), max.x(), max.y(), max.z())
+        return when (region) {
+            is com.sk89q.worldguard.protection.regions.ProtectedCuboidRegion -> bounds
+            is com.sk89q.worldguard.protection.regions.ProtectedPolygonalRegion ->
+                bounds.copy(claimedColumns = floorArea(region.points))
+            else -> bounds.copy(claimedColumns = null)
+        }
     }
 }
