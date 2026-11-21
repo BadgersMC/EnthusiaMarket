@@ -819,3 +819,7 @@ When a stall has a simple WorldGuard polygon with one inclusive height range, au
 ## Stall command completion
 
 When a player completes a registered stall argument, Market shall suggest current matching stall IDs. Management and guild report commands shall use their corresponding authority checks. When a command accepts a bounded choice or a formatted value, Market shall offer matching values or valid examples. Requesting suggestions shall leave command and auction state untouched.
+
+## Player stall finder
+
+When a player browses the market or selects a registered public stall, Market shall list selectable stalls in pages and guide only the requesting player to the selected region, including empty stalls. Held stalls shall be excluded. The existing finder settings, cancellation and lifetime shall apply.

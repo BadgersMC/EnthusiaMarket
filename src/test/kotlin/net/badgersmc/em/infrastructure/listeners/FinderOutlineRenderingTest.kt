@@ -55,6 +55,22 @@ class FinderOutlineRenderingTest {
     }
     @AfterTest fun cleanup() { service.close(); unmockkStatic(Bukkit::class) }
 
+    @Test fun `stall without shops guides to its registered region and clears on stop`() {
+        val stall = mockk<net.badgersmc.em.domain.stall.Stall>()
+        every { stall.id } returns net.badgersmc.em.domain.stall.StallId("market_42")
+        every { stall.world } returns "world"
+        every { stall.regionId } returns "stall"
+        val locator = mockk<FinderLocator>(relaxed = true)
+        every { locator.show(player, any(), any()) } returns true
+        service.navigation.locator = locator
+        service.startStall(player, stall)
+        service.render()
+        verify(exactly = 1) { regions.footprint("world", "stall") }
+        verify { lang.msg("stall_finder.started", *anyVararg()) }
+        service.stop(player)
+        verify { locator.clear(player) }
+    }
+
     @Test fun `outline particles are player only and footprint is cached for the selected guide`() {
         service.start(player, shop())
         service.render()

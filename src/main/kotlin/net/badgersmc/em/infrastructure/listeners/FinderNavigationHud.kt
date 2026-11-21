@@ -20,7 +20,7 @@ internal class FinderNavigationHud(
     private val lang: LangService,
     private val plugin: Plugin,
 ) {
-    private data class Session(val player: Player, val stall: String, val item: String,
+    private data class Session(val player: Player, val stall: String, val item: String?,
                                var arrived: Boolean = false, var actionBar: Boolean = false)
     private val sessions = mutableMapOf<UUID, Session>()
     internal var locator: FinderLocator = FinderLocators.create(plugin)
@@ -33,6 +33,11 @@ internal class FinderNavigationHud(
             it.replaceFirstChar(Char::titlecase)
         }
         sessions[player.uniqueId] = Session(player, shop.stallId, label)
+    }
+
+    fun startStall(player: Player, id: String) {
+        stop(player)
+        sessions[player.uniqueId] = Session(player, id, null)
     }
 
     /** Returns whether this recipient still needs direction particles. Outline rendering is independent. */
@@ -107,8 +112,9 @@ internal class FinderNavigationHud(
     private fun distanceStatus(session: Session, frame: FinderTrailTracker.Frame) {
         val point = session.player.location
         val distance = frame.remainingDistance ?: frame.target?.distance(FinderTrailTracker.Point(point.x, point.y, point.z)) ?: return
-        val message = if (frame.arrived) "finder_trail.arrived" else "finder_trail.destination"
-        session.player.sendActionBar(lang.msg(message, "stall" to session.stall, "item" to session.item,
+        val prefix = if (session.item == null) "stall_finder" else "finder_trail"
+        val message = if (frame.arrived) "$prefix.arrived" else "$prefix.destination"
+        session.player.sendActionBar(lang.msg(message, "stall" to session.stall, "item" to session.item.orEmpty(),
             "distance" to ceil(distance).toInt().toString()))
         session.actionBar = true
     }
