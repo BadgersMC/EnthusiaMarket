@@ -15,6 +15,11 @@ import kotlin.test.assertIs
 import java.util.UUID
 
 class GuildTradePolicyMenuTest {
+    @Test fun `visible banners fill only the rows needed`() {
+        val counts = listOf(0, 1, 9, 10, 36, 37, 45)
+        assertEquals(listOf(1, 1, 1, 2, 4, 5, 5), counts.map(::guildPolicyContentRows))
+    }
+
     @Test fun `step up adds 5 capped at MAX`() {
         assertEquals(20, GuildTradePolicyMenu.stepUp(15))
         assertEquals(99, GuildTradePolicyMenu.stepUp(97))   // cap

@@ -12,6 +12,8 @@ import org.bukkit.block.banner.Pattern
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.BannerMeta
 
+internal fun guildPolicyContentRows(entries: Int): Int = (entries.coerceIn(1, 45) + 8) / 9
+
 internal fun guildPolicyBanner(design: GuildProvider.BannerDesign?, name: Component, vararg lore: Component): ItemStack {
     val base = DyeColor.entries.firstOrNull { it.name.equals(design?.baseColor, ignoreCase = true) } ?: DyeColor.WHITE
     val item = ItemStack(Material.valueOf("${base.name}_BANNER"))
