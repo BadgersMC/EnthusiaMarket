@@ -36,29 +36,55 @@ class FinderTrailService(
     fun start(player: Player, shop: Shop) {
         if (!config.finderTrail.enabled) { player.sendMessage(lang.msg("finder_trail.disabled")); return }
         val target = FinderTrailTracker.Point(shop.signX + 0.5, shop.signY + 0.5, shop.signZ + 0.5)
+        begin(player, shop.signWorld, target, "finder_trail.started",
+            { regions.footprint(shop.signWorld, shop.stallId) },
+            { player.sendMessage(lang.msg("finder_trail.out_of_range")) },
+            { navigation.start(player, shop) })
+    }
+
+    fun startStall(player: Player, stall: net.badgersmc.em.domain.stall.Stall) {
+        if (!config.finderTrail.enabled) { player.sendMessage(lang.msg("finder_trail.disabled")); return }
+        val shape = regions.footprint(stall.world, stall.regionId)
+        val pos = player.location
+        val corner = shape?.vertices?.minByOrNull { v ->
+            val dx = v.x - pos.x
+            val dz = v.z - pos.z
+            dx * dx + dz * dz
+        }
+        if (shape == null || corner == null) {
+            player.sendMessage(lang.msg("stall_finder.missing_region", "stall" to stall.id.value))
+            return
+        }
+        val y = pos.y.coerceIn(shape.minY + 0.5, shape.maxY - 0.5)
+        val target = FinderTrailTracker.Point(corner.x, y, corner.z)
+        begin(player, stall.world, target, "stall_finder.started", { shape }, {
+            player.sendMessage(lang.msg("stall_finder.location", "stall" to stall.id.value, "world" to stall.world,
+                "x" to floor(target.x).toInt(), "y" to floor(y).toInt(), "z" to floor(target.z).toInt()))
+        }, { navigation.startStall(player, stall.id.value) })
+    }
+
+    private fun begin(player: Player, world: String, target: FinderTrailTracker.Point, startedKey: String,
+                      footprint: () -> RegionProvider.Footprint?, onOutOfRange: () -> Unit, startHud: () -> Unit) {
         val position = player.location
         val current = FinderTrailTracker.Point(position.x, position.y, position.z)
-        if (position.world?.name != shop.signWorld || current.distance(target) > range()) {
-            player.sendMessage(lang.msg("finder_trail.out_of_range")); return
+        if (position.world?.name != world || current.distance(target) > range()) {
+            onOutOfRange(); return
         }
-        val trail = FinderTrailTracker.Trail(shop.signWorld, target,
+        val trail = FinderTrailTracker.Trail(world, target,
             Instant.now(clock).plusSeconds(config.finderTrail.durationSeconds.coerceIn(1, MAX_DURATION)),
-            footprint(shop), route(shop.signWorld, current, target))
+            if (config.finderTrail.outline.enabled) footprint() else null, route(world, current, target))
         if (!tracker.start(player.uniqueId, trail, config.finderTrail.maxActive.coerceIn(1, MAX_ACTIVE))) {
             player.sendMessage(lang.msg("finder_trail.busy")); return
         }
         glow.clear(player.uniqueId)
-        navigation.start(player, shop)
+        startHud()
         ensureRenderTask()
-        player.sendMessage(lang.msg("finder_trail.started", "seconds" to config.finderTrail.durationSeconds.coerceIn(1, MAX_DURATION)))
+        player.sendMessage(lang.msg(startedKey, "seconds" to config.finderTrail.durationSeconds.coerceIn(1, MAX_DURATION)))
     }
 
     private fun route(world: String, from: FinderTrailTracker.Point, target: FinderTrailTracker.Point): List<FinderTrailTracker.Point> {
         return FinderRouteConfiguration.plan(config.finderTrail.routing, world, from, target)
     }
-
-    private fun footprint(shop: Shop): RegionProvider.Footprint? =
-        if (config.finderTrail.outline.enabled) regions.footprint(shop.signWorld, shop.stallId) else null
 
     private fun ensureRenderTask() {
         if (task == null) task = plugin.server.scheduler.runTaskTimer(plugin, Runnable { render() }, 1, RENDER_TICKS)

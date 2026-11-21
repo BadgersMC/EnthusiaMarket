@@ -1242,3 +1242,7 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 ## Stall command completion
 
 - Wire registered stall arguments and related auction, access and reporting inputs to Brigadier suggestions. Verify live directory changes, prefix replacement, scoped confirmation tokens and report routing with regression tests. Native-client acceptance follows deployment.
+
+## Player stall finder
+
+- Add public stall browsing, ID suggestions and shop-independent region guidance. Verify an empty stall can start and stop the shared finder session. Client acceptance follows TEST deployment.
