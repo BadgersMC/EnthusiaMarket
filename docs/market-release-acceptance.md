@@ -6,6 +6,12 @@ The plugin source, resources, build and tests at release commit `8dff11a7` match
 
 Subsequent static-analysis fixes refactored command providers, receipts, auctions and weekly award handling. The replacement code requires its own CI results. The October checklist in [upstream PR #217](https://github.com/BadgersMC/EnthusiaMarket/pull/217) remains a historical manual test plan.
 
+### Release review checks
+
+The HTTP receipt test checks both the sale receipt and its award owner. The command registration test exercises inherited shop history routes with Nexus. The finder configuration test loads inherited settings through Nexus. The hosted MariaDB tests exercise the upgrade from the legacy table layout.
+
+The quality-review commits retain the existing Codacy thresholds. The [PR checks](https://github.com/BadgersMC/EnthusiaMarket/pull/226/checks) report the results for the current head.
+
 ## October 30 reconciliation
 
 Evidence reviewed on 2026-10-30. This ledger separates automated, historical

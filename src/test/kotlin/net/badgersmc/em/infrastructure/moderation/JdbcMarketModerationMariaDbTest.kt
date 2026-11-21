@@ -341,9 +341,8 @@ class JdbcMarketModerationMariaDbTest {
     }
 
     private fun createLegacyTables(connection: java.sql.Connection) {
-        val script = requireNotNull(javaClass.getResource("/mariadb/legacy-market-tables.sql")).readText()
         connection.createStatement().use { statement ->
-            for (ddl in script.split(';').filter(String::isNotBlank)) statement.executeUpdate(ddl)
+            for (ddl in legacyMarketTables) statement.executeUpdate(ddl)
         }
     }
 

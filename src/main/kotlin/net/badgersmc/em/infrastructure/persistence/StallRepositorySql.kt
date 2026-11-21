@@ -92,10 +92,6 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         }
     }
 
-    private fun PreparedStatement.setInstant(index: Int, value: java.time.Instant?) {
-        if (value == null) setNull(index, java.sql.Types.INTEGER) else setLong(index, value.toEpochMilli())
-    }
-
     private fun bindStallFields(ps: PreparedStatement, stall: Stall, offset: Int) {
         ps.setString(offset + 1, stall.regionId)
         ps.setString(offset + 2, stall.world)
@@ -224,3 +220,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
 private const val INSERT_RENT_PAYMENT = """INSERT INTO rent_ledger
     (stall_id, charged_at, amount, paid, payer_type, payer_id, covered_from, covered_until)
     VALUES (?, ?, ?, 1, ?, ?, ?, ?)"""
+
+private fun PreparedStatement.setInstant(index: Int, value: java.time.Instant?) {
+    if (value == null) setNull(index, java.sql.Types.INTEGER) else setLong(index, value.toEpochMilli())
+}
