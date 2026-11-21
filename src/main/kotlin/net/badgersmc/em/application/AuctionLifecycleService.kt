@@ -790,12 +790,7 @@ class AuctionLifecycleService(
     private fun winnerEligible(auction: Auction, stall: Stall, bid: Bid): Boolean {
         // REQ-212 — limit gate. The winner already paid at bid time, so close
         // the auction first to avoid retry/double-refund loops, then refund.
-        if (bid.guildId != null && !mayManageGuild(bid.bidder, bid.guildId)) {
-            return false
-        }
-        if (bid.guildId != null && guildAlreadyWonOpeningRound(auction, bid.guildId)) {
-            return false
-        }
+        if (!guildWinnerEligible(auction, bid)) return false
         val decision = winnerLimit(stall, bid)
         if (decision is LimitResolutionService.ClaimDecision.Rejected) {
             logger.info(
@@ -805,6 +800,11 @@ class AuctionLifecycleService(
             return false
         }
         return true
+    }
+
+    private fun guildWinnerEligible(auction: Auction, bid: Bid): Boolean {
+        val guild = bid.guildId ?: return true
+        return mayManageGuild(bid.bidder, guild) && !guildAlreadyWonOpeningRound(auction, guild)
     }
 
     private fun winnerLimit(stall: Stall, bid: Bid): LimitResolutionService.ClaimDecision {

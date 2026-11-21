@@ -31,7 +31,7 @@ class ShopCommands(
     private val management: ShopManagementService,
     private val shopRepository: ShopRepository,
     private val breakDelete: BreakDeleteMode,
-    private val transactions: ShopTransactionRepository,
+    transactions: ShopTransactionRepository,
     private val lookAt: LookAtShopResolver,
     private val adminBreak: AdminBreakMode,
     private val signRenderer: ShopSignRenderer,
@@ -42,7 +42,7 @@ class ShopCommands(
     private val playerNameResolver: PlayerNameResolver,
     private val menuFactory: net.badgersmc.em.interaction.MenuFactory? = null,
     private val finderTrail: net.badgersmc.em.infrastructure.listeners.FinderTrailService? = null,
-) {
+) : ShopHistoryRoutes(transactions, lang) {
     @Subcommand("list")
     @Permission("enthusiamarket.shop.use")
     fun list(@Context sender: CommandSender) {
@@ -208,72 +208,6 @@ class ShopCommands(
         val player = sender as? Player ?: return
         finderTrail?.setMode(player, mode)
     }
-
-    private val historyMessages: ShopHistoryMessages
-        get() {
-            return ShopHistoryMessages(lang, historyZone, transactions)
-        }
-
-    internal var historyClock: java.time.Clock = java.time.Clock.systemUTC()
-    internal var historyZone: java.time.ZoneId = java.time.ZoneId.systemDefault()
-
-    @Subcommand("history")
-    @Permission("enthusiamarket.shop.use")
-    fun history(@Context sender: CommandSender) = history(sender, 1)
-
-    @Subcommand("history")
-    @Permission("enthusiamarket.shop.use")
-    fun history(@Context sender: CommandSender, @Arg("page") page: Int) {
-        historyMessages.read(sender, page, ShopHistorySelection(null, "/shop history", "all"))
-    }
-
-    @Subcommand("history all")
-    @Permission("enthusiamarket.shop.use")
-    fun historyAll(@Context sender: CommandSender) = historyAll(sender, 1)
-
-    @Subcommand("history all")
-    @Permission("enthusiamarket.shop.use")
-    fun historyAll(@Context sender: CommandSender, @Arg("page") page: Int) {
-        historyMessages.read(sender, page, ShopHistorySelection(null, "/shop history all", "all"))
-    }
-
-    @Subcommand("history today")
-    @Permission("enthusiamarket.shop.use")
-    fun historyToday(@Context sender: CommandSender) = historyToday(sender, 1)
-
-    @Subcommand("history today")
-    @Permission("enthusiamarket.shop.use")
-    fun historyToday(@Context sender: CommandSender, @Arg("page") page: Int) {
-        val window = net.badgersmc.em.application.ShopHistoryDates.today(historyClock, historyZone)
-        historyMessages.read(sender, page, ShopHistorySelection(window, "/shop history today", "today"))
-    }
-
-    @Subcommand("history range")
-    @Permission("enthusiamarket.shop.use")
-    fun historyRange(
-        @Context sender: CommandSender,
-        @Arg("from") from: String,
-        @Arg("to") to: String,
-    ) = historyRange(sender, from, to, 1)
-
-    @Subcommand("history range")
-    @Permission("enthusiamarket.shop.use")
-    fun historyRange(
-        @Context sender: CommandSender,
-        @Arg("from") from: String,
-        @Arg("to") to: String,
-        @Arg("page") page: Int,
-    ) {
-        val window = try {
-            net.badgersmc.em.application.ShopHistoryDates.range(from, to, historyZone)
-        } catch (_: java.time.DateTimeException) {
-            sender.sendMessage(lang.msg("shop.history.invalid_dates")); return
-        } catch (_: IllegalArgumentException) {
-            sender.sendMessage(lang.msg("shop.history.invalid_dates")); return
-        }
-        historyMessages.read(sender, page, ShopHistorySelection(window, "/shop history range $from $to", "$from to $to"))
-    }
-
 
     @Subcommand("admin view")
     @Permission("enthusiamarket.admin.shop")

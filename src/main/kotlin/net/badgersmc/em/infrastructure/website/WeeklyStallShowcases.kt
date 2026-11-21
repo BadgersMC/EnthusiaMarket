@@ -49,15 +49,19 @@ internal class WeeklyStallShowcases private constructor(
             val world = entry.location.world ?: return@forEach
             if (!world.isChunkLoaded(entry.location.blockX shr 4, entry.location.blockZ shr 4)) return@forEach
             val hologram = hologram(entry, world)
-            val heading = Component.text(entry.title, entry.color)
-            val result = if (winner == null) Component.text(display.line(), NamedTextColor.GRAY) else
-                Component.text(winner.stall, NamedTextColor.WHITE).append(Component.newline())
-                    .append(Component.text(winner.ownerName, entry.color))
-            val text = heading.append(Component.newline()).append(result)
-            if (entry.shownText != text) {
-                hologram.text(text)
-                entry.shownText = text
-            }
+            updateHologram(entry, hologram, display, winner)
+        }
+    }
+
+    private fun updateHologram(entry: Entry, hologram: TextDisplay, display: StallWeekDisplay, winner: StallWeekWinner?) {
+        val heading = Component.text(entry.title, entry.color)
+        val result = if (winner == null) Component.text(display.line(), NamedTextColor.GRAY) else
+            Component.text(winner.stall, NamedTextColor.WHITE).append(Component.newline())
+                .append(Component.text(winner.ownerName, entry.color))
+        val text = heading.append(Component.newline()).append(result)
+        if (entry.shownText != text) {
+            hologram.text(text)
+            entry.shownText = text
         }
     }
 
@@ -129,13 +133,18 @@ internal class WeeklyStallShowcases private constructor(
         private fun entry(config: YamlConfiguration, key: String): Entry? {
             val section = config.getConfigurationSection(key) ?: return null
             val world = section.getString("world")?.let(Bukkit::getWorld) ?: return null
-            val coords = listOf("x", "y", "z").map { section.getDouble(it, Double.NaN) }
-            val yaw = section.getDouble("yaw", 0.0).toFloat()
-            if (coords.any { !it.isFinite() } || !yaw.isFinite()) return null
+            val location = position(section, world) ?: return null
             val guild = key == "guild"
             return Entry(key, if (guild) "Guild Stall of the Week" else "Stall of the Week",
                 if (guild) NamedTextColor.LIGHT_PURPLE else NamedTextColor.GOLD,
-                Location(world, coords[0], coords[1], coords[2], yaw, 0f))
+                location)
+        }
+
+        private fun position(section: org.bukkit.configuration.ConfigurationSection, world: org.bukkit.World): Location? {
+            val coords = listOf("x", "y", "z").map { section.getDouble(it, Double.NaN) }
+            val yaw = section.getDouble("yaw", 0.0).toFloat()
+            if (coords.any { !it.isFinite() } || !yaw.isFinite()) return null
+            return Location(world, coords[0], coords[1], coords[2], yaw, 0f)
         }
 
         private fun Location.distanceSquaredIfSameWorld(other: Location) =

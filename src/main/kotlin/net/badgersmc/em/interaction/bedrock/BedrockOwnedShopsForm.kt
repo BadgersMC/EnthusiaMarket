@@ -16,9 +16,7 @@ class BedrockOwnedShopsForm(player: Player, private val shops: ShopRepository,
 
     override fun buildForm(): SimpleForm {
         val eligible = if (player.hasPermission("enthusiamarket.shop.use"))
-            management.shopsOwnedBy(player.uniqueId).filter {
-                management.canEdit(it, player.uniqueId) || management.canDelete(it, player.uniqueId)
-            } else emptyList()
+            management.shopsOwnedBy(player.uniqueId).filter(::mayManage) else emptyList()
         val page = ShopMenuPage.of(eligible, pageIndex) { it.id }
         pageIndex = page.index
         val editable = page.items
@@ -41,8 +39,7 @@ class BedrockOwnedShopsForm(player: Player, private val shops: ShopRepository,
     private fun handleResponse(page: ShopMenuPage<Shop>, clicked: Int, previous: Int, next: Int) {
         if (!player.hasPermission("enthusiamarket.shop.use")) return
         if (isNavigation(clicked, previous, next)) {
-            pageIndex = if (clicked == previous) page.index - 1 else page.index + 1
-            open(player)
+            navigate(page.index, clicked == previous)
             return
         }
         val selected = page.items.getOrNull(clicked) ?: return
@@ -52,6 +49,11 @@ class BedrockOwnedShopsForm(player: Player, private val shops: ShopRepository,
             return
         }
         BedrockShopEditForm(player, current, shops, logger, lang, management).open(player)
+    }
+
+    private fun navigate(current: Int, back: Boolean) {
+        pageIndex = if (back) current - 1 else current + 1
+        open(player)
     }
 
     private fun mayManage(shop: Shop) =

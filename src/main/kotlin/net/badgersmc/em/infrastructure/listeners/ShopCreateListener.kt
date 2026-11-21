@@ -42,22 +42,7 @@ open class ShopCreateListener(
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {
         val target = creationTarget(event) ?: return
-        val block = target.first
-        val attachedBlock = target.second
-        val loc = block.location
-
-        // Check the sign is inside an owned stall
-        val stall = findStallAt(loc) ?: run {
-            event.player.sendMessage(lang.msg("shop.create.not_in_stall"))
-            return
-        }
-
-        // Check player can manage this stall
-        if (!canManageStall(stall, event.player) || findStallAt(attachedBlock.location)?.id != stall.id) {
-            event.player.sendMessage(lang.msg("shop.create.no_authority"))
-            return
-        }
-
+        val stall = authorizedStall(event.player, target) ?: return
         event.setUseInteractedBlock(Event.Result.DENY)
 
         // Capture the held item as the sell item (REQ-012).
@@ -68,6 +53,26 @@ open class ShopCreateListener(
         }
 
         showCreationMenu(event.player, stall, target, sellItemB64)
+    }
+
+    private fun authorizedStall(player: Player, target: Pair<org.bukkit.block.Block, org.bukkit.block.Block>): Stall? {
+        val block = target.first
+        val attachedBlock = target.second
+        val loc = block.location
+
+        // Check the sign is inside an owned stall
+        val stall = findStallAt(loc) ?: run {
+            player.sendMessage(lang.msg("shop.create.not_in_stall"))
+            return null
+        }
+
+        // Check player can manage this stall
+        if (!canManageStall(stall, player) || findStallAt(attachedBlock.location)?.id != stall.id) {
+            player.sendMessage(lang.msg("shop.create.no_authority"))
+            return null
+        }
+
+        return stall
     }
 
     private fun showCreationMenu(player: Player, stall: Stall, target: Pair<org.bukkit.block.Block, org.bukkit.block.Block>, sellItemB64: String) {

@@ -25,8 +25,10 @@ internal class WebsiteSalesBootstrap(private val plugin: JavaPlugin, private val
         val generation = salesGeneration(settings)
         val configuredGeneration = generation.read() // Fail closed if control state is unavailable.
         val archive = WebsiteSalesArchiveSql(ds)
+        val port = settings.getInt("port", 8124)
+        require(port in 1..65535)
         return WebsiteSalesHttpServer(
-            settings.getInt("port", 8124), websiteToken(settings),
+            port, websiteToken(settings),
             generation::read,
             settings.getString("bind-address", "127.0.0.1") ?: "127.0.0.1",
             reader = archive,
@@ -61,9 +63,12 @@ internal class WebsiteSalesBootstrap(private val plugin: JavaPlugin, private val
         val through = Instant.now()
         if (!config.shop.archiveCaptureEnabled) return null
         val start = coverageStart(settings, through) ?: return null
-        if (!generationMatches() || !historyDrained()) return null
-        return if (archive.hasRejectionsSince(start.toEpochMilli())) null else start to through
+        if (!generationMatches()) return null
+        return (start to through).takeIf { captureComplete(archive, start) }
     }
+
+    private fun captureComplete(archive: WebsiteSalesArchiveSql, start: Instant) =
+        historyDrained() && !archive.hasRejectionsSince(start.toEpochMilli())
 
     private fun coverageStart(settings: YamlConfiguration, through: Instant): Instant? =
         settings.getString("award-capture-from")?.takeIf { it.isNotBlank() }?.let(Instant::parse)?.takeIf { it < through }

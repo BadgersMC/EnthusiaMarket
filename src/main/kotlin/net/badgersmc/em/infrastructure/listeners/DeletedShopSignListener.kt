@@ -27,9 +27,13 @@ class DeletedShopSignListener(private val shops: ShopRepository) : Listener {
             clearListing(world, shop)
         } else {
             // Paper completes the chunk future on the main thread. Never generate new terrain.
-            world.getChunkAtAsync(x, z, false).thenAccept { chunk ->
-                if (chunk != null) clearListing(world, shop)
-            }
+            clearAfterLoad(world, shop)
+        }
+    }
+
+    private fun clearAfterLoad(world: World, shop: Shop) {
+        world.getChunkAtAsync(shop.signX shr 4, shop.signZ shr 4, false).thenAccept { chunk ->
+            if (chunk != null) clearListing(world, shop)
         }
     }
 

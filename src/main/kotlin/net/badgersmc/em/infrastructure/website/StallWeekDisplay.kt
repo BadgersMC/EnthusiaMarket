@@ -40,7 +40,10 @@ internal class StallWeekDisplay(
         val coverage = response.getAsJsonPrimitive("coverageComplete") ?: return null
         if (!coverage.isBoolean) return null
         if (!coverage.asBoolean) return Award(week, "Awaiting verified sales")
-        val winner = response.get("winner") ?: return null
+        return response.get("winner")?.let { winner -> completedWeek(winner, week) }
+    }
+
+    private fun completedWeek(winner: com.google.gson.JsonElement, week: LocalDate): Award? {
         return if (winner.isJsonNull) Award(week, "No qualifying sales") else parseWinner(winner.asJsonObject, week)
     }
 

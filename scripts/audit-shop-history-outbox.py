@@ -143,11 +143,13 @@ def read_transaction(reader):
 
 
 def valid_attribution(reader, version):
-    stall, guild = read_stall_keys(reader) if version >= 2 else (None, None)
+    stall, guild = read_stall_keys(reader, version)
     eligible = reader.boolean() if version >= 3 else False
-    owner = read_award_owner(reader) if version >= 4 else None
-    if version >= 4 and owner is None:
-        return False
+    owner = None
+    if version >= 4:
+        owner = read_award_owner(reader)
+        if owner is None:
+            return False
     if eligible:
         require_public_owner(stall, guild, owner)
     return True
@@ -158,7 +160,9 @@ def require_public_owner(stall, guild, owner):
         raise ValueError("invalid_public_attribution")
 
 
-def read_stall_keys(reader):
+def read_stall_keys(reader, version):
+    if version < 2:
+        return None, None
     stall = reader.utf() if reader.boolean() else None
     guild = read_uuid(reader.utf()) if reader.boolean() else None
     return stall, guild

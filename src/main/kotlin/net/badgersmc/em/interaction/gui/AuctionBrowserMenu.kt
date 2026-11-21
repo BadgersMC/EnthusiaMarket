@@ -134,6 +134,11 @@ class AuctionBrowserMenu(
 
         gui.panes.clear()
 
+        gui.addPane(Slot.fromXY(0, 0), pageItems(sorted, pageCount, now))
+        gui.addPane(Slot.fromXY(0, 5), buildControls(gui, pageCount, sorted.size))
+    }
+
+    private fun pageItems(sorted: List<EntryView>, pageCount: Int, now: Instant): PaginatedPane {
         val itemsPane = PaginatedPane(9, 5)
         for (pageIdx in 0 until pageCount) {
             val pagePane = OutlinePane(9, 5, Pane.Priority.LOWEST)
@@ -144,9 +149,7 @@ class AuctionBrowserMenu(
             itemsPane.addPane(pageIdx, Slot.fromXY(0, 0), pagePane)
         }
         itemsPane.page = currentPage
-        gui.addPane(Slot.fromXY(0, 0), itemsPane)
-
-        gui.addPane(Slot.fromXY(0, 5), buildControls(gui, pageCount, sorted.size))
+        return itemsPane
     }
 
     private fun guardClicks(gui: ChestGui) {

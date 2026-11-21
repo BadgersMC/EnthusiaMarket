@@ -264,6 +264,10 @@ abstract class ShopMenuFixture {
             Component.text(firstArg<String>() + " " + secondArg<Array<Pair<String, Any>>>().joinToString())
         }
         every { lang.raw(any()) } answers { firstArg() }
+        configureTrades()
+    }
+
+    private fun configureTrades() {
         every { trades.balanceOf(any()) } returns 1_000L
         every { trades.offerIsCurrent(any()) } returns true
         every { trades.priceFactor(any(), any()) } returns 1.0

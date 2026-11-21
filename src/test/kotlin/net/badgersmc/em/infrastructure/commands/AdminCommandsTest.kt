@@ -304,17 +304,21 @@ class AdminCommandsTest {
     // --- maintenance freeze commands (CR 3694370395) ---
 
     /** Build AdminCommands with a controllable LangService + MaintenanceFreezeService. */
+    private data class RegionFixture(
+        val stallRepo: StallRepository = mockk(relaxed = true),
+        val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync = mockk(relaxed = true),
+        val regionProvisioner: net.badgersmc.em.domain.ports.RegionProvisioner = mockk(relaxed = true),
+        val mutationGate: net.badgersmc.em.domain.ports.MarketMutationGate = net.badgersmc.em.domain.ports.MarketMutationGate.Open,
+    )
+
     private fun freezeCommands(
         lang: net.badgersmc.nexus.i18n.LangService,
         freeze: net.badgersmc.em.application.MaintenanceFreezeService,
         bulkRentExtension: net.badgersmc.em.application.BulkRentExtensionService? = null,
-        stallRepo: StallRepository = mockk(relaxed = true),
-        regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync = mockk(relaxed = true),
-        regionProvisioner: net.badgersmc.em.domain.ports.RegionProvisioner = mockk(relaxed = true),
-        mutationGate: net.badgersmc.em.domain.ports.MarketMutationGate = net.badgersmc.em.domain.ports.MarketMutationGate.Open,
+        regions: RegionFixture = RegionFixture(),
     ): AdminCommands = AdminCommands(
         service = mockk(relaxed = true),
-        stalls = stallRepo,
+        stalls = regions.stallRepo,
         config = config,
         auctionService = mockk(relaxed = true),
         configManager = mockk(relaxed = true),
@@ -325,8 +329,8 @@ class AdminCommandsTest {
         stallMembers = mockk(relaxed = true),
         sellOffers = mockk(relaxed = true),
         sellback = mockk(relaxed = true),
-        regionMembers = regionMembers,
-        regionProvisioner = regionProvisioner,
+        regionMembers = regions.regionMembers,
+        regionProvisioner = regions.regionProvisioner,
         entityCounter = mockk(relaxed = true),
         regionProvider = mockk(relaxed = true),
         stallInfo = mockk(relaxed = true),
@@ -342,7 +346,7 @@ class AdminCommandsTest {
         maintenanceFreeze = freeze,
         playerNameResolver = mockk(relaxed = true),
         bulkRentExtension = bulkRentExtension,
-        mutationGate = mutationGate,
+        mutationGate = regions.mutationGate,
     )
 
     @Test fun `region resync clears forfeited ACLs but never provisions held or reserved stalls`() {
@@ -362,8 +366,7 @@ class AdminCommandsTest {
         )
         val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
         every { lang.msg(any(), *anyVararg()) } returns Component.empty()
-        freezeCommands(lang, mockk(relaxed = true), stallRepo = repo, regionMembers = regions,
-            regionProvisioner = provisioner, mutationGate = gate).rgResync(sender)
+        freezeCommands(lang, mockk(relaxed = true), regions = RegionFixture(repo, regions, provisioner, gate)).rgResync(sender)
         verify(exactly = 1) { regions.clearOwnersAndMembers("world", "expired") }
         verify(exactly = 1) { provisioner.provision("world", "expired", any()) }
         verify(exactly = 0) { provisioner.provision(any(), match { it != "expired" }, any()) }

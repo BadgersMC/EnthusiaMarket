@@ -59,15 +59,19 @@ class GuildSaleTradeBoundaryTest {
         every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
         every { Bukkit.getLogger() } returns java.util.logging.Logger.getAnonymousLogger()
         every { stalls.findById(any()) } returns Stall(StallId("guild"), "guild", "world", StallState.OWNED, OwnerRef.guild(guild.toString()), Instant.now(), 1000, RentTerms.formula(0.01))
-        every { economy.balance(buyer) } returns 1000
-        every { economy.withdraw(buyer, any()) } returns true
-        every { guilds.shopBankDeposit(guild.toString(), any(), "TestShopper", false) } returns true
-        every { guilds.shopBankWithdraw(guild.toString(), any(), "TestShopper", true) } returns true
+        configurePayments()
         configureStock()
         every { rewards.prepare(guild, buyer, shop.id) } returns id
         val container = mockk<Container>()
         every { container.inventory } returns stock
         service = ContainerTradeServiceHarness(stalls, economy, guilds, mockItemStack = stack, mockContainer = container, saleRewards = rewards, stallAccess = access)
+    }
+
+    private fun configurePayments() {
+        every { economy.balance(buyer) } returns 1000
+        every { economy.withdraw(buyer, any()) } returns true
+        every { guilds.shopBankDeposit(guild.toString(), any(), "TestShopper", false) } returns true
+        every { guilds.shopBankWithdraw(guild.toString(), any(), "TestShopper", true) } returns true
     }
 
     private fun configureStock() {

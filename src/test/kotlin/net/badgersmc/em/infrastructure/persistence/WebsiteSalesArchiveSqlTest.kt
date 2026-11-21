@@ -8,7 +8,6 @@ import net.badgersmc.nexus.persistence.MigrationRunner
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import net.badgersmc.em.infrastructure.website.WebsiteSalesHttpServer
-import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -37,11 +36,10 @@ class WebsiteSalesArchiveSqlTest {
         assertEquals(receipt, page.items.single().recordingId)
         assertEquals("stall1", page.items.single().stall)
         assertEquals(42L, page.items.single().gold)
-        val port = ServerSocket(0).use { it.localPort }
         val token = "test-only-" + "a".repeat(32)
         val generation = UUID.randomUUID()
-        val listener = WebsiteSalesHttpServer(port, token, { generation }, reader = archive)
-        listener.start()
+        val listener = WebsiteSalesHttpServer(0, token, { generation }, reader = archive)
+        val port = listener.start()
         try {
             val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/api/community/sales?protocol=2&after=0&generation=$generation"))
                 .header("Authorization", "Bearer $token").GET().build()

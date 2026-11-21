@@ -67,24 +67,6 @@ class ContainerTradeServiceTradeTest {
         rentTerms = RentTerms.formula(0.01)
     )
 
-    private fun buildService(
-        stallRepo: StallRepository = mockk(relaxed = true),
-        economy: EconomyProvider = mockk(relaxed = true),
-        guildProvider: GuildProvider? = null,
-        tradePolicy: GuildTradePolicyService? = null,
-        shopVault: ShopVaultService? = mockk(relaxed = true),
-        mockCostStack: ItemStack = mockk(relaxed = true),
-        mockContainer: Container? = mockk(relaxed = true),
-        hasAtLeast: InventoryPredicate = inventoryAlwaysHas,
-        canFit: InventoryPredicate = inventoryFitsWhenPositive,
-    ): ContainerTradeService = ContainerTradeServiceHarness(
-        stallRepo, economy, guildProvider, tradePolicy, shopVault,
-        mockItemStack = mockCostStack,
-        mockContainer = mockContainer,
-        hasAtLeast = hasAtLeast,
-        canFit = canFit,
-    )
-
     private fun mockOnlinePlayer(): Pair<Player, PlayerInventory> {
         val playerInv = mockk<PlayerInventory>(relaxed = true)
         val player = mockk<Player>(relaxed = true)
@@ -161,7 +143,7 @@ class ContainerTradeServiceTradeTest {
         every { costStack.clone() } returns costStack
         val vault = mockk<ShopVaultService>()
         every { vault.deposit(any(), any(), any()) } throws IllegalStateException("database unavailable")
-        val service = buildService(stallRepo, shopVault = vault, mockCostStack = costStack, mockContainer = container)
+        val service = ContainerTradeServiceHarness(stallRepo, shopVault = vault, mockItemStack = costStack, mockContainer = container)
 
         assertIs<ContainerTradeResult.Failure>(service.executeTrade(shop, player.uniqueId))
         verify(atLeast = 2) { playerInv.addItem(any()) }
@@ -183,7 +165,7 @@ class ContainerTradeServiceTradeTest {
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
 
-        val service = buildService(stallRepo = stallRepo, hasAtLeast = inventoryNeverHas)
+        val service = ContainerTradeServiceHarness(stallRepo = stallRepo, hasAtLeast = inventoryNeverHas, shopVault = mockk(relaxed = true))
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure)
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
@@ -198,11 +180,10 @@ class ContainerTradeServiceTradeTest {
         mockOnlinePlayer()
         val (container, containerInv) = mockContainerPair()
 
-        val service = buildService(
+        val service = ContainerTradeServiceHarness(
             stallRepo = stallRepo,
             mockContainer = container,
-            hasAtLeast = inventoryFailsExcept(containerInv),
-        )
+            hasAtLeast = inventoryFailsExcept(containerInv), shopVault = mockk(relaxed = true))
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure)
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
@@ -225,7 +206,7 @@ class ContainerTradeServiceTradeTest {
         every { playerInv.addItem(any()) } returns hashMapOf()
         val (container, _) = mockContainerPair()
 
-        val service = buildService(stallRepo, economy, tradePolicy = policyService, mockContainer = container)
+        val service = ContainerTradeServiceHarness(stallRepo, economy, tradePolicy = policyService, mockContainer = container, shopVault = mockk(relaxed = true))
         val result = service.executeSell(shop, playerUuid)
 
         assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
@@ -244,7 +225,7 @@ class ContainerTradeServiceTradeTest {
         every { policyService.stanceFor(guildId.toString(), playerUuid, SignDirection.TRADE) } returns GuildTradePolicyService.TradeStance.Embargoed
         val (_, playerInv) = mockOnlinePlayer()
         val (container, containerInv) = mockContainerPair()
-        val result = buildService(stallRepo, tradePolicy = policyService, mockContainer = container).executeTrade(shop, playerUuid)
+        val result = ContainerTradeServiceHarness(stallRepo, tradePolicy = policyService, mockContainer = container, shopVault = mockk(relaxed = true)).executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("embargoed", ignoreCase = true))
         verify(exactly = 0) { playerInv.removeItem(any()) }

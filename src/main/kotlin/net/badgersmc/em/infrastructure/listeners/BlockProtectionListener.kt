@@ -50,7 +50,7 @@ class BlockProtectionListener(
         }
     }
 
-    private fun breakShopSign(event: BlockBreakEvent, shop: net.badgersmc.em.domain.shop.Shop) {
+    private fun breakShopSign(event: BlockBreakEvent, shop: Shop) {
         val player = event.player
         when {
             // Owner breaks their own sign -> delete the shop and let the break proceed,
@@ -61,7 +61,7 @@ class BlockProtectionListener(
                 player.sendMessage(lang.msg(if (deleted) "shop.protect.sign_broken_deleted" else "shop.protect.delete_error"))
             }
             // Admin in break-others mode -> admin delete and allow the break.
-            player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId) -> {
+            mayBreakAsAdmin(player) -> {
                 val deleted = management.adminDelete(shop.id)
                 event.isCancelled = !deleted
                 player.sendMessage(lang.msg(if (deleted) "shop.admin.breakothers.deleted" else "shop.protect.delete_error"))
@@ -70,6 +70,9 @@ class BlockProtectionListener(
             else -> cancelSignBreak(event, shop, event.player)
         }
     }
+
+    private fun mayBreakAsAdmin(player: org.bukkit.entity.Player) =
+        player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId)
 
     private fun findShopBySign(block: org.bukkit.block.Block): Shop? {
         val loc = block.location

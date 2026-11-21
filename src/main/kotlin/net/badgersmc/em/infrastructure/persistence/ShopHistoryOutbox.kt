@@ -130,8 +130,12 @@ internal class ShopHistoryOutbox(
         val owner = if (version >= 4) net.badgersmc.em.domain.shop.SaleAwardOwner(
             UUID.fromString(input.readUTF()), input.readUTF(), UUID.fromString(input.readUTF()),
         ) else null
-        if (eligible) require(stall != null && (guild == null || owner?.id == guild)) { "Invalid public attribution" }
+        if (eligible) validateOwner(stall, guild, owner?.id)
         return if (stall == null && guild == null) null else ShopSaleAttribution(stall, guild, eligible, owner)
+    }
+
+    private fun validateOwner(stall: String?, guild: UUID?, owner: UUID?) {
+        require(stall != null && (guild == null || owner == guild)) { "Invalid public attribution" }
     }
 
     private fun DataInputStream.optionalUtf(): String? = if (readBoolean()) readUTF() else null

@@ -3,7 +3,6 @@ package net.badgersmc.em.infrastructure.website
 import net.badgersmc.em.domain.shop.WebsitePublicSale
 import net.badgersmc.em.domain.shop.WebsitePublicSalePage
 import org.junit.jupiter.api.Test
-import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -21,15 +20,14 @@ class WebsiteSalesHttpServerTest {
         try { assertFailsWith<IllegalArgumentException> { server.start() } } finally { server.close() }
     }
     @Test fun `read only feed requires token and exposes only bounded sale projection`() {
-        val port = ServerSocket(0).use { it.localPort }
         val token = "test-only-" + "a".repeat(32)
         val generation = UUID.randomUUID()
         val recording = UUID.randomUUID()
         val award = net.badgersmc.em.domain.shop.SaleAwardOwner(UUID.randomUUID(), "Test Guild", UUID.randomUUID())
-        val server = WebsiteSalesHttpServer(port, token, { generation }) { after ->
+        val server = WebsiteSalesHttpServer(0, token, { generation }) { after ->
             WebsitePublicSalePage(listOf(WebsitePublicSale(after + 1, "stall1", "Guild", "stone", 2, 5, 1_700_000_000_000, recording, award)), null, after + 1)
         }
-        server.start()
+        val port = server.start()
         try {
             val client = HttpClient.newHttpClient()
             val base = "http://127.0.0.1:$port/api/community/sales"
@@ -68,13 +66,12 @@ class WebsiteSalesHttpServerTest {
     }
 
     @Test fun `invalid provider cursors fail closed`() {
-        val port = ServerSocket(0).use { it.localPort }
         val token = "test-only-" + "a".repeat(32)
         val generation = UUID.randomUUID()
-        val server = WebsiteSalesHttpServer(port, token, { generation }) {
+        val server = WebsiteSalesHttpServer(0, token, { generation }) {
             WebsitePublicSalePage(listOf(WebsitePublicSale(1, "stall1", "", "stone", 1, 5, 1_700_000_000_000, UUID.randomUUID())), 7, 8)
         }
-        server.start()
+        val port = server.start()
         try {
             val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/api/community/sales?protocol=2&after=0&generation=$generation"))
                 .header("Authorization", "Bearer $token").GET().build()
@@ -85,16 +82,15 @@ class WebsiteSalesHttpServerTest {
     }
 
     @Test fun `rotation during page read refuses the entire page`() {
-        val port = ServerSocket(0).use { it.localPort }
         val token = "test-only-" + "a".repeat(32)
         val first = UUID.randomUUID()
         val current = AtomicReference(first)
-        val server = WebsiteSalesHttpServer(port, token, current::get) { after ->
+        val server = WebsiteSalesHttpServer(0, token, current::get) { after ->
             current.set(UUID.randomUUID())
             WebsitePublicSalePage(listOf(WebsitePublicSale(after + 1, "stall1", "", "stone", 1, 5,
                 1_700_000_000_000, UUID.randomUUID())), null, after + 1)
         }
-        server.start()
+        val port = server.start()
         try {
             val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/api/community/sales?protocol=2&after=0&generation=$first"))
                 .header("Authorization", "Bearer $token").GET().build()

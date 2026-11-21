@@ -31,12 +31,17 @@ object PurchaseFlow {
             if (result.owner.type == OwnerType.GUILD) "purchase_sign.msg.purchased_guild" else "purchase_sign.msg.purchased",
             "stall" to stallId.value, "price" to result.price,
         )
-        is StallBuyoutService.Result.NotFound -> lang.msg("purchase_sign.msg.stall_missing", "stall" to stallId.value)
-        is StallBuyoutService.Result.AuctionLive -> lang.msg("purchase_sign.msg.auction_live", "stall" to stallId.value)
-        is StallBuyoutService.Result.AlreadyOwned -> lang.msg("purchase_sign.msg.already_owned", "stall" to stallId.value)
+        is StallBuyoutService.Result.Rejected -> lang.msg("purchase_sign.msg.rejected", "reason" to result.reason)
         is StallBuyoutService.Result.NotInGuild -> lang.msg("purchase_sign.msg.not_in_guild")
         is StallBuyoutService.Result.NoGuildPermission -> lang.msg("purchase_sign.msg.no_guild_permission")
-        is StallBuyoutService.Result.Rejected -> lang.msg("purchase_sign.msg.rejected", "reason" to result.reason)
+        else -> lang.msg(rejectionKey(result), "stall" to stallId.value)
+    }
+
+    private fun rejectionKey(result: StallBuyoutService.Result): String = when (result) {
+        is StallBuyoutService.Result.NotFound -> "purchase_sign.msg.stall_missing"
+        is StallBuyoutService.Result.AuctionLive -> "purchase_sign.msg.auction_live"
+        is StallBuyoutService.Result.AlreadyOwned -> "purchase_sign.msg.already_owned"
+        else -> error("Expected a purchase rejection")
     }
 
     private fun playerIp(player: Player): String = player.address?.address?.hostAddress ?: "unknown"

@@ -28,12 +28,15 @@ internal fun toGuildRef(guild: GuildSummary): GuildProvider.GuildRef =
  * unchanged, convert legacy `&` codes, and never throw.
  */
 private fun normalizeToMiniMessage(raw: String?): String {
-    val value = raw ?: return ""
-    if (value.isEmpty()) return ""
+    val value = raw.orEmpty()
     // Already MiniMessage (contains a tag) — leave it alone.
     if (value.contains(MINI_TAG)) return value
     // No legacy codes either — plain text, nothing to convert.
     if (!value.contains('&') && !value.contains('§')) return value
+    return convertLegacy(value)
+}
+
+private fun convertLegacy(value: String): String {
     return try {
         val legacy = if (value.contains('§')) {
             LegacyComponentSerializer.legacySection()

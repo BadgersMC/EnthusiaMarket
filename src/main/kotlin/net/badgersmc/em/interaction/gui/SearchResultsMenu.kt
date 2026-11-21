@@ -141,7 +141,11 @@ class SearchResultsMenu(
         if (navigate != null && (!player.hasPermission(ADMIN_PERMISSION) || event.isShiftClick)) {
             navigate.invoke(player, shop)
         }
-        val teleport = player.hasPermission(ADMIN_PERMISSION) && (navigate == null || !event.isShiftClick)
+        reportDestination(player, shop, event.isShiftClick)
+    }
+
+    private fun reportDestination(player: Player, shop: Shop, shiftClick: Boolean) {
+        val teleport = player.hasPermission(ADMIN_PERMISSION) && (navigate == null || !shiftClick)
         val world = if (teleport) Bukkit.getWorld(shop.signWorld) else null
         if (world != null) {
             player.teleport(Location(world, shop.signX + 0.5, shop.signY.toDouble(), shop.signZ + 0.5,
@@ -242,7 +246,7 @@ class SearchResultsMenu(
     private fun langText(key: String): String = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
         .plainText().serialize(lang.msg(key))
 
-    private fun plainStyle(component: Component): Component = component.decoration(TextDecoration.ITALIC, false)
+
 
     companion object {
         @JvmOverloads
@@ -275,4 +279,8 @@ class SearchResultsMenu(
         private const val RESULTS_START_ROW = 1
         private const val PER_PAGE = 36
     }
+}
+
+private fun plainStyle(component: Component): Component {
+    return component.decoration(TextDecoration.ITALIC, false)
 }

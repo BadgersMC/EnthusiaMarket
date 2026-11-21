@@ -200,19 +200,7 @@ class PurchaseMenu(
             executeTradeFromSlot(player)
             return
         }
-        // Clamp multiplier to actual available trades (stock may have changed
-        // since the GUI rendered). Prevents the confusing "bought N, rest failed"
-        // experience when denormalized stockCount is stale.
-        val available = tradeService.availableTrades(shop)
-        if (available <= 0) {
-            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Out of stock"))
-            return
-        }
-        if (available < multiplier) {
-            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Too little stock for the selected quantity"))
-            return
-        }
-
+        if (!hasStock(player)) return
         // Execute all trades in a single batch operation — avoids N separate
         // inventory transfers, N separate transaction events, and N individual
         // log lines that compound and can crash the server on large purchases.
@@ -222,6 +210,23 @@ class PurchaseMenu(
             else -> return
         }
         reportResult(player, result)
+    }
+
+    private fun hasStock(player: Player): Boolean {
+        // Clamp multiplier to actual available trades (stock may have changed
+        // since the GUI rendered). Prevents the confusing "bought N, rest failed"
+        // experience when denormalized stockCount is stale.
+        val available = tradeService.availableTrades(shop)
+        if (available <= 0) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Out of stock"))
+            return false
+        }
+        if (available < multiplier) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Too little stock for the selected quantity"))
+            return false
+        }
+
+        return true
     }
 
     private fun reportResult(player: Player, result: ContainerTradeResult) {
@@ -406,9 +411,7 @@ class PurchaseMenu(
         giveLore = emptyList(),
     )
 
-    private fun displayAmount(item: ItemStack, requested: Long): ItemStack = item.apply {
-        amount = requested.coerceIn(1, maxStackSize.coerceAtLeast(1).toLong()).toInt()
-    }
+
 
     companion object {
         data class Summary(
@@ -456,4 +459,9 @@ class PurchaseMenu(
                 shop.direction == SignDirection.SELL, buyingItems, factor)
         }
     }
+}
+
+private fun displayAmount(item: ItemStack, requested: Long): ItemStack {
+    item.amount = requested.coerceIn(1, item.maxStackSize.coerceAtLeast(1).toLong()).toInt()
+    return item
 }

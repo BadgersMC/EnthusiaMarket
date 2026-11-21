@@ -27,8 +27,8 @@ internal class WebsiteSalesHttpServer(private val port: Int, private val token: 
         { task -> Thread(task, "EnthusiaMarket-SalesRead").apply { isDaemon = true } }, ThreadPoolExecutor.AbortPolicy())
     private var server: HttpServer? = null
 
-    fun start() {
-        require(port in 1..65535)
+    fun start(): Int {
+        require(port in 0..65535)
         require(validToken())
         check(server == null)
         val address = when (bindAddress) {
@@ -39,7 +39,10 @@ internal class WebsiteSalesHttpServer(private val port: Int, private val token: 
         val listener = HttpServer.create(address, 16)
         try {
             listener.createContext("/api/community/sales", ::handle)
-            listener.executor = executor; listener.start(); server = listener
+            listener.executor = executor
+            listener.start()
+            server = listener
+            return listener.address.port
         } catch (failure: Exception) { listener.stop(0); throw failure }
     }
 

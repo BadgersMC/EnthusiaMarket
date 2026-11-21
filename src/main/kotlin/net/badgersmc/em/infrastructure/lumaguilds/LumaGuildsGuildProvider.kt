@@ -92,13 +92,6 @@ class LumaGuildsGuildProvider : GuildProvider {
             .toSet()
     }
 
-    private fun parseUuid(value: String): UUID? =
-        try {
-            UUID.fromString(value)
-        } catch (_: IllegalArgumentException) {
-            null
-        }
-
     override fun verifiedMembership(player: UUID, guildId: String): Boolean? {
         val uuid = parseUuid(guildId) ?: return null
         val source = lookup ?: return null
@@ -206,3 +199,10 @@ private fun GuildProvider.GuildPermission.toRankPermission(): String? = when (th
     GuildProvider.GuildPermission.EDIT_SHOP_STOCK -> "EDIT_SHOP_STOCK"
     GuildProvider.GuildPermission.MODIFY_SHOP_PRICES -> "MODIFY_SHOP_PRICES"
 }
+
+private fun parseUuid(value: String): UUID? =
+    try {
+        UUID.fromString(value)
+    } catch (_: IllegalArgumentException) {
+        null
+    }

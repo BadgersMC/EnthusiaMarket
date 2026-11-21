@@ -57,12 +57,7 @@ class LegacyReleaseRepositoryRehearsalTest {
                 assertEquals(29, versions.maxOrNull(), "legacy discovery must not use newer classpath migrations")
                 val applied = runnerClass.getMethod("runAll").invoke(runner) as List<*>
                 assertTrue(applied.isEmpty(), "older runner must not rerun migrations on upgraded database")
-                ds.connection.use { connection -> connection.createStatement().use { statement ->
-                    statement.executeQuery("SELECT COUNT(*) FROM schema_migration WHERE version >= 30").use { rows ->
-                        assertTrue(rows.next())
-                        assertTrue(rows.getInt(1) > 0, "older runner must preserve newer migration records")
-                    }
-                } }
+                assertMigrationHistoryPreserved(ds)
                 val directionClass = loader.loadClass("net.badgersmc.em.domain.shop.SignDirection")
                 val sell = directionClass.enumConstants.single { (it as Enum<*>).name == "SELL" }
                 val saleClass = loader.loadClass("net.badgersmc.em.domain.shop.ShopTransaction")
@@ -84,6 +79,15 @@ class LegacyReleaseRepositoryRehearsalTest {
             assertEquals(2, repository.findByOwner(owner, 10, 0).size)
             assertTrue(Files.notExists(pending))
         } finally { (ds as? AutoCloseable)?.close() }
+    }
+
+    private fun assertMigrationHistoryPreserved(ds: DataSource) {
+        ds.connection.use { connection -> connection.createStatement().use { statement ->
+            statement.executeQuery("SELECT COUNT(*) FROM schema_migration WHERE version >= 30").use { rows ->
+                assertTrue(rows.next())
+                assertTrue(rows.getInt(1) > 0, "older runner must preserve newer migration records")
+            }
+        } }
     }
 
     private class LegacyClassLoader(url: URL, parent: ClassLoader) : URLClassLoader(arrayOf(url), parent) {
