@@ -1238,3 +1238,7 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 - [x] Bind the display to the website award and verify pending, complete, empty, invalid-week and unavailable responses.
 - [ ] Verify the paired website and plugin on TEST with a completed sale and a placed hologram.
 - [x] Recover a legacy solo stall owner by UUID from the server profile cache. TEST stall 12 reproduced the missing-name case with a saved profile for the exact stall owner UUID. The fallback preserves the existing incomplete-coverage signal for unknown owners.
+
+## Stall command completion
+
+- Wire registered stall arguments and related auction, access and reporting inputs to Brigadier suggestions. Verify live directory changes, prefix replacement, scoped confirmation tokens and report routing with regression tests. Native-client acceptance follows deployment.

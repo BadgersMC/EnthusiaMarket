@@ -34,10 +34,14 @@ class AuctionLotImportTest {
         val token = imports.remember("staff-1", plan)
         assertFailsWith<IllegalArgumentException> { imports.consume("staff-1", replaced) }
         assertFailsWith<IllegalArgumentException> { imports.consume("staff-2", token) }
+        assertEquals(null, imports.currentToken("staff-2"))
+        assertEquals(token, imports.currentToken("staff-1"))
         assertEquals(plan, imports.consume("staff-1", token))
         assertFailsWith<IllegalArgumentException> { imports.consume("staff-1", token) }
+        assertEquals(null, imports.currentToken("staff-1"))
         val expiring = imports.remember("staff-1", plan)
         now = now.plusSeconds(300)
+        assertEquals(null, imports.currentToken("staff-1"))
         assertFailsWith<IllegalArgumentException> { imports.consume("staff-1", expiring) }
     }
 }

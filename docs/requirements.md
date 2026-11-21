@@ -815,3 +815,7 @@ Creating a guild shop requires current membership, the owning guild's stock-mana
 ## Polygonal stall measurement
 
 When a stall has a simple WorldGuard polygon with one inclusive height range, auction volume and volume-based rent shall count each claimed block column through that height. Auction dimensions remain the outer spans. Floor material, furniture and free air do not affect the count. Explicit importer minimum bids and previously saved rent terms remain in force until separately changed.
+
+## Stall command completion
+
+When a player completes a registered stall argument, Market shall suggest current matching stall IDs. Management and guild report commands shall use their corresponding authority checks. When a command accepts a bounded choice or a formatted value, Market shall offer matching values or valid examples. Requesting suggestions shall leave command and auction state untouched.

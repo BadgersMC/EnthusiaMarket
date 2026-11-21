@@ -10,6 +10,7 @@ import net.badgersmc.em.interaction.StallAccessUi
 import net.badgersmc.nexus.commands.annotations.Arg
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
+import net.badgersmc.nexus.paper.commands.annotations.Suggests
 import net.badgersmc.nexus.paper.commands.annotations.Permission
 import net.badgersmc.nexus.paper.commands.annotations.Subcommand
 import org.bukkit.entity.Player
@@ -24,14 +25,14 @@ class StallAccessCommands(
 ) {
     @Subcommand("settings")
     @Permission("enthusiamarket.shop.use")
-    fun settings(@Context player: Player, @Arg("stall") id: String) {
+    fun settings(@Context player: Player, @Arg("stall") @Suggests("managedStalls") id: String) {
         runCatching { service.refreshIfUncertain(id) }
         StallAccessMenu(index, service, guilds, projection).open(player, id)
     }
 
     @Subcommand("blacklist")
     @Permission("enthusiamarket.shop.use")
-    fun blacklist(@Context actor: Player, @Arg("stall") id: String, @Arg("player") name: String, @Arg("blocked") blocked: String) {
+    fun blacklist(@Context actor: Player, @Arg("stall") @Suggests("managedStalls") id: String, @Arg("player") @Suggests("visiblePlayers") name: String, @Arg("blocked") @Suggests("booleans") blocked: String) {
         val stall = index.cached(id) ?: return
         if (!service.mayManage(stall, actor.uniqueId)) { actor.sendMessage("You cannot manage this stall."); return }
         val value = blocked.toBooleanStrictOrNull() ?: run { actor.sendMessage("Use true or false."); return }
