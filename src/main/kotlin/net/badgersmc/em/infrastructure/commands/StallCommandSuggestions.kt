@@ -36,7 +36,8 @@ internal object StallCommandSuggestions {
     ): Map<String, SuggestionProvider<CommandSourceStack>> {
         val entityNames = EntityType.entries.filter { it.isSpawnable }.map { it.name.lowercase() }
         val configuredKinds = EntityLimitConfig.load(lotDirectory.resolveSibling("entitylimits.yml").toFile()).keys
-        return directory(index, configuredKinds) + management(nexus, index) + auction(nexus, index) +
+        return directory(index, configuredKinds) + management(nexus, index) + players(nexus, index) +
+            offers(nexus, index) + auction(nexus) +
             lotImport(nexus, lotDirectory, config) + examples(entityNames)
     }
 
@@ -60,6 +61,9 @@ internal object StallCommandSuggestions {
             val guilds = nexus.getBean(GuildProvider::class)
             index.currentStalls().filter { it.canManage(player.uniqueId, guilds) }.map { it.id.value }
         },
+    )
+
+    private fun players(nexus: NexusContext, index: StallAccessIndex) = mapOf(
         "visiblePlayers" to choices { source ->
             val viewer = source.sender as? Player
             source.sender.server.onlinePlayers.filter { viewer == null || viewer.canSee(it) }.map { it.name }
@@ -77,7 +81,7 @@ internal object StallCommandSuggestions {
         },
     )
 
-    private fun auction(nexus: NexusContext, index: StallAccessIndex) = mapOf(
+    private fun offers(nexus: NexusContext, index: StallAccessIndex) = mapOf(
         "buyOffers" to choices { source ->
             val player = source.sender as? Player ?: return@choices emptyList()
             nexus.getBean(SellOfferRepository::class).all().filter { it.sellerUuid != player.uniqueId }.map { it.stallId.value }
@@ -89,6 +93,9 @@ internal object StallCommandSuggestions {
                 it.sellerUuid == player.uniqueId || index.cached(it.stallId.value)?.canManage(player.uniqueId, guilds) == true
             }.map { it.stallId.value }
         },
+    )
+
+    private fun auction(nexus: NexusContext) = mapOf(
         "nextBid" to contextual { context ->
             val id = context.getArgument("auction", String::class.java)
             val auction = nexus.getBean(AuctionLifecycleService::class).auctionForBid(AuctionId(id)) ?: return@contextual emptyList()

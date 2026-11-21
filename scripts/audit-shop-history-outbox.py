@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-Read-only inventory of an OFFLINE Market history-outbox snapshot.
-
-An empty result is not proof of database rollback safety or server quiescence.
-"""
+"""Report the record versions in an offline Market history-outbox snapshot."""
 import argparse
 import hashlib
 import json
@@ -98,7 +94,7 @@ def read_stable(path):
             raise ValueError("changed_during_read")
         with os.fdopen(fd, "rb", closefd=False) as stream:
             data = stream.read(MAX_RECORD_BYTES + 1)
-        if signature(opened) != signature(os.fstat(fd)) or signature(before) != signature(path.lstat()):
+        if (signature(opened), signature(before)) != (signature(os.fstat(fd)), signature(path.lstat())):
             raise ValueError("changed_during_read")
     finally:
         os.close(fd)
@@ -109,11 +105,19 @@ def read_stable(path):
 
 def inspect_pending(path):
     data = read_stable(path)
+    reader = verified_payload(data)
+    version = struct.unpack(">i", reader.take(4))[0]
+    return inspect_record(path, reader, version)
+
+
+def verified_payload(data):
     payload, checksum = data[:-32], data[-32:]
     if hashlib.sha256(payload).digest() != checksum:
         raise ValueError("checksum_mismatch")
-    reader = PayloadReader(payload)
-    version = struct.unpack(">i", reader.take(4))[0]
+    return PayloadReader(payload)
+
+
+def inspect_record(path, reader, version):
     identifier = read_uuid(reader.utf())
     if path.name != f"{identifier}.pending":
         raise ValueError("record_id_mismatch")
@@ -122,7 +126,7 @@ def inspect_pending(path):
     read_transaction(reader)
     if not valid_attribution(reader, version):
         return "invalid"
-    if reader.offset != len(payload):
+    if reader.offset != len(reader.payload):
         raise ValueError("unexpected_trailing_data")
     return f"version_{version}"
 
@@ -139,8 +143,7 @@ def read_transaction(reader):
 
 
 def valid_attribution(reader, version):
-    stall = reader.utf() if version >= 2 and reader.boolean() else None
-    guild = read_uuid(reader.utf()) if version >= 2 and reader.boolean() else None
+    stall, guild = read_stall_keys(reader) if version >= 2 else (None, None)
     eligible = reader.boolean() if version >= 3 else False
     owner = read_award_owner(reader) if version >= 4 else None
     if version >= 4 and owner is None:
@@ -150,13 +153,23 @@ def valid_attribution(reader, version):
     return True
 
 
+def read_stall_keys(reader):
+    stall = reader.utf() if reader.boolean() else None
+    guild = read_uuid(reader.utf()) if reader.boolean() else None
+    return stall, guild
+
+
 def read_award_owner(reader):
     owner = read_uuid(reader.utf())
     name = reader.utf().decode("utf-8", errors="surrogatepass")
     read_uuid(reader.utf())
-    if not name.strip() or len(name) > 48 or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in name):
+    if not valid_name(name):
         return None
     return owner
+
+
+def valid_name(name):
+    return bool(name.strip()) and len(name) <= 48 and not any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in name)
 
 
 def entry_kind(path):
@@ -184,9 +197,13 @@ def audit(directory):
               "unknown_version": 0, "invalid": 0, "temporary": 0, "corrupt": 0, "other": 0}
     for path in entries:
         counts[entry_kind(path)] += 1
+    verify_snapshot(directory, info, entries)
+    return counts
+
+
+def verify_snapshot(directory, info, entries):
     if signature(info) != signature(directory.lstat()) or [p.name for p in entries] != sorted(p.name for p in directory.iterdir()):
         raise ValueError("directory_changed_during_audit")
-    return counts
 
 
 def main():
