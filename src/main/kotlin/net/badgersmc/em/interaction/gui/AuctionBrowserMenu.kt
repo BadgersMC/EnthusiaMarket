@@ -307,7 +307,7 @@ class AuctionBrowserMenu(
 
     private fun volumeLine(size: AuctionRegionSize?): Component =
         if (size == null) Component.empty()
-        else lang.msg("gui.auctions.entry_lore_volume", "volume" to size.volume)
+        else lang.msg("gui.auctions.entry_claimed_volume", "volume" to size.volume)
             .decoration(TextDecoration.ITALIC, false)
 
     private fun formatRemaining(d: Duration): String {

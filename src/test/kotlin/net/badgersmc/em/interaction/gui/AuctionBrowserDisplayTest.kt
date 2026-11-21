@@ -67,11 +67,11 @@ class AuctionBrowserDisplayTest {
         val bidder = UUID.randomUUID()
         val auction = auction(Bid(bidder, 125, Instant.now()), Instant.now().plusSeconds(3600))
         every { names.resolveOffMainThread(bidder) } returns "FainNoir"
-        val item = display(auction, RegionProvider.RegionBounds(0, 0, 0, 4, 9, 4))
+        val item = display(auction, RegionProvider.RegionBounds(0, 0, 0, 5, 3, 5, claimedColumns = 32))
         assertEquals(Material.CYAN_DYE, item.type)
         val lines = item.itemMeta!!.lore()!!.map(::plain)
-        assertTrue(lines.contains("Bounds: 5 × 5 × 10 (W × L × H)"))
-        assertTrue(lines.contains("Bounding volume: 250 blocks"))
+        assertTrue(lines.contains("Bounds: 6 × 6 × 4 (W × L × H)"))
+        assertTrue(lines.contains("Claimed volume: 128 blocks"))
         assertTrue(lines.contains("Current bid: 125 (FainNoir)"))
         assertTrue(lines.contains("Starting bid: 100"))
     }

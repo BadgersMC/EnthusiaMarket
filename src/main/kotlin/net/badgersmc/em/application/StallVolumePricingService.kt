@@ -11,7 +11,7 @@ import net.badgersmc.nexus.annotations.Service
  *
  * Rent for a stall is derived from its WorldGuard region volume:
  * `rent = baseFlat + volume * perBlock`. Volume is the inclusive block
- * count of the region cuboid (width × height × length). All geometry is
+ * count of the claimed floor columns times the inclusive height. All geometry is
  * read through [RegionProvider] once per operation — never on a per-tick
  * path — and results are snapshotted into the stall's stored rent terms,
  * matching how [ImportStallsService] and [RentTermsResyncService] already
@@ -31,12 +31,7 @@ class StallVolumePricingService(
     )
 
     /** Block volume of the region [id] in [world], or null when geometry is unavailable. */
-    fun volumeOf(world: String, id: String): Long? {
-        val b = regions.bounds(world, id) ?: return null
-        // Convert BEFORE multiplication — Int math overflows at ~2.1B blocks
-        // (e.g. a 2048×512×2048 region) into a negative volume.
-        return b.width.toLong() * b.height.toLong() * b.length.toLong()
-    }
+    fun volumeOf(world: String, id: String): Long? = regions.bounds(world, id)?.claimedVolume
 
     /** Rent implied by [volume] under the current pricing config. */
     fun rentFor(volume: Long): Long =
