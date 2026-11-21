@@ -40,6 +40,9 @@ class LumaGuildsGuildProvider : GuildProvider {
         return OptionalGuildAllianceLookup.areAllied(guild, ally)
     }
 
+    override fun extraGuildStalls(guildId: String): Int =
+        parseUuid(guildId)?.let(OptionalGuildPrestigePerkLookup::extraGuildStalls) ?: 0
+
     override fun guildOf(player: UUID): GuildProvider.GuildRef? {
         val lg = lookup ?: return null
         val firstId = lg.getPlayerGuildIds(player).firstOrNull() ?: return null

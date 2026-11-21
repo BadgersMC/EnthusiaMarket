@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.persistence
 
 import net.badgersmc.em.domain.stall.*
+import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.time.Instant
@@ -47,44 +48,72 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
     }
 
     override fun save(stall: Stall) {
+        ds.connection.use { save(it, stall) }
+    }
+
+    override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
+        require(stall.owner.type == OwnerType.GUILD && stall.state == StallState.OWNED)
         ds.connection.use { conn ->
-            conn.prepareStatement(
-                """UPDATE stalls SET
-                    region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
-                    owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
-                    members = ?, max_members = ?, next_rent_at = ?, kind = ?,
-                    extra_entities = ?, extra_total = ?
-                   WHERE id = ? AND moderation_revision = ?
-                     AND NOT EXISTS (
-                         SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
-                     )"""
-            ).use { ps ->
-                ps.setString(1, stall.regionId)
-                ps.setString(2, stall.world)
-                ps.setString(3, stall.state.name)
-                ps.setString(4, stall.owner.type.name)
-                ps.setString(5, stall.owner.id)
-                if (stall.ownerSince != null) ps.setLong(6, stall.ownerSince.toEpochMilli())
-                else ps.setNull(6, java.sql.Types.INTEGER)
-                ps.setLong(7, stall.winningBid)
-                ps.setString(8, stall.rentTerms.mode.name)
-                ps.setDouble(9, stall.rentTerms.pct)
-                ps.setLong(10, stall.rentTerms.flatAmount)
-                ps.setString(11, encodeMembers(stall.members))
-                ps.setInt(12, stall.maxMembers)
-                if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
-                else ps.setNull(13, java.sql.Types.INTEGER)
-                ps.setString(14, stall.kind)
-                ps.setString(15, encodeExtraEntities(stall.extraEntities))
-                ps.setInt(16, stall.extraTotal)
-                ps.setString(17, stall.id.value)
-                ps.setLong(18, stall.moderationRevision)
-                ps.setString(19, stall.id.value)
-                if (ps.executeUpdate() != 1) {
-                    throw MarketModerationConflictException(
-                        "Stall ${stall.id.value} changed or is reserved for moderation"
-                    )
+            conn.autoCommit = false
+            try {
+                conn.prepareStatement(
+                    "INSERT INTO guild_auction_round_wins (round_id, guild_id, stall_id) VALUES (?, ?, ?)"
+                ).use { ps ->
+                    ps.setString(1, roundId)
+                    ps.setString(2, stall.owner.id)
+                    ps.setString(3, stall.id.value)
+                    check(ps.executeUpdate() == 1)
                 }
+                save(conn, stall)
+                conn.commit()
+            } catch (failure: Exception) {
+                try {
+                    conn.rollback()
+                } catch (rollbackFailure: Exception) {
+                    failure.addSuppressed(rollbackFailure)
+                }
+                throw failure
+            }
+        }
+    }
+
+    private fun save(conn: Connection, stall: Stall) {
+        conn.prepareStatement(
+            """UPDATE stalls SET
+                region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
+                owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
+                members = ?, max_members = ?, next_rent_at = ?, kind = ?,
+                extra_entities = ?, extra_total = ?
+               WHERE id = ? AND moderation_revision = ?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
+                 )"""
+        ).use { ps ->
+            ps.setString(1, stall.regionId)
+            ps.setString(2, stall.world)
+            ps.setString(3, stall.state.name)
+            ps.setString(4, stall.owner.type.name)
+            ps.setString(5, stall.owner.id)
+            if (stall.ownerSince != null) ps.setLong(6, stall.ownerSince.toEpochMilli())
+            else ps.setNull(6, java.sql.Types.INTEGER)
+            ps.setLong(7, stall.winningBid)
+            ps.setString(8, stall.rentTerms.mode.name)
+            ps.setDouble(9, stall.rentTerms.pct)
+            ps.setLong(10, stall.rentTerms.flatAmount)
+            ps.setString(11, encodeMembers(stall.members))
+            ps.setInt(12, stall.maxMembers)
+            if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
+            else ps.setNull(13, java.sql.Types.INTEGER)
+            ps.setString(14, stall.kind)
+            ps.setString(15, encodeExtraEntities(stall.extraEntities))
+            ps.setInt(16, stall.extraTotal)
+            ps.setString(17, stall.id.value)
+            ps.setLong(18, stall.moderationRevision)
+            ps.setString(19, stall.id.value)
+            if (ps.executeUpdate() != 1) {
+                throw MarketModerationConflictException(
+                    "Stall ${stall.id.value} changed or is reserved for moderation"
+                )
             }
         }
     }

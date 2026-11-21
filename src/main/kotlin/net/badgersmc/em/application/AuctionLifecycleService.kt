@@ -149,7 +149,8 @@ class AuctionLifecycleService(
             startingBid = startingBid,
             highBid = null,
             antiSnipeWindow = config.auction.antiSnipeWindowDuration,
-            antiSnipeExtension = config.auction.antiSnipeExtensionDuration
+            antiSnipeExtension = config.auction.antiSnipeExtensionDuration,
+            openingRoundId = config.auction.openingRoundId.trim().ifEmpty { null },
         )
 
         auctionRepository.create(auction)
@@ -223,7 +224,8 @@ class AuctionLifecycleService(
                 startingBid = startingBid,
                 highBid = null,
                 antiSnipeWindow = antiSnipe,
-                antiSnipeExtension = antiSnipeExtend
+                antiSnipeExtension = antiSnipeExtend,
+                openingRoundId = config.auction.openingRoundId.trim().ifEmpty { null },
             )
             // Persist auction first, then transition stall. If the stall save
             // fails we compensate by closing the just-created auction so we
@@ -248,6 +250,68 @@ class AuctionLifecycleService(
             logger.warning("startAuctionForStall: stall ${stall.id} failed — ${e.message}")
             return Pair(null, "error")
         }
+    }
+
+    internal fun previewImportedLots(lots: List<AuctionLot>, round: String, durationText: String): AuctionLotPlan {
+        val duration = requireNotNull(resolveDuration(durationText)) {
+            "Use an ISO-8601 duration between ${config.auction.minDuration} and ${config.auction.maxDuration}."
+        }
+        require(duration.nano == 0) { "Auction duration must be in whole seconds." }
+        return AuctionLotPlan(
+            lots.map { validateImportedLot(it) to it },
+            round,
+            duration,
+            config.auction.antiSnipeWindowDuration,
+            config.auction.antiSnipeExtensionDuration,
+        )
+    }
+
+    internal fun openImportedLots(plan: AuctionLotPlan): Instant {
+        val checked = previewImportedLots(plan.lots.map { it.second }, plan.round, plan.duration.toString())
+        require(checked == plan) { "Stall details or auction settings changed. Preview the file again." }
+        val now = clock.instant()
+        val ends = now.plus(plan.duration)
+        val batch = plan.lots.map { (stall, lot) ->
+            stall to Auction(
+                id = AuctionId(UUID.randomUUID().toString()),
+                stallId = stall.id,
+                state = AuctionState.OPEN,
+                startAt = now,
+                endAt = ends,
+                startingBid = lot.minimumBid,
+                highBid = null,
+                antiSnipeWindow = plan.antiSnipeWindow,
+                antiSnipeExtension = plan.antiSnipeExtension,
+                openingRoundId = plan.round,
+            )
+        }
+        val conflict = auctionRepository.openImportedLots(batch)
+        require(conflict == null) { "Stall ${conflict?.value} changed. No lots were opened." }
+        for ((stall, _) in batch) {
+            (stallRepository as? StallAccessIndex)?.let { index ->
+                index.invalidate(stall.id.value)
+                runCatching { index.refresh(stall.id.value) }.onFailure {
+                    logger.log(Level.WARNING, "Could not refresh auction stall ${stall.id.value}", it)
+                }
+            }
+            fireStateChanged(stall.id.value, StallState.UNOWNED, StallState.AUCTIONING)
+        }
+        return ends
+    }
+
+    private fun validateImportedLot(lot: AuctionLot): Stall {
+        val id = lot.stallId
+        validateStartingBid(lot.minimumBid)?.let { throw IllegalArgumentException("${id.value}: ${it.reason}") }
+        val stall = requireNotNull(stallRepository.findById(id)) { "Unknown stall ${id.value}." }
+        require(stall.id == id) { "Use the registered stall ID ${stall.id.value}." }
+        require(stall.state == StallState.UNOWNED && stall.owner.type == OwnerType.NONE &&
+            !mutationGate.isStallLocked(id.value)
+        ) { "Stall ${id.value} is unavailable." }
+        require(sellOffers.findByStall(id) == null) { "Stall ${id.value} has a sell offer." }
+        require(auctionRepository.findByStall(id).none { it.state == AuctionState.OPEN }) {
+            "Stall ${id.value} already has an unsettled auction."
+        }
+        return stall
     }
 
     private fun validateStartingBid(startingBid: Long): AuctionResult.Failure? {
@@ -295,6 +359,7 @@ class AuctionLifecycleService(
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult =
         placeBid(auctionId, BidRequest(playerUuid, amount, ip))
 
+    @Synchronized
     fun placeBid(auctionId: AuctionId, request: BidRequest): AuctionResult {
         if (request.guildId != null && !mayManageGuild(request.actor, request.guildId)) return AuctionResult.Failure("You cannot bid for this guild")
         return try {
@@ -304,14 +369,36 @@ class AuctionLifecycleService(
         }
     }
 
+    /** REQ-399: the guild stall cap, with LumaGuilds' prestige bonus. */
+    private fun guildClaimDecision(actor: UUID, guildId: String): LimitResolutionService.ClaimDecision {
+        val extra = runCatching { guildProvider?.extraGuildStalls(guildId) ?: 0 }.getOrDefault(0)
+        return limits.canClaimForGuild(actor, ownership.guildCount(guildId), extra)
+    }
+
     private fun placeBidWithPermit(auctionId: AuctionId, request: BidRequest): AuctionResult {
+        if (request.guildId != null) {
+            (guildClaimDecision(request.actor, request.guildId) as? LimitResolutionService.ClaimDecision.Rejected)?.let {
+                return AuctionResult.Failure("Your guild already owns its stall limit (${it.cap})")
+            }
+        }
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
         if (mutationGate.isStallLocked(auction.stallId.value)) return AuctionResult.Failure("This stall is temporarily unavailable")
         if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is not open")
+        request.guildId?.let { guildId ->
+            if (guildAlreadyWonOpeningRound(auction, guildId)) {
+                return AuctionResult.Failure("Your guild has already won a stall in this opening round.")
+            }
+            if (auctionRepository.hasOtherOpenGuildBid(guildId, auction.id)) {
+                return AuctionResult.Failure("Your guild is already leading another stall auction.")
+            }
+        }
         val reservation = ipLimiter.acquireAuction(request.ip, auction.id.value)
         if (!reservation.allowed) return AuctionResult.Failure("You already have an active bid on another auction.")
         return applyReservedBid(auction, request, reservation)
     }
+
+    private fun guildAlreadyWonOpeningRound(auction: Auction, guildId: String): Boolean =
+        auction.openingRoundId?.let { auctionRepository.hasGuildOpeningRoundWin(it, guildId) } ?: false
 
     private fun applyReservedBid(auction: Auction, request: BidRequest, reservation: IpLimiter.Attempt): AuctionResult {
         var completed = false
@@ -602,6 +689,7 @@ class AuctionLifecycleService(
      * @return [SettlementReport] with counts of settled and errored auctions
      */
     @Suppress("NestedBlockDepth")
+    @Synchronized
     fun settleExpired(): SettlementReport {
         val expired = auctionRepository.findExpired()
         var settled = 0
@@ -674,9 +762,14 @@ class AuctionLifecycleService(
             refundBid(bid, bid.amount, "guild permission revoked before award")
             return
         }
+        if (bid.guildId != null && guildAlreadyWonOpeningRound(auction, bid.guildId)) {
+            closeWithoutAward(auction, stall)
+            refundBid(bid, bid.amount, "guild already won an opening-round stall")
+            return
+        }
         val counts = ownership.counts(bid.bidder)
-        // Match direct guild purchase policy: personal limits do not apply to guild holdings.
-        val decision = if (bid.guildId != null) LimitResolutionService.ClaimDecision.Allowed else limits.canClaim(
+        // Personal limits do not apply to guild holdings; the guild cap does (REQ-399).
+        val decision = if (bid.guildId != null) guildClaimDecision(bid.bidder, bid.guildId) else limits.canClaim(
             player = bid.bidder,
             kind = stall.kind,
             currentTotal = counts.total,
@@ -736,7 +829,12 @@ class AuctionLifecycleService(
         )
         auctionRepository.save(auction.close())
         try {
-            stallRepository.save(updatedStall)
+            val roundId = auction.openingRoundId
+            if (bid.guildId != null && roundId != null) {
+                stallRepository.saveOpeningRoundGuildAward(updatedStall, roundId)
+            } else {
+                stallRepository.save(updatedStall)
+            }
         } catch (e: Exception) {
             // Stall award failed after the auction was closed + the winner charged.
             // Refund the winner (no double-charge), keep the auction CLOSED so the

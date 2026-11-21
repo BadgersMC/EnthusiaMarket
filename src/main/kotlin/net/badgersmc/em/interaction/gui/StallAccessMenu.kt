@@ -6,9 +6,11 @@ import com.github.stefvanschie.inventoryframework.pane.OutlinePane
 import net.badgersmc.em.application.StallAccessIndex
 import net.badgersmc.em.application.StallAccessSettingsService
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallAccessSettings
 import net.badgersmc.em.domain.stall.StallCapability
 import net.badgersmc.em.infrastructure.listeners.StallAccessProjection
+import net.badgersmc.em.infrastructure.lumaguilds.OptionalGuildMenuTitleLookup
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.em.interaction.StallAccessUi
 import net.kyori.adventure.text.Component
@@ -27,7 +29,7 @@ class StallAccessMenu(
     private val guildNames = mutableMapOf<String, String>()
     private val labels get() = StallAccessUi.labels
 
-    private data class Choice(val title: String, val select: () -> Unit)
+    private data class Choice(val icon: Material, val title: String, val select: () -> Unit)
 
     fun open(player: Player, id: String, section: String = "flags", page: Int = 0) {
         val stall = index.cached(id) ?: return
@@ -36,10 +38,14 @@ class StallAccessMenu(
         val choices = choices(player, id, section, settings)
         val last = ((choices.size - 1).coerceAtLeast(0)) / 45
         val current = page.coerceIn(0, last)
-        val gui = ChestGui(6, labels.title(id, section, guildNames[section.removePrefix("ally:")]))
+        val plainTitle = labels.title(id, section, guildNames[section.removePrefix("ally:")])
+        val title = if (stall.owner.type == OwnerType.GUILD) {
+            OptionalGuildMenuTitleLookup.title(stall.owner.id, player.uniqueId, 6, plainTitle)
+        } else plainTitle
+        val gui = ChestGui(6, title)
         val pane = OutlinePane(9, 6)
         choices.drop(current * 45).take(45).forEach { choice ->
-            pane.addItem(button(choice.title) { choice.select() })
+            pane.addItem(button(choice.icon, choice.title, choice.select))
         }
         addControls(pane, player, id, section to current)
         gui.addPane(com.github.stefvanschie.inventoryframework.pane.util.Slot.fromXY(0, 0), pane)
@@ -48,25 +54,25 @@ class StallAccessMenu(
 
     private fun addControls(pane: OutlinePane, player: Player, id: String, navigation: Pair<String, Int>) {
         val (section, current) = navigation
-        pane.addItem(button(labels.text("navigation.previous")) { open(player, id, section, current - 1) })
-        pane.addItem(button(labels.text("navigation.next")) { open(player, id, section, current + 1) })
-        pane.addItem(button(labels.text("navigation.flags")) { open(player, id) })
-        pane.addItem(button(labels.text("navigation.effects")) { open(player, id, "effects") })
-        pane.addItem(button(labels.text("navigation.blacklist")) { open(player, id, "blacklist") })
-        pane.addItem(button(labels.text("navigation.allies")) { open(player, id, "allies") })
+        pane.addItem(button(Material.ARROW, labels.text("navigation.previous")) { open(player, id, section, current - 1) })
+        pane.addItem(button(Material.ARROW, labels.text("navigation.next")) { open(player, id, section, current + 1) })
+        pane.addItem(button(Material.OAK_DOOR, labels.text("navigation.flags")) { open(player, id) })
+        pane.addItem(button(Material.POTION, labels.text("navigation.effects")) { open(player, id, "effects") })
+        pane.addItem(button(Material.BARRIER, labels.text("navigation.blacklist")) { open(player, id, "blacklist") })
+        pane.addItem(button(Material.SHIELD, labels.text("navigation.allies")) { open(player, id, "allies") })
     }
 
     private fun choices(player: Player, id: String, section: String, settings: StallAccessSettings): List<Choice> = when {
         section == "effects" -> PotionEffectType.values().sortedBy { it.name }.map { type ->
-            Choice(labels.text("effect.state", "name" to labels.effect(type.name), "state" to labels.state(type.name !in settings.blockedEffects))) {
+            Choice(Material.POTION, labels.text("effect.state", "name" to labels.effect(type.name), "state" to labels.state(type.name !in settings.blockedEffects))) {
                 mutate(player, id, section) { it.copy(blockedEffects = toggle(it.blockedEffects, type.name)) }
             }
         }
-        section == "blacklist" -> listOf(Choice(labels.text("blacklist.add")) {
+        section == "blacklist" -> listOf(Choice(Material.NAME_TAG, labels.text("blacklist.add")) {
             player.closeInventory(); player.sendMessage(labels.text("blacklist.command", "stall" to id))
         }) + settings.blacklist.sortedBy { it.toString() }.mapIndexed { number, uuid ->
             val name = labels.player(org.bukkit.Bukkit.getOfflinePlayer(uuid).name, number + 1)
-            Choice(labels.text("player.unblock", "name" to name)) {
+            Choice(Material.PLAYER_HEAD, labels.text("player.unblock", "name" to name)) {
                 mutate(player, id, section) { it.copy(blacklist = it.blacklist - uuid) }
             }
         }
@@ -78,12 +84,12 @@ class StallAccessMenu(
             }.mapIndexed { number, guild ->
                 val name = labels.guild(guild.name, number + 1)
                 guildNames[guild.id] = name
-                Choice(labels.text("guild.configure", "name" to name)) { open(player, id, "ally:${guild.id}") }
+                Choice(Material.SHIELD, labels.text("guild.configure", "name" to name)) { open(player, id, "ally:${guild.id}") }
             }
         }
         section.startsWith("ally:") -> StallCapability.entries.map { capability ->
             val ally = section.removePrefix("ally:")
-            Choice(labels.text("capability.state", "name" to labels.capability(capability.name), "state" to labels.state(capability in settings.allies[ally].orEmpty()))) {
+            Choice(capability.icon(), labels.text("capability.state", "name" to labels.capability(capability.name), "state" to labels.state(capability in settings.allies[ally].orEmpty()))) {
                 mutate(player, id, section) {
                     val grants = toggle(it.allies[ally].orEmpty(), capability)
                     it.copy(allies = if (grants.isEmpty()) it.allies - ally else it.allies + (ally to grants))
@@ -91,10 +97,10 @@ class StallAccessMenu(
             }
         }
         else -> StallCapability.entries.filter { it !in StallAccessSettings.PRIVILEGED }.map { capability ->
-            Choice(labels.text("visitor.capability", "name" to labels.capability(capability.name), "state" to labels.state(settings.visitorAllows(capability)))) {
+            Choice(capability.icon(), labels.text("visitor.capability", "name" to labels.capability(capability.name), "state" to labels.state(settings.visitorAllows(capability)))) {
                 mutate(player, id, section) { it.copy(visitorFlags = it.visitorFlags + (capability to !it.visitorAllows(capability))) }
             }
-        } + Choice(labels.text("potions.incoming", "state" to labels.state(settings.allowIncomingPotions))) {
+        } + Choice(Material.SPLASH_POTION, labels.text("potions.incoming", "state" to labels.state(settings.allowIncomingPotions))) {
             mutate(player, id, section) { it.copy(allowIncomingPotions = !it.allowIncomingPotions) }
         }
     }
@@ -106,10 +112,24 @@ class StallAccessMenu(
         open(player, id, section)
     }
 
-    private fun button(title: String, select: () -> Unit): GuiItem {
-        val item = ItemStack(Material.PAPER)
+    private fun button(icon: Material, title: String, select: () -> Unit): GuiItem {
+        val item = ItemStack(icon)
         item.editMeta { it.displayName(Component.text(title)) }
         return GuiItem(item) { event -> event.isCancelled = true; if (event.isLeftClick) select() }
+    }
+
+    private fun StallCapability.icon(): Material = when (this) {
+        StallCapability.ENTRY -> Material.OAK_DOOR
+        StallCapability.TRADE -> Material.RAW_GOLD
+        StallCapability.ANVIL -> Material.ANVIL
+        StallCapability.LECTERN -> Material.LECTERN
+        StallCapability.DOORS -> Material.IRON_DOOR
+        StallCapability.BUTTONS -> Material.STONE_BUTTON
+        StallCapability.LEVERS -> Material.LEVER
+        StallCapability.ITEM_PICKUP -> Material.HOPPER
+        StallCapability.CHESTS -> Material.CHEST
+        StallCapability.STOCK -> Material.BARREL
+        StallCapability.PRICES -> Material.GOLD_NUGGET
     }
 
     private fun <T> toggle(values: Set<T>, value: T): Set<T> = if (value in values) values - value else values + value
