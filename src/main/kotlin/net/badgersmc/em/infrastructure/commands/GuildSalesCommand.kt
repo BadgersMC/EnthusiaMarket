@@ -81,8 +81,18 @@ class GuildSalesCommand(private val repository: StallAccountingRepository, priva
             "stocked" to row.stocked, "sold" to row.quantity, "gross" to row.grossRevenue)
     }
 
+    internal fun reportStalls(sender: CommandSender): List<String> {
+        val player = sender as? Player ?: return emptyList()
+        val index = stalls as? net.badgersmc.em.application.StallAccessIndex ?: return emptyList()
+        return index.currentStalls().filter { authorizedGuild(player, it) != null }.map { it.id.value }
+    }
+
     private fun authorizedGuild(player: Player, stallId: String): String? {
         val stall = stalls.findById(StallId(stallId)) ?: return null
+        return authorizedGuild(player, stall)
+    }
+
+    private fun authorizedGuild(player: Player, stall: net.badgersmc.em.domain.stall.Stall): String? {
         val guild = stall.owner.id
         return guild.takeIf { stall.isActiveGuildStall() && guilds.isMember(player.uniqueId, guild) &&
             guilds.hasShopPermission(player.uniqueId, guild, GuildProvider.GuildPermission.MANAGE_SHOPS) }

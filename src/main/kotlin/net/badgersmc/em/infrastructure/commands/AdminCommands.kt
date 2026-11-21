@@ -84,6 +84,7 @@ class AdminCommands(
     private val bulkRentExtension: net.badgersmc.em.application.BulkRentExtensionService? = null,
     private val mutationGate: net.badgersmc.em.domain.ports.MarketMutationGate =
         net.badgersmc.em.domain.ports.MarketMutationGate.Open,
+    private val lotImport: AuctionLotImport = AuctionLotImport(),
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -138,7 +139,7 @@ class AdminCommands(
     @Permission("enthusiamarket.admin.rent")
     fun rentExtendAll(
         @Context sender: CommandSender,
-        @Arg("duration") duration: String,
+        @Arg("duration") @Suggests("rentDurations") duration: String,
     ) {
         val parsed = parseBulkRentDuration(duration)
         if (parsed == null) {
@@ -268,7 +269,7 @@ class AdminCommands(
 
     @Subcommand("list page")
     @Permission("enthusiamarket.admin.list")
-    fun listPage(@Context sender: CommandSender, @Arg("page") page: Int) {
+    fun listPage(@Context sender: CommandSender, @Arg("page") @Suggests("directoryPages") page: Int) {
         val ordered = stalls.all().sortedWith(compareBy({ it.world }, { it.id.value.trimEnd { c -> c in '0'..'9' } },
             { numericSuffix(it.id.value).length }, { numericSuffix(it.id.value) }, { it.id.value }))
         if (ordered.isEmpty()) {
@@ -304,9 +305,9 @@ class AdminCommands(
     @Permission("enthusiamarket.admin")
     fun auctionStart(
         @Context sender: CommandSender,
-        @Arg("stall") stall: String,
-        @Arg("price") price: Long,
-        @Arg("duration") duration: String? = null
+        @Arg("stall") @Suggests("stallIds") stall: String,
+        @Arg("price") @Suggests("startingBids") price: Long,
+        @Arg("duration") @Suggests("auctionDurations") duration: String? = null
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.createAuction(
@@ -327,8 +328,8 @@ class AdminCommands(
     @Permission("enthusiamarket.auction.bid")
     fun bid(
         @Context sender: CommandSender,
-        @Arg("auction") auction: String,
-        @Arg("amount") amount: Long
+        @Arg("auction") @Suggests("openAuctionIds") auction: String,
+        @Arg("amount") @Suggests("nextBid") amount: Long
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.placeBid(AuctionId(auction), player.uniqueId, amount,
@@ -348,9 +349,9 @@ class AdminCommands(
     @Permission("enthusiamarket.auction.bid")
     fun bidGuild(
         @Context sender: CommandSender,
-        @Arg("auction") auction: String,
-        @Arg("amount") amount: Long,
-        @Arg("guild") guild: String? = null,
+        @Arg("auction") @Suggests("openAuctionIds") auction: String,
+        @Arg("amount") @Suggests("nextBid") amount: Long,
+        @Arg("guild") @Suggests("bidGuilds") guild: String? = null,
     ) {
         val player = sender as? Player ?: return
         val eligible = auctionService.eligibleGuilds(player.uniqueId)
@@ -375,15 +376,15 @@ class AdminCommands(
         })
     }
 
-    private val lotImport = AuctionLotImport()
+
 
     @Subcommand("auction preview")
     @Permission("enthusiamarket.admin")
     fun auctionPreview(
         @Context sender: CommandSender,
-        @Arg("file") file: String,
-        @Arg("round") round: String,
-        @Arg("duration") duration: String,
+        @Arg("file") @Suggests("lotFiles") file: String,
+        @Arg("round") @Suggests("roundExamples") round: String,
+        @Arg("duration") @Suggests("auctionDurations") duration: String,
     ) = runLotCommand(sender) {
         val actor = AuctionLotImport.actor(sender)
         lotImport.discard(actor)
@@ -411,7 +412,7 @@ class AdminCommands(
 
     @Subcommand("auction confirm")
     @Permission("enthusiamarket.admin")
-    fun auctionConfirm(@Context sender: CommandSender, @Arg("token") token: String) = runLotCommand(sender) {
+    fun auctionConfirm(@Context sender: CommandSender, @Arg("token") @Suggests("previewToken") token: String) = runLotCommand(sender) {
         val plan = lotImport.consume(AuctionLotImport.actor(sender), token)
         val ends = auctionService.openImportedLots(plan)
         val receipt = "Opened ${plan.lots.size} lots in opening round ${plan.round}. Scheduled close $ends."
@@ -439,8 +440,8 @@ class AdminCommands(
     @Permission("enthusiamarket.admin")
     fun auctionStartAll(
         @Context sender: CommandSender,
-        @Arg("price") price: Long,
-        @Arg("duration") duration: String? = null
+        @Arg("price") @Suggests("startingBids") price: Long,
+        @Arg("duration") @Suggests("auctionDurations") duration: String? = null
     ) {
         val component = when (val result = auctionService.startMassAuction(price, duration)) {
             is MassAuctionResult.Report -> lang.msg(
@@ -468,7 +469,7 @@ class AdminCommands(
     @Permission("enthusiamarket.admin")
     fun auctionCancel(
         @Context sender: CommandSender,
-        @Arg("auction") auction: String
+        @Arg("auction") @Suggests("openAuctionIds") auction: String
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.cancelAuction(AuctionId(auction), player.uniqueId)) {
@@ -491,7 +492,7 @@ class AdminCommands(
     fun auctionExtend(
         @Context sender: CommandSender,
         @Arg("auction") @Suggests("openAuctionIds") auction: String,
-        @Arg("duration") duration: String,
+        @Arg("duration") @Suggests("auctionDurations") duration: String,
     ) {
         val component = when (val result = auctionService.extendAuction(AuctionId(auction), duration)) {
             is AuctionResult.Success -> lang.msg(
@@ -510,7 +511,7 @@ class AdminCommands(
     @Permission("enthusiamarket.admin")
     fun auctionClear(
         @Context sender: CommandSender,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("stallIds") stall: String,
     ) {
         val cleared = auctionService.clearStaleBidData(StallId(stall))
         sender.sendMessage(lang.msg("admin.auction.clear.done", "stall" to stall, "count" to cleared))
@@ -520,8 +521,8 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.members")
     fun membersAdd(
         @Context sender: Player,
-        @Arg("stall") stall: String,
-        @Arg("player") player: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
+        @Arg("player") @Suggests("visiblePlayers") player: String,
     ) {
         val target = playerNameResolver.resolve(player)
         if (target == null) {
@@ -538,8 +539,8 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.members")
     fun membersRemove(
         @Context sender: Player,
-        @Arg("stall") stall: String,
-        @Arg("player") player: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
+        @Arg("player") @Suggests("rosterMembers") player: String,
     ) {
         val target = playerNameResolver.resolve(player)
         if (target == null) {
@@ -556,7 +557,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.members")
     fun membersList(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
     ) {
         when (val r = stallMembers.listMembers(StallId(stall), sender.uniqueId)) {
             is StallMemberService.Result.NotFound ->
@@ -613,8 +614,8 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.offer")
     fun stallOffer(
         @Context sender: Player,
-        @Arg("stall") stall: String,
-        @Arg("price") price: Long,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
+        @Arg("price") @Suggests("goldExamples") price: Long,
     ) {
         val msg = when (val r = sellOffers.create(StallId(stall), sender.uniqueId, price)) {
             is SellOfferService.Result.Created ->
@@ -640,7 +641,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.offer")
     fun stallOfferCancel(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("cancelOffers") stall: String,
     ) {
         val msg = when (val r = sellOffers.cancel(StallId(stall), sender.uniqueId)) {
             is SellOfferService.Result.Cancelled ->
@@ -663,7 +664,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.buy")
     fun stallBuy(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("buyOffers") stall: String,
     ) {
         val msg = when (val r = sellOffers.purchase(StallId(stall), sender.uniqueId)) {
             is SellOfferService.Result.Purchased -> {
@@ -697,7 +698,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.sellback")
     fun sellback(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
     ) {
         prunePendingSellbacks()
         when (val r = sellback.quote(StallId(stall), sender.uniqueId)) {
@@ -729,7 +730,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.sellback")
     fun sellbackConfirm(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
     ) {
         val key = sender.uniqueId to stall
         val stagedAt = pendingSellbacks[key]
@@ -791,7 +792,7 @@ class AdminCommands(
 
     @Subcommand("stall setkind")
     @Permission("enthusiamarket.stall.setkind")
-    fun stallSetKind(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("kind") kind: String) {
+    fun stallSetKind(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String, @Arg("kind") @Suggests("stallKinds") kind: String) {
         val ok = applySetKind(stalls, stallId, kind)
         sender.sendMessage(
             if (ok) lang.msg("stall.setkind.ok", "stall" to stallId, "kind" to kind)
@@ -801,7 +802,7 @@ class AdminCommands(
 
     @Subcommand("stall entitylimit set")
     @Permission("enthusiamarket.stall.entitylimit")
-    fun stallEntityLimit(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("type") type: String, @Arg("extra") extra: Int) {
+    fun stallEntityLimit(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String, @Arg("type") @Suggests("entityTypes") type: String, @Arg("extra") @Suggests("extraCounts") extra: Int) {
         val ok = applyEntityLimit(stalls, stallId, type, extra)
         sender.sendMessage(
             if (ok) lang.msg("stall.entitylimit.ok", "stall" to stallId, "type" to type, "extra" to extra)
@@ -811,7 +812,7 @@ class AdminCommands(
 
     @Subcommand("stall recount")
     @Permission("enthusiamarket.stall.recount")
-    fun stallRecount(@Context sender: CommandSender, @Arg("stall") stallId: String) {
+    fun stallRecount(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String) {
         val stall = stalls.findById(StallId(stallId))
         if (stall == null) {
             sender.sendMessage(lang.msg("stall.recount.missing", "stall" to stallId))
@@ -838,7 +839,7 @@ class AdminCommands(
 
     @Subcommand("stall info")
     @Permission("enthusiamarket.stall.info")
-    fun stallInfo(@Context sender: CommandSender, @Arg("stall") stallId: String) {
+    fun stallInfo(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String) {
         val info = stallInfo.infoFor(StallId(stallId))
         if (info == null) {
             sender.sendMessage(lang.msg("stall.info.missing", "stall" to stallId))
@@ -864,7 +865,7 @@ class AdminCommands(
 
     @Subcommand("stall outline")
     @Permission("enthusiamarket.stall.outline")
-    fun stallOutline(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("seconds") seconds: Int) {
+    fun stallOutline(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String, @Arg("seconds") @Suggests("outlineSeconds") seconds: Int) {
         val player = sender as? Player ?: run {
             sender.sendMessage(lang.msg("stall.outline.player_only"))
             return
@@ -974,7 +975,7 @@ class AdminCommands(
     @Permission("enthusiamarket.admin.evict")
     fun evict(
         @Context sender: CommandSender,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("stallIds") stall: String,
     ) {
         val msg = when (stallEviction.evict(StallId(stall))) {
             is StallEvictionService.Result.Evicted ->
@@ -1135,7 +1136,7 @@ class AdminCommands(
 
 
     internal companion object {
-        private const val LIST_PAGE_SIZE = 6
+        internal const val LIST_PAGE_SIZE = 6
         private fun numericSuffix(id: String) = id.takeLastWhile { it in '0'..'9' }.trimStart('0')
         private val NUMBERED_STALL = Regex("stall(_cm_)?([0-9]+)", RegexOption.IGNORE_CASE)
         private val SAFE_STALL_ARGUMENT = Regex("[A-Za-z0-9_.-]+")

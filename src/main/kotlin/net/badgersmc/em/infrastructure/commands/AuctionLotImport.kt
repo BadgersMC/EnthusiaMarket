@@ -15,13 +15,13 @@ import java.time.Instant
 import java.util.Locale
 import java.util.UUID
 
-internal class AuctionLotImport(private val clock: Clock = Clock.systemUTC()) {
+class AuctionLotImport(private val clock: Clock = Clock.systemUTC()) {
     private data class Preview(val plan: AuctionLotPlan, val token: String, val expiresAt: Instant)
 
     private val previews = mutableMapOf<String, Preview>()
 
     @Synchronized
-    fun remember(actor: String, plan: AuctionLotPlan): String {
+    internal fun remember(actor: String, plan: AuctionLotPlan): String {
         val now = clock.instant()
         previews.values.removeIf { !now.isBefore(it.expiresAt) }
         val token = UUID.randomUUID().toString()
@@ -35,7 +35,10 @@ internal class AuctionLotImport(private val clock: Clock = Clock.systemUTC()) {
     }
 
     @Synchronized
-    fun consume(actor: String, token: String): AuctionLotPlan {
+    fun currentToken(actor: String): String? = previews[actor]?.takeIf { clock.instant().isBefore(it.expiresAt) }?.token
+
+    @Synchronized
+    internal fun consume(actor: String, token: String): AuctionLotPlan {
         val preview = previews[actor]
         require(preview != null && preview.token == token && clock.instant().isBefore(preview.expiresAt)) {
             "No matching active preview for you. Preview the file again."
@@ -55,8 +58,18 @@ internal class AuctionLotImport(private val clock: Clock = Clock.systemUTC()) {
             else -> throw IllegalArgumentException("Use an in-game staff account or the server console.")
         }
 
-        fun read(directory: Path, file: String): List<AuctionLot> {
-            require(file.endsWith(".csv") && identifier.matches(file.removeSuffix(".csv"))) {
+        private fun validFilename(file: String) = file.endsWith(".csv") && identifier.matches(file.removeSuffix(".csv"))
+
+        fun filenames(directory: Path): List<String> {
+            if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) return emptyList()
+            return Files.newDirectoryStream(directory).use { files ->
+                files.filter { validFilename(it.fileName.toString()) && Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+                    .map { it.fileName.toString() }
+            }
+        }
+
+        internal fun read(directory: Path, file: String): List<AuctionLot> {
+            require(validFilename(file)) {
                 "Supply a CSV filename, such as opening.csv."
             }
             val path = directory.resolve(file)
@@ -74,7 +87,7 @@ internal class AuctionLotImport(private val clock: Clock = Clock.systemUTC()) {
             }
         }
 
-        fun parse(csv: String): List<AuctionLot> {
+        internal fun parse(csv: String): List<AuctionLot> {
             val rows = csv.removePrefix("\uFEFF").lines()
             require(rows.first().split(',').map(String::trim) == listOf("stall_id", "min_bid")) {
                 "CSV must start with stall_id,min_bid."

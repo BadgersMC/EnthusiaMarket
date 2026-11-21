@@ -33,6 +33,22 @@ class GuildSalesRegistrarTest {
         verify(exactly = 1) { service.exportRange(sender, "stall", "2026-10-01", "2026-10-10") }
     }
 
+    @Test fun `guild report suggests matching stalls and periods without executing a report`() {
+        val service = mockk<GuildSalesCommand>()
+        val sender = mockk<CommandSender>()
+        every { sender.hasPermission(any<String>()) } returns true
+        every { service.reportStalls(sender) } returns listOf("stall_cm_08", "stall_cm_18")
+        val source = mockk<CommandSourceStack>()
+        every { source.sender } returns sender
+        val dispatcher = CommandDispatcher<CommandSourceStack>()
+        dispatcher.root.addChild(GuildSalesRegistrar.buildTree(service))
+        fun complete(input: String) = dispatcher.getCompletionSuggestions(dispatcher.parse(input, source))
+            .join().list.map { it.text }
+        kotlin.test.assertEquals(listOf("stall_cm_08"), complete("guildsales export range STALL_CM_0"))
+        kotlin.test.assertEquals(listOf("today"), complete("guildsales stall_cm_08 t"))
+        verify(exactly = 0) { service.report(any(), any(), any()) }
+    }
+
     @Test fun `permission denial prevents report dispatch`() {
         val service = mockk<GuildSalesCommand>(relaxed = true)
         val sender = mockk<CommandSender>()

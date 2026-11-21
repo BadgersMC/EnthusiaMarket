@@ -12,6 +12,7 @@ class StallAccessIndex(private val delegate: StallRepository) : StallRepository 
     private val stale = ConcurrentHashMap.newKeySet<String>()
 
     fun rebuild() { delegate.all().forEach(::publish) }
+    fun currentStalls(): List<Stall> = snapshots.values.filter { isFresh(it.id.value) }
     fun cached(id: String): Stall? = snapshots[id]
     fun cached(world: String, region: String): Stall? = byRegion[world to region]?.let(snapshots::get)
     fun isFresh(id: String): Boolean = id !in stale

@@ -317,23 +317,20 @@ open class EnthusiaMarket : JavaPlugin() {
         // itemMaterials suggestion provider backs `/shop search` tab-completion (REQ-283):
         // computed once here, prefix-filtered per keystroke by the pure MaterialSuggestions helper.
         val itemMaterialNames = org.bukkit.Material.entries.filter { it.isItem }.map { it.name }
+        val lotImport = net.badgersmc.em.infrastructure.commands.AuctionLotImport()
+        ctx.registerBean("auctionLotImport", net.badgersmc.em.infrastructure.commands.AuctionLotImport::class, lotImport)
         ctx.registerPaperCommands(
             basePackage = "net.badgersmc.em",
             classLoader = this::class.java.classLoader,
             plugin = this,
             suggestionProviders = mapOf(
-                "itemMaterials" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
+                "itemMaterials" to com.mojang.brigadier.suggestion.SuggestionProvider<io.papermc.paper.command.brigadier.CommandSourceStack> { _, builder ->
                     net.badgersmc.em.application.MaterialSuggestions
                         .matching(itemMaterialNames, builder.remaining)
                         .forEach(builder::suggest)
                     builder.buildFuture()
                 },
-                "openAuctionIds" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
-                    val repo = ctx.getBean(net.badgersmc.em.domain.auction.AuctionRepository::class)
-                    repo.allOpen().map { it.id.value }.forEach(builder::suggest)
-                    builder.buildFuture()
-                },
-            ),
+            ) + net.badgersmc.em.infrastructure.commands.StallCommandSuggestions.providers(ctx, stallRepository, dataFolder.toPath().resolve("auction-lots"), cfg),
         )
 
         // Phase 5b: Register /finditem as a top-level Paper Brigadier command.

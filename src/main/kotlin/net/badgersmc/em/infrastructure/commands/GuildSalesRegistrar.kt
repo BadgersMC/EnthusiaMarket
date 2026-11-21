@@ -28,8 +28,8 @@ internal object GuildSalesRegistrar {
     }
 
     private fun reportArguments(service: GuildSalesCommand, export: Boolean): RequiredArgumentBuilder<CommandSourceStack, String> =
-        argument("stall").executes { runReport(it, service, export, "all") }
-            .then(argument("period").executes { runReport(it, service, export, text(it, "period")) })
+        stallArgument(service).executes { runReport(it, service, export, "all") }
+            .then(argument("period").suggests(StallCommandSuggestions.choices { listOf("all", "today") }).executes { runReport(it, service, export, text(it, "period")) })
 
     private fun runReport(context: CommandContext<CommandSourceStack>, service: GuildSalesCommand, export: Boolean, period: String): Int {
         val sender = context.source.sender
@@ -39,12 +39,20 @@ internal object GuildSalesRegistrar {
     }
 
     private fun rangeArguments(service: GuildSalesCommand, export: Boolean): LiteralArgumentBuilder<CommandSourceStack> =
-        literal("range").then(argument("stall").then(argument("from").then(argument("to").executes { context ->
+        literal("range").then(stallArgument(service).then(dateArgument("from").then(dateArgument("to").executes { context ->
             val sender = context.source.sender
             if (export) service.exportRange(sender, text(context, "stall"), text(context, "from"), text(context, "to"))
             else service.rangeReport(sender, text(context, "stall"), text(context, "from"), text(context, "to"))
             1
         })))
+
+    private fun stallArgument(service: GuildSalesCommand) = argument("stall").suggests(
+        StallCommandSuggestions.choices { service.reportStalls(it.sender) }
+    )
+
+    private fun dateArgument(name: String) = argument(name).suggests(
+        StallCommandSuggestions.choices { listOf(java.time.LocalDate.now().toString()) }
+    )
 
     private fun literal(name: String) = LiteralArgumentBuilder.literal<CommandSourceStack>(name)
     private fun argument(name: String) = RequiredArgumentBuilder.argument<CommandSourceStack, String>(name, StringArgumentType.word())
