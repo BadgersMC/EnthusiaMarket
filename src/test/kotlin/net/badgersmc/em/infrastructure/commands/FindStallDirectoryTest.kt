@@ -7,6 +7,7 @@ import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.i18n.LangService
+import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import kotlin.test.Test
@@ -29,8 +30,8 @@ class FindStallDirectoryTest {
         every { player.sendMessage(capture(messages)) } returns Unit
         assertEquals(1, FindStallRegistrar.browse(player, index, lang, 2))
         assertEquals(3, messages.size)
-        assertEquals("/findstall stall_08", messages[1].clickEvent()?.value())
-        assertEquals("/findstall page 1", messages.last().children().singleOrNull()?.clickEvent()?.value()
-            ?: messages.last().clickEvent()?.value())
+        assertEquals(ClickEvent.runCommand("/findstall stall_08"), messages[1].clickEvent())
+        assertEquals(ClickEvent.runCommand("/findstall page 1"), messages.last().children().singleOrNull()?.clickEvent()
+            ?: messages.last().clickEvent())
     }
 }
