@@ -293,6 +293,8 @@ tasks {
             environment("LUMAGUILDS_JAR", path)
         }
     }
+    // Test compilation may run jar after shadowJar. Keep the deployable artifact intact.
+    jar { archiveClassifier.set("plain") }
     shadowJar {
         archiveClassifier.set("")
         // Do NOT relocate net.badgersmc.nexus. gradleup/shadow 8.3.6 does
