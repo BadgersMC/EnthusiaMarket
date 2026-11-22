@@ -195,6 +195,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 // version instead of the literal token. Runs before generateNexusPermissions
 // (which splices the permissions block into the already-expanded staged file).
 tasks.processResources {
+    inputs.property("descriptorVersion", project.version.toString())
     filesMatching("paper-plugin.yml") {
         expand(mapOf("version" to project.version))
     }
