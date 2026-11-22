@@ -5,9 +5,11 @@ import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard
 import com.sk89q.worldedit.function.operation.ForwardExtentCopy
 import com.sk89q.worldedit.function.operation.Operations
-import com.sk89q.worldedit.math.BlockVector3
 import com.sk89q.worldedit.regions.CuboidRegion
-import com.sk89q.worldedit.session.ClipboardHolder
+import com.sk89q.worldedit.extent.Extent
+import com.sk89q.worldedit.regions.Region
+import com.sk89q.worldedit.util.SideEffectSet
+import com.sk89q.worldguard.protection.regions.ProtectedRegion
 import com.sk89q.worldguard.WorldGuard
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.SchematicService
@@ -24,7 +26,7 @@ import java.io.File
  *
  * Region geometry is resolved via WorldGuard's `RegionContainer`: the stall's
  * WorldGuard region min/max define the cuboid copied into a clipboard on
- * capture and pasted back on restore. WE/FAWE selection is handled by
+ * capture. Restore writes only blocks contained in the current stall region. WE/FAWE selection is handled by
  * [WorldEditAdapter.isFawePresent] (REQ-272) — restores dispatch through the
  * Bukkit scheduler off the main thread when FAWE is present and run inline
  * otherwise.
@@ -53,17 +55,18 @@ class WorldEditSchematicAdapter(
                 ?: return SchematicService.Result.Failure(
                     IllegalStateException("World '$world' is not loaded")
                 )
-            val (min, max) = regionBounds(world, regionId)
+            val boundary = stallRegion(world, regionId)
                 ?: return SchematicService.Result.Failure(
                     IllegalStateException("Region '$regionId' not found in world '$world'")
                 )
 
             val weWorld = BukkitAdapter.adapt(bukkitWorld)
-            val region = CuboidRegion(weWorld, min, max)
+            val region = CuboidRegion(weWorld, boundary.minimumPoint, boundary.maximumPoint)
             val clipboard = BlockArrayClipboard(region)
-            clipboard.origin = min
+            clipboard.origin = region.minimumPoint
             WorldEdit.getInstance().newEditSession(weWorld).use { editSession ->
                 val copy = ForwardExtentCopy(editSession, region, clipboard, region.minimumPoint)
+                copy.isCopyingEntities = false
                 Operations.complete(copy)
             }
             WorldEditAdapter.saveSchematic(clipboard, file)
@@ -88,7 +91,7 @@ class WorldEditSchematicAdapter(
                 )
             // Validate the region exists up front so a missing region fails fast
             // (synchronously) rather than inside an async paste.
-            regionBounds(world, regionId)
+            val boundary = stallRegion(world, regionId)
                 ?: return SchematicService.Result.Failure(
                     IllegalStateException("Region '$regionId' not found in world '$world'")
                 )
@@ -98,7 +101,7 @@ class WorldEditSchematicAdapter(
                 // so the paste never blocks the tick loop (REQ-272).
                 object : BukkitRunnable() {
                     override fun run() {
-                        runCatching { pasteNow(world, file) }.onFailure {
+                        runCatching { pasteNow(world, file, boundary) }.onFailure {
                             plugin.logger.warning(
                                 "Async schematic restore failed for stall '$stallId': ${it.message}"
                             )
@@ -106,7 +109,7 @@ class WorldEditSchematicAdapter(
                     }
                 }.runTaskAsynchronously(plugin)
             } else {
-                pasteNow(world, file)
+                pasteNow(world, file, boundary)
             }
             SchematicService.Result.Success
         } catch (e: Exception) {
@@ -114,26 +117,33 @@ class WorldEditSchematicAdapter(
         }
     }
 
-    private fun pasteNow(world: String, file: File) {
+    private fun pasteNow(world: String, file: File, boundary: ProtectedRegion) {
         val bukkitWorld = Bukkit.getWorld(world) ?: error("World '$world' is not loaded")
         val weWorld = BukkitAdapter.adapt(bukkitWorld)
         val clipboard = WorldEditAdapter.loadSchematic(file)
         WorldEdit.getInstance().newEditSession(weWorld).use { editSession ->
-            val operation = ClipboardHolder(clipboard)
-                .createPaste(editSession)
-                .to(clipboard.origin)
-                .ignoreAirBlocks(false)
-                .build()
-            Operations.complete(operation)
+            editSession.setSideEffectApplier(SideEffectSet.none())
+            restoreStallBlocks(clipboard, clipboard.region, editSession, boundary)
         }
     }
 
-    /** Resolve the WorldGuard region's cuboid bounds, or null if absent. */
-    private fun regionBounds(world: String, regionId: String): Pair<BlockVector3, BlockVector3>? {
+    /** Resolve the named WorldGuard stall geometry, or null if absent. */
+    private fun stallRegion(world: String, regionId: String): ProtectedRegion? {
         val bukkitWorld = Bukkit.getWorld(world) ?: return null
         val container = WorldGuard.getInstance().platform.regionContainer
         val regionManager = container.get(BukkitAdapter.adapt(bukkitWorld)) ?: return null
-        val region = regionManager.getRegion(regionId) ?: return null
-        return region.minimumPoint to region.maximumPoint
+        return regionManager.getRegion(regionId)
+    }
+}
+
+/** Legacy files contain the bounding box. Clip writes in world coordinates, including writes of air. */
+internal fun restoreStallBlocks(source: Extent, saved: Region, target: Extent, boundary: ProtectedRegion) {
+    val min = saved.minimumPoint.getMaximum(boundary.minimumPoint)
+    val max = saved.maximumPoint.getMinimum(boundary.maximumPoint)
+    require(min.x() <= max.x() && min.y() <= max.y() && min.z() <= max.z()) { "Stall and saved schematic do not overlap" }
+    for (position in CuboidRegion(min, max)) {
+        if (boundary.contains(position) && saved.contains(position)) {
+            target.setBlock(position, source.getFullBlock(position))
+        }
     }
 }
