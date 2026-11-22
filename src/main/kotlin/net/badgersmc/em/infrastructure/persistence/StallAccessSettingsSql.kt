@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.persistence
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallAccessSettings
 import net.badgersmc.em.domain.stall.StallAccessSettingsRepository
+import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.domain.stall.StallCapability
 import java.sql.Connection
 import java.sql.ResultSet
@@ -10,6 +11,36 @@ import java.util.UUID
 import javax.sql.DataSource
 
 class StallAccessSettingsSql(private val ds: DataSource) : StallAccessSettingsRepository {
+    /** Reconcile policies left by older builds before the server starts accepting edits. */
+    fun pruneEndedTenancies(stalls: Map<String, Stall>) {
+        ds.connection.use { conn ->
+            conn.inMarketTransaction {
+                val expired = conn.prepareStatement("SELECT stall_id, ownership_key FROM stall_access_settings").use { query ->
+                    query.executeQuery().use { rows ->
+                        buildList {
+                            while (rows.next()) {
+                                val id = rows.getString(1)
+                                val key = rows.getString(2)
+                                val stall = stalls[id]
+                                if (stall?.state == StallState.MODERATION_HOLD) continue
+                                if (stall == null || stall.state !in setOf(StallState.OWNED, StallState.GRACE) ||
+                                    key != StallAccessSettings.ownershipKey(stall)) add(id to key)
+                            }
+                        }
+                    }
+                }
+                conn.prepareStatement("DELETE FROM stall_access_settings WHERE stall_id = ? AND ownership_key = ?").use { delete ->
+                    for ((id, key) in expired) {
+                        delete.setString(1, id)
+                        delete.setString(2, key)
+                        delete.addBatch()
+                    }
+                    if (expired.isNotEmpty()) delete.executeBatch()
+                }
+            }
+        }
+    }
+
     override fun all(): List<StallAccessSettings> = ds.connection.use { connection ->
         connection.prepareStatement("SELECT * FROM stall_access_settings").use { statement ->
             statement.executeQuery().use { result -> buildList { while (result.next()) add(decode(result)) } }

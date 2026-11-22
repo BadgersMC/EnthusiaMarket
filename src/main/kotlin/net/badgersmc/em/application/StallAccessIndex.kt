@@ -12,6 +12,19 @@ class StallAccessIndex(private val delegate: StallRepository) : StallRepository 
     private val byRegion = ConcurrentHashMap<Pair<String, String>, String>()
     private val stale = ConcurrentHashMap.newKeySet<String>()
 
+    private val observers = java.util.concurrent.CopyOnWriteArrayList<(Stall) -> Unit>()
+    fun onCommittedStall(observer: (Stall) -> Unit) { observers.add(observer) }
+
+    @Synchronized override fun savePendingSellback(stall: Stall) {
+        delegate.savePendingSellback(stall)
+        updateSnapshot(stall)
+    }
+
+    @Synchronized override fun finishSellbackAccess(previous: Stall) {
+        delegate.finishSellbackAccess(previous)
+        refresh(previous.id.value)
+    }
+
     fun rebuild() { delegate.all().forEach(::publish) }
     fun currentStalls(): List<Stall> = snapshots.values.filter { isFresh(it.id.value) }
     fun cached(id: String): Stall? = snapshots[id]
@@ -43,6 +56,11 @@ class StallAccessIndex(private val delegate: StallRepository) : StallRepository 
     }
 
     private fun publish(stall: Stall) {
+        updateSnapshot(stall)
+        observers.forEach { it(stall) }
+    }
+
+    private fun updateSnapshot(stall: Stall) {
         snapshots[stall.id.value] = stall
         byRegion[stall.world to stall.regionId] = stall.id.value
         stale.remove(stall.id.value)

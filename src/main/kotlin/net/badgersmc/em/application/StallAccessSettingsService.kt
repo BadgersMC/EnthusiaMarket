@@ -16,10 +16,19 @@ class StallAccessSettingsService(
 ) : StallAccessPolicy {
     private val settings = ConcurrentHashMap<String, StallAccessSettings>()
     private val uncertain = ConcurrentHashMap.newKeySet<String>()
-    init { repository.all().forEach { settings[it.stallId] = it } }
+    init {
+        repository.all().forEach { settings[it.stallId] = it }
+        index.onCommittedStall { stall ->
+            if (stall.state != StallState.MODERATION_HOLD) {
+                settings.computeIfPresent(stall.id.value) { _, policy ->
+                    policy.takeIf { stall.state in ACTIVE_STATES && it.ownershipKey == StallAccessSettings.ownershipKey(stall) }
+                }
+            }
+        }
+    }
 
     fun current(stall: Stall): StallAccessSettings = settings[stall.id.value]
-        ?.takeIf { it.ownershipKey == StallAccessSettings.ownershipKey(stall) }
+        ?.takeIf { stall.state in ACTIVE_STATES && it.ownershipKey == StallAccessSettings.ownershipKey(stall) }
         ?: StallAccessSettings.defaults(stall)
 
     fun mayManage(stall: Stall, actor: UUID): Boolean = stall.id.value !in uncertain && index.isFresh(stall.id.value) &&

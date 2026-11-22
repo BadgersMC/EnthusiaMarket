@@ -48,7 +48,23 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
     }
 
     override fun save(stall: Stall) {
-        ds.connection.use { save(it, stall) }
+        ds.connection.use { conn -> conn.inMarketTransaction { save(conn, stall) } }
+    }
+
+    override fun savePendingSellback(stall: Stall) {
+        require(stall.state == StallState.UNOWNED)
+        ds.connection.use { updateRow(it, stall) }
+    }
+
+    override fun finishSellbackAccess(previous: Stall) {
+        ds.connection.use { conn ->
+            conn.prepareStatement("DELETE FROM stall_access_settings WHERE stall_id = ? AND ownership_key = ? AND EXISTS (SELECT 1 FROM stalls WHERE id = ? AND state = 'UNOWNED')").use {
+                it.setString(1, previous.id.value)
+                it.setString(2, StallAccessSettings.ownershipKey(previous))
+                it.setString(3, previous.id.value)
+                it.executeUpdate()
+            }
+        }
     }
 
     override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
@@ -99,6 +115,18 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
     }
 
     internal fun save(conn: Connection, stall: Stall) {
+        updateRow(conn, stall)
+        if (stall.state == StallState.MODERATION_HOLD) return
+        val keepCurrent = stall.state == StallState.OWNED || stall.state == StallState.GRACE
+        val predicate = if (keepCurrent) " AND ownership_key <> ?" else ""
+        conn.prepareStatement("DELETE FROM stall_access_settings WHERE stall_id = ?" + predicate).use {
+            it.setString(1, stall.id.value)
+            if (keepCurrent) it.setString(2, StallAccessSettings.ownershipKey(stall))
+            it.executeUpdate()
+        }
+    }
+
+    private fun updateRow(conn: Connection, stall: Stall) {
         conn.prepareStatement(
             """UPDATE stalls SET
                 region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,

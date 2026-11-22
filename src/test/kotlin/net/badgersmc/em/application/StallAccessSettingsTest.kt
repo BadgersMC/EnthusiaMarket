@@ -80,7 +80,45 @@ class StallAccessSettingsTest {
         stalls.save(successor)
         assertEquals(StallAccessSettings.defaults(successor), service.current(successor))
         assertFailsWith<IllegalStateException> { repo.save(saved, stall()) }
-        assertEquals(saved, repo.all().single())
+        assertTrue(repo.all().isEmpty())
+    }
+
+    @Test fun `forfeiture clears only the lost tenancy including on reacquisition`() {
+        val original = stall()
+        val other = original.copy(id = StallId("s2"), regionId = "s2", owner = OwnerRef.solo(owner))
+        stalls.create(other)
+        for (id in listOf("s1", "s2")) service.edit(owner, id) { it.copy(blacklist = setOf(visitor)) }
+        stalls.save(original.copy(state = StallState.GRACE))
+        assertTrue(service.blacklistDenies("s1", visitor))
+        stalls.save(original.copy(state = StallState.EMERGENCY_AUCTIONING))
+        stalls.save(original)
+        assertFalse(service.blacklistDenies("s1", visitor))
+        assertTrue(service.blacklistDenies("s2", visitor))
+        assertEquals("s2", repo.all().single().stallId)
+    }
+
+    @Test fun `refunded sellback expires policy while rollback preserves it`() {
+        val original = stall()
+        val released = original.copy(state = StallState.UNOWNED)
+        service.edit(owner, "s1") { it.copy(blacklist = setOf(visitor)) }
+        stalls.savePendingSellback(released)
+        assertFalse(service.blacklistDenies("s1", visitor))
+        stalls.save(original)
+        assertTrue(service.blacklistDenies("s1", visitor))
+        stalls.savePendingSellback(released)
+        stalls.finishSellbackAccess(original)
+        stalls.save(original)
+        assertFalse(service.blacklistDenies("s1", visitor))
+        assertTrue(repo.all().isEmpty())
+    }
+
+    @Test fun `startup removes legacy blacklist on an unowned stall`() {
+        service.edit(owner, "s1") { it.copy(blacklist = setOf(visitor)) }
+        repo.pruneEndedTenancies(mapOf("s1" to stall().copy(state = StallState.MODERATION_HOLD)))
+        assertEquals(setOf(visitor), repo.all().single().blacklist)
+        stalls.savePendingSellback(stall().copy(state = StallState.UNOWNED))
+        repo.pruneEndedTenancies(stalls.currentStalls().associateBy { it.id.value })
+        assertTrue(repo.all().isEmpty())
     }
 
     @Test fun `moderation reservations and stale caches deny edits and ally privilege`() {

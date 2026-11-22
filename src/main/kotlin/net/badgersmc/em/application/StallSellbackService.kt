@@ -111,7 +111,7 @@ class StallSellbackService(
                 members = emptySet(),
                 nextRentAt = null,
             )
-            stalls.save(cleared)
+            if (refund > 0) stalls.savePendingSellback(cleared) else stalls.save(cleared)
 
         } catch (e: Exception) {
             return ExecuteResult.Rejected("Stall reset failed; contact an admin")
@@ -135,6 +135,9 @@ class StallSellbackService(
             } catch (_: Exception) { }
             return ExecuteResult.Rejected("Failed to deposit refund of $refund to your account")
         }
+
+        if (refund > 0) runCatching { stalls.finishSellbackAccess(stall) }
+            .onFailure { log.warning("Sellback access cleanup failed for ${stallId.value}: ${it.message}") }
 
         runCatching { ipLimiter.releaseStallByOwnerId(stall.owner.id) }
             .onFailure { log.warning("Sellback IP projection cleanup failed: ${it.message}") }
