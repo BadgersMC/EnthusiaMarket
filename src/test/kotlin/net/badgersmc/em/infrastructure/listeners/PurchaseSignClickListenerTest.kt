@@ -213,6 +213,23 @@ class PurchaseSignClickListenerTest {
     }
 
     @Test
+    fun `emergency purchase sign reads listings from the active auction`() {
+        val signs = mockk<PurchaseSignRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val auctions = mockk<AuctionRepository>(relaxed = true)
+        val id = StallId("stall_01")
+        val auction = openAuction(id, AuctionId("emergency"))
+        every { signs.findAt("world", 10, 64, 20) } returns purchaseSign(id.value, 500)
+        every { stalls.findById(id) } returns auctioningStall(StallState.EMERGENCY_AUCTIONING)
+        every { auctions.findOpenByStall(id) } returns auction
+        every { auctions.previewListings(auction.id, 0, 6) } returns emptyList()
+        val (listener, menus) = listenerWithRecording(signs, stalls, mockk(relaxed = true), auctions)
+        listener.onClick(interactEvent(mockk<Player>(relaxed = true), signBlock(x = 10, y = 64, z = 20)))
+        verify(exactly = 1) { auctions.previewListings(auction.id, 0, 6) }
+        assertTrue(menus.isEmpty())
+    }
+
+    @Test
     fun `auctioning stall sign without open auction shows only informational message`() {
         val signs = mockk<PurchaseSignRepository>(relaxed = true)
         val stalls = mockk<StallRepository>(relaxed = true)

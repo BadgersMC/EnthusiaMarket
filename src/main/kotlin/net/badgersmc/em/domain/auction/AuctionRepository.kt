@@ -3,6 +3,16 @@ package net.badgersmc.em.domain.auction
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.Stall
 
+import net.badgersmc.em.domain.shop.SignDirection
+
+data class EmergencyListing(
+    val direction: SignDirection,
+    val item: String,
+    val quantity: Int,
+    val payment: String,
+    val amount: Int,
+)
+
 interface AuctionPaymentRepository {
     fun pendingPayments(now: Long): List<AuctionPayment>
     fun claimPayment(id: String): Boolean
@@ -17,6 +27,8 @@ interface AuctionRepository : AuctionPaymentRepository {
     fun hasOtherOpenGuildBid(guildId: String, auctionId: AuctionId): Boolean
     fun hasGuildOpeningRoundWin(roundId: String, guildId: String): Boolean
     fun findExpired(): List<Auction>
+    fun createEmergency(auction: Auction)
+    fun previewListings(id: AuctionId, offset: Long, limit: Int): List<EmergencyListing>
     fun create(auction: Auction)
     /** Opens all lots and transitions their stalls together. Returns the first conflicting stall. */
     fun openImportedLots(lots: List<Pair<Stall, Auction>>): StallId?

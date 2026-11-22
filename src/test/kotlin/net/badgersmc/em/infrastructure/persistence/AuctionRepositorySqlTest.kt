@@ -26,6 +26,36 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class AuctionRepositorySqlTest {
+    @Test fun `emergency listings survive shop cleanup and respect discovery settings and auction identity`() {
+        val auction = sampleAuction()
+        ds.connection.use { connection ->
+            connection.createStatement().use { statement ->
+                for (id in 1..4) {
+                    statement.executeUpdate("""INSERT INTO shop_items
+                        (id, stall_id, owner, sign_world, sign_x, sign_y, sign_z,
+                         container_world, container_x, container_y, container_z, sell_item, cost_item,
+                         sell_material, sell_amount, cost_amount, search_enabled, admin_shop)
+                        VALUES ($id,'stall_01','owner','world',$id,0,0,'world',$id,0,1,'','','REDSTONE',8,$id,
+                            ${if (id == 3) 0 else 1},${if (id == 4) 1 else 0})""")
+                }
+            }
+        }
+        repo.createEmergency(auction)
+        ds.connection.use { it.createStatement().use { statement -> statement.executeUpdate("DELETE FROM shop_items") } }
+        val listings = AuctionRepositorySql(ds).previewListings(auction.id, 0, 6)
+        assertEquals(listOf(1, 2), listings.map { it.amount })
+        assertTrue(listings.all { it.quantity == 8 && it.item == "redstone" && it.payment == "raw gold" })
+        assertEquals(listings.drop(1), repo.previewListings(auction.id, 1, 5))
+        assertTrue(repo.previewListings(AuctionId("different"), 0, 6).isEmpty())
+    }
+
+    @Test fun `emergency capture failure rolls back the new auction`() {
+        ds.connection.use { it.createStatement().use { statement -> statement.executeUpdate("DROP TABLE shop_items") } }
+        val auction = sampleAuction()
+        assertFailsWith<java.sql.SQLException> { repo.createEmergency(auction) }
+        assertNull(repo.findById(auction.id))
+    }
+
     @Test fun `50 imported lots commit together and a late conflict rolls everything back`() {
         val stalls = StallRepositorySql(ds)
         val lots = (1..50).map { number ->

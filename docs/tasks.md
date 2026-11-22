@@ -1248,3 +1248,5 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 ## Player stall finder
 
 - Add public stall browsing, ID suggestions and shop-independent region guidance. Verify an empty stall can start and stop the shared finder session. Client acceptance follows TEST deployment.
+
+- Emergency auction shop previews (REQ-013/319). When rent forfeiture opens an emergency auction, Market shall capture the former tenant's publicly searchable listings before cleanup. While the auction is open, the stall purchase sign and `/em preview <stall> [page]` shall show the saved offers in pages of five. Previewing shall never move items or money. Auctions without recorded listings show an empty state. The SQLite persistence and purchase-sign regressions exercise this contract. Native TEST acceptance is pending.

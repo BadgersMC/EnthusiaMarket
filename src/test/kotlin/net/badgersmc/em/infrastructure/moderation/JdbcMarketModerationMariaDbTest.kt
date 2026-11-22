@@ -52,7 +52,7 @@ class JdbcMarketModerationMariaDbTest {
         })
         createV27UpgradeBaseline()
         val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
-        assertEquals((28..39).toList(), applied.map { it.version })
+        assertEquals((28..40).toList(), applied.map { it.version })
         createStallAndShop()
     }
 
@@ -320,7 +320,7 @@ class JdbcMarketModerationMariaDbTest {
     private fun createV27UpgradeBaseline() {
         dataSource.connection.use { connection ->
             listOf(
-                "rent_ledger", "auction_payments",
+                "emergency_listings", "rent_ledger", "auction_payments",
                 "market_moderation_locks",
                 "market_moderation_operations",
                 "market_stall_blacklists",

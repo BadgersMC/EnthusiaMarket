@@ -12,6 +12,7 @@ import net.badgersmc.nexus.annotations.Repository
 import net.badgersmc.em.domain.auction.AuctionPayment
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
+import net.badgersmc.em.infrastructure.moderation.inTransaction
 import java.sql.PreparedStatement
 import java.sql.Connection
 import java.sql.ResultSet
@@ -49,6 +50,16 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, Auct
             setString(1, roundId)
             setString(2, guildId)
         }
+
+    override fun createEmergency(auction: Auction) {
+        ds.inTransaction { connection ->
+            insert(connection, auction)
+            EmergencyListingSql.capture(connection, auction)
+        }
+    }
+
+    override fun previewListings(id: AuctionId, offset: Long, limit: Int) =
+        ds.connection.use { EmergencyListingSql.page(it, id, offset, limit) }
 
     override fun create(auction: Auction) {
         ds.connection.use { conn ->
