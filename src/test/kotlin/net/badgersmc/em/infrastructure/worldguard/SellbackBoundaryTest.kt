@@ -25,10 +25,15 @@ class SellbackBoundaryTest {
         val other = mockk<BaseBlock>()
         every { source.getFullBlock(any()) } returns other
         every { source.getFullBlock(BlockVector3.at(1, 0, 1)) } returns marker
-        every { target.setBlock(any(), any<BaseBlock>()) } returns true
+        val writes = mutableMapOf<BlockVector3, BaseBlock>()
+        every { target.setBlock(any(), any<BaseBlock>()) } answers {
+            val position = firstArg<BlockVector3>()
+            writes[BlockVector3.at(position.x(), position.y(), position.z())] = secondArg()
+            true
+        }
         restoreStallBlocks(source, saved, target, boundary)
-        verify(exactly = 1) { target.setBlock(BlockVector3.at(513, 296, 513), marker) }
-        verify(exactly = 0) { target.setBlock(BlockVector3.at(516, 296, 516), any<BaseBlock>()) }
+        assertEquals(marker, writes[BlockVector3.at(513, 296, 513)])
+        assertFalse(BlockVector3.at(516, 296, 516) in writes)
         kotlin.test.assertFailsWith<IllegalArgumentException> {
             restoreStallBlocks(source, CuboidRegion(BlockVector3.ZERO, BlockVector3.at(7, 5, 7)), target, boundary)
         }
