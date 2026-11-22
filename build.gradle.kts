@@ -195,6 +195,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 // version instead of the literal token. Runs before generateNexusPermissions
 // (which splices the permissions block into the already-expanded staged file).
 tasks.processResources {
+    inputs.property("descriptorVersion", project.version.toString())
     filesMatching("paper-plugin.yml") {
         expand(mapOf("version" to project.version))
     }
@@ -293,6 +294,8 @@ tasks {
             environment("LUMAGUILDS_JAR", path)
         }
     }
+    // Test compilation may run jar after shadowJar. Keep the deployable artifact intact.
+    jar { archiveClassifier.set("plain") }
     shadowJar {
         archiveClassifier.set("")
         // Do NOT relocate net.badgersmc.nexus. gradleup/shadow 8.3.6 does
