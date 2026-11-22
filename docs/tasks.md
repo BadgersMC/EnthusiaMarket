@@ -1250,3 +1250,4 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 - Add public stall browsing, ID suggestions and shop-independent region guidance. Verify an empty stall can start and stop the shared finder session. Client acceptance follows TEST deployment.
 
 - REQ-271 sellback boundary regression. Restore saved blocks, including air, only inside the current WorldGuard stall and the saved schematic. A legacy rectangular snapshot must preserve the notch of an L-shaped stall. Local adapter test covers the exact set of block writes. TEST acceptance requires an interior control block and an exterior support, filled item frame and drop check.
+- TEST follow-up: FAWE normalized the capture and the initial absolute-coordinate restore rejected the live sellback. Translate zero-based clipboards of matching dimensions to the stall minimum before the destination boundary check. Refuse an ambiguous resized local snapshot.

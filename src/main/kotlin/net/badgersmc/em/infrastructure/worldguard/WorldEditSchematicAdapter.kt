@@ -5,6 +5,7 @@ import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard
 import com.sk89q.worldedit.function.operation.ForwardExtentCopy
 import com.sk89q.worldedit.function.operation.Operations
+import com.sk89q.worldedit.math.BlockVector3
 import com.sk89q.worldedit.regions.CuboidRegion
 import com.sk89q.worldedit.extent.Extent
 import com.sk89q.worldedit.regions.Region
@@ -138,12 +139,21 @@ class WorldEditSchematicAdapter(
 
 /** Legacy files contain the bounding box. Clip writes in world coordinates, including writes of air. */
 internal fun restoreStallBlocks(source: Extent, saved: Region, target: Extent, boundary: ProtectedRegion) {
-    val min = saved.minimumPoint.getMaximum(boundary.minimumPoint)
-    val max = saved.maximumPoint.getMinimum(boundary.maximumPoint)
-    require(min.x() <= max.x() && min.y() <= max.y() && min.z() <= max.z()) { "Stall and saved schematic do not overlap" }
+    // FAWE can deserialize a stall capture as a zero-based clipboard. Market captured
+    // it from the stall minimum. Only use that anchor when all three dimensions match.
+    val offset = if (saved.minimumPoint == BlockVector3.ZERO && boundary.minimumPoint != BlockVector3.ZERO) {
+        require(saved.maximumPoint == boundary.maximumPoint.subtract(boundary.minimumPoint)) {
+            "Local schematic dimensions differ from the current stall"
+        }
+        boundary.minimumPoint
+    } else BlockVector3.ZERO
+    val min = saved.minimumPoint.add(offset).getMaximum(boundary.minimumPoint)
+    val max = saved.maximumPoint.add(offset).getMinimum(boundary.maximumPoint)
+    require(min.x() <= max.x() && min.y() <= max.y() && min.z() <= max.z()) { "Stall ${boundary.minimumPoint}..${boundary.maximumPoint} and schematic ${saved.minimumPoint}..${saved.maximumPoint} do not overlap" }
     for (position in CuboidRegion(min, max)) {
-        if (boundary.contains(position) && saved.contains(position)) {
-            target.setBlock(position, source.getFullBlock(position))
+        val local = position.subtract(offset)
+        if (boundary.contains(position) && saved.contains(local)) {
+            target.setBlock(position, source.getFullBlock(local))
         }
     }
 }

@@ -14,6 +14,25 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 class SellbackBoundaryTest {
+    @Test fun `local FAWE clipboard is anchored at the stall minimum and clips the frame notch`() {
+        val outline = listOf(0 to 0, 5 to 0, 5 to 3, 3 to 3, 3 to 5, 0 to 5)
+        val boundary = ProtectedPolygonalRegion("trial",
+            outline.map { BlockVector2.at(512 + it.first, 512 + it.second) }, 296, 297)
+        val saved = CuboidRegion(BlockVector3.ZERO, BlockVector3.at(5, 1, 5))
+        val source = mockk<Extent>()
+        val target = mockk<Extent>()
+        val marker = mockk<BaseBlock>()
+        val other = mockk<BaseBlock>()
+        every { source.getFullBlock(any()) } returns other
+        every { source.getFullBlock(BlockVector3.at(1, 0, 1)) } returns marker
+        every { target.setBlock(any(), any<BaseBlock>()) } returns true
+        restoreStallBlocks(source, saved, target, boundary)
+        verify(exactly = 1) { target.setBlock(BlockVector3.at(513, 296, 513), marker) }
+        verify(exactly = 0) { target.setBlock(BlockVector3.at(516, 296, 516), any<BaseBlock>()) }
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            restoreStallBlocks(source, CuboidRegion(BlockVector3.ZERO, BlockVector3.at(7, 5, 7)), target, boundary)
+        }
+    }
     @Test fun `legacy box restores interior while excluding the frame support in the notch`() {
         val outline = listOf(0 to 0, 5 to 0, 5 to 3, 3 to 3, 3 to 5, 0 to 5)
         val boundary = ProtectedPolygonalRegion("stall", outline.map { BlockVector2.at(it.first, it.second) }, 100, 102)
