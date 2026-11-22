@@ -823,3 +823,5 @@ When a player completes a registered stall argument, Market shall suggest curren
 ## Player stall finder
 
 When a player browses the market or selects a registered public stall, Market shall list selectable stalls in pages and guide only the requesting player to the selected region, including empty stalls. Held stalls shall be excluded. The existing finder settings, cancellation and lifetime shall apply.
+
+WHEN a personal or guild stall tenancy ends, THE SYSTEM SHALL remove its owner-managed visitor settings, including its blacklist and blocked effects. During rent grace or a failed sellback that restores the tenancy, THE SYSTEM SHALL retain those settings.

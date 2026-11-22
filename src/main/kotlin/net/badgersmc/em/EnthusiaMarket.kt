@@ -188,7 +188,9 @@ open class EnthusiaMarket : JavaPlugin() {
             org.bukkit.plugin.ServicePriority.Normal,
         )
         val accessSettings = net.badgersmc.em.application.StallAccessSettingsService(
-            stallRepository, net.badgersmc.em.infrastructure.persistence.StallAccessSettingsSql(ds),
+            stallRepository, net.badgersmc.em.infrastructure.persistence.StallAccessSettingsSql(ds).also {
+                it.pruneEndedTenancies(stallRepository.currentStalls().associateBy { stall -> stall.id.value })
+            },
             ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class), marketMutationGate,
         )
         net.badgersmc.em.infrastructure.bootstrap.StallAccessBeans.registerSettings(ctx, accessSettings)

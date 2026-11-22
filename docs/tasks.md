@@ -1248,3 +1248,7 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 ## Player stall finder
 
 - Add public stall browsing, ID suggestions and shop-independent region guidance. Verify an empty stall can start and stop the shared finder session. Client acceptance follows TEST deployment.
+
+## Stall visitor blacklist on ownership loss
+
+- Verify SQL and cached visitor access after ownership transfer, emergency auction, sellback, refund rollback, and startup with legacy settings. Check a second stall held by the same manager retains its settings.

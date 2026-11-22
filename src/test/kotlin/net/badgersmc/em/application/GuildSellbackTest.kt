@@ -37,7 +37,11 @@ class GuildSellbackTest {
         val quote = assertIs<StallSellbackService.QuoteResult.Ok>(service.quote(stall.id, actor)).quote
         assertTrue(quote.refund > 0)
         assertIs<StallSellbackService.ExecuteResult.Sold>(service.execute(stall.id, actor))
-        verify { guilds.bankDeposit(guildId, quote.refund) }
+        verifyOrder {
+            stalls.savePendingSellback(any())
+            guilds.bankDeposit(guildId, quote.refund)
+            stalls.finishSellbackAccess(stall)
+        }
         verify(exactly = 0) { economy.deposit(any(), any()) }
         verify { regions.clearOwnersAndMembers("world", "s1") }
     }
@@ -46,6 +50,7 @@ class GuildSellbackTest {
         every { guilds.bankDeposit(guildId, any()) } returns false
         assertIs<StallSellbackService.ExecuteResult.Rejected>(service.execute(stall.id, actor))
         verify { stalls.save(stall) }
+        verify(exactly = 0) { stalls.finishSellbackAccess(any()) }
         verify(exactly = 0) { regions.clearOwnersAndMembers(any(), any()) }
         verify(exactly = 0) { ip.releaseStallByOwnerId(any()) }
     }
