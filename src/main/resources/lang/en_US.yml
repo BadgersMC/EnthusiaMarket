@@ -818,3 +818,15 @@ stall_finder:
   started: "<#FFCF1F>Follow your private stall guide for up to <seconds> seconds. Use /shop trail stop to cancel.</#FFCF1F>"
   destination: "<#FFCF1F><stall></#FFCF1F> <#FFF6E0>·</#FFF6E0> <#FFCF1F><distance>m</#FFCF1F>"
   arrived: "<#B6D7A8>You’ve arrived at <stall>.</#B6D7A8>"
+
+emergency_preview:
+  heading: "<#FFCF1F>Former shops · <stall> · Page <page>"
+  notice: "<#FFF6E0>Past listings only. Trading is closed. Stock is excluded from the auction."
+  sell: "<#F2B66D>Sold <#FFF6E0><quantity> <item> for <amount> <payment>"
+  buy: "<#F2B66D>Bought <#FFF6E0><quantity> <item> for <amount> <payment>"
+  trade: "<#F2B66D>Traded <#FFF6E0><quantity> <item> for <amount> <payment>"
+  previous: "<#FFCF1F>‹ Previous page"
+  next: "<#FFCF1F>Next page ›"
+  empty: "<#FFF6E0>No public shop listings were recorded for this auction."
+  unavailable: "<#FFF6E0>Shop previews are available during an active emergency auction."
+  invalid_page: "<#FFF6E0>That preview page does not exist."

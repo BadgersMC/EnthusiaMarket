@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.commands
 
+import net.badgersmc.em.interaction.EmergencyShopPreview
 import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
@@ -245,6 +246,19 @@ class AdminCommands(
         } catch (e: Exception) {
             sender.sendMessage(lang.msg("admin.reload.failure", "reason" to (e.message ?: "unknown error")))
         }
+    }
+
+    @Subcommand("preview")
+    fun preview(@Context sender: CommandSender, @Arg("stall") @Suggests("emergencyStalls") stall: String) =
+        previewPage(sender, stall, 1)
+
+    @Subcommand("preview")
+    fun previewPage(@Context sender: CommandSender, @Arg("stall") @Suggests("emergencyStalls") stall: String,
+                    @Arg("page") page: Int) {
+        val target = stalls.findById(StallId(stall))
+        val auction = if (target?.state == StallState.EMERGENCY_AUCTIONING) auctions.findOpenByStall(target.id) else null
+        if (auction == null) sender.sendMessage(lang.msg("emergency_preview.unavailable"))
+        else EmergencyShopPreview.send(sender, auction, page, auctions, lang)
     }
 
     @Subcommand("list")

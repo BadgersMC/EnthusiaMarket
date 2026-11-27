@@ -43,6 +43,10 @@ internal object StallCommandSuggestions {
 
     private fun directory(index: StallAccessIndex, configuredKinds: Set<String>) = mapOf(
         "stallIds" to stallIds(index),
+        "emergencyStalls" to choices {
+            index.currentStalls().filter { stall -> stall.state == net.badgersmc.em.domain.stall.StallState.EMERGENCY_AUCTIONING }
+                .map { stall -> stall.id.value }
+        },
         "stallKinds" to choices { index.currentStalls().map { it.kind } + configuredKinds + "default" },
         "directoryPages" to choices {
             val last = (index.currentStalls().size - 1) / AdminCommands.LIST_PAGE_SIZE + 1

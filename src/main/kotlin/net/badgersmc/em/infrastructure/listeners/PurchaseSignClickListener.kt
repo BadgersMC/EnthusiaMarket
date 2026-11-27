@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.listeners
 
+import net.badgersmc.em.interaction.EmergencyShopPreview
 import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.application.StallRentExtensionService
@@ -110,6 +111,9 @@ open class PurchaseSignClickListener(
                 )
                 val auction = auctions.findOpenByStall(sign.stallId)
                 if (auction != null) {
+                    if (stall.state == StallState.EMERGENCY_AUCTIONING) {
+                        EmergencyShopPreview.send(player, auction, 1, auctions, lang)
+                    }
                     val cmd = "/em bid ${auction.id} "
                     player.sendMessage(
                         AdventureComponent.text("  /em bid ", MarketText.cream)

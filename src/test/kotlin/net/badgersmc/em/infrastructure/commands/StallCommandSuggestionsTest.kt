@@ -17,7 +17,7 @@ class StallCommandSuggestionsTest {
         for ((type, provider) in listOf(AdminCommands::class to "stallIds", StallAccessCommands::class to "managedStalls")) {
             val args = type.declaredMemberFunctions.flatMap { it.parameters }.filter { it.findAnnotation<Arg>()?.name == "stall" }
             kotlin.test.assertTrue(args.isNotEmpty())
-            val allowed = if (provider == "stallIds") setOf(provider, "ownerStalls", "buyOffers", "cancelOffers") else setOf(provider)
+            val allowed = if (provider == "stallIds") setOf(provider, "ownerStalls", "emergencyStalls", "buyOffers", "cancelOffers") else setOf(provider)
             args.forEach { kotlin.test.assertTrue(it.findAnnotation<Suggests>()?.value in allowed) }
         }
     }
