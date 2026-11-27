@@ -185,6 +185,8 @@ class EnthusiaMarketConfig {
         var world: String = "world"
         @Comment("WorldGuard region prefix for stall detection (production regions are stall1..stall71, no underscore)")
         var regionPrefix: String = "stall"
+        @Comment("WorldGuard parent region for newly created stalls in the in-game region editor")
+        var parentRegion: String = "market"
         @Comment(
             "WorldGuard priority stamped on stall regions during /em import. " +
                 "Must exceed the surrounding safezone priority (market=10, spawn=10) " +

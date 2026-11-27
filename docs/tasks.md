@@ -1230,3 +1230,5 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 - [ ] **GUILD-STALL-CAP** — guild stall cap with LumaGuilds prestige bonus (REQ-399)
   References: REQ-399, LimitResolutionService.canClaimForGuild, StallBuyoutService.enforceGuildLimit, AuctionLifecycleService.guildClaimDecision, OptionalGuildPrestigePerkLookup
   Tag: TDD
+
+- [x] **STALL-REGION-EDITOR-410** — implemented in-game irregular polygon selection, usable-air height bounds, private preview, explicit save confirmation, and WorldGuard metadata preservation. Focused geometry tests passed; full suite: 1,192 tests, 0 failures/errors, 14 skipped; shaded JAR built. Detekt still reports eight existing findings outside the editor files. Manual SPEAR evidence: `stall-region-editor-verification.md`. Build/TEST installation and native-client acceptance remain pending.
