@@ -139,26 +139,43 @@ class WorldEditSchematicAdapter(
 
 /** Legacy files contain the bounding box. Clip writes in world coordinates, including writes of air. */
 internal fun restoreStallBlocks(source: Extent, saved: Region, target: Extent, boundary: ProtectedRegion) {
+    val offset = schematicOffset(saved, boundary)
+    val clipped = clippedBounds(saved, boundary, offset)
+    restoreContainedBlocks(source, saved, target, boundary, offset, clipped)
+}
+
+private fun schematicOffset(saved: Region, boundary: ProtectedRegion): BlockVector3 {
     // FAWE can deserialize a stall capture as a zero-based clipboard. Market captured
     // it from the stall minimum. Only use that anchor when all three dimensions match.
     val sourceMin = saved.minimumPoint.stableCopy()
-    val sourceMax = saved.maximumPoint.stableCopy()
     val stallMin = boundary.minimumPoint.stableCopy()
-    val stallMax = boundary.maximumPoint.stableCopy()
-    val offset = if (sourceMin == BlockVector3.ZERO && stallMin != BlockVector3.ZERO) {
-        require(sourceMax == stallMax.subtract(stallMin)) {
-            "Local schematic dimensions differ from the current stall"
-        }
-        stallMin
-    } else BlockVector3.ZERO
-    val min = sourceMin.add(offset).getMaximum(stallMin)
-    val max = sourceMax.add(offset).getMinimum(stallMax)
-    require(min.x() <= max.x() && min.y() <= max.y() && min.z() <= max.z()) { "Stall ${boundary.minimumPoint}..${boundary.maximumPoint} and schematic ${saved.minimumPoint}..${saved.maximumPoint} do not overlap" }
-    for (position in CuboidRegion(min, max)) {
-        val local = BlockVector3.at(position.x() - offset.x(), position.y() - offset.y(), position.z() - offset.z())
-        if (boundary.contains(position) && saved.contains(local)) {
-            target.setBlock(position, source.getFullBlock(local))
-        }
+    if (sourceMin != BlockVector3.ZERO || stallMin == BlockVector3.ZERO) return BlockVector3.ZERO
+    val sourceSize = saved.maximumPoint.stableCopy()
+    val stallSize = boundary.maximumPoint.stableCopy().subtract(stallMin)
+    require(sourceSize == stallSize) { "Local schematic dimensions differ from the current stall" }
+    return stallMin
+}
+
+private fun clippedBounds(saved: Region, boundary: ProtectedRegion, offset: BlockVector3): CuboidRegion {
+    val min = saved.minimumPoint.stableCopy().add(offset).getMaximum(boundary.minimumPoint.stableCopy())
+    val max = saved.maximumPoint.stableCopy().add(offset).getMinimum(boundary.maximumPoint.stableCopy())
+    require(min.x() <= max.x() && min.y() <= max.y() && min.z() <= max.z()) {
+        "Stall ${boundary.minimumPoint}..${boundary.maximumPoint} and schematic ${saved.minimumPoint}..${saved.maximumPoint} do not overlap"
+    }
+    return CuboidRegion(min, max)
+}
+
+private fun restoreContainedBlocks(
+    source: Extent,
+    saved: Region,
+    target: Extent,
+    boundary: ProtectedRegion,
+    offset: BlockVector3,
+    clipped: Region,
+) {
+    for (position in clipped) {
+        val local = position.subtract(offset)
+        if (boundary.contains(position) && saved.contains(local)) target.setBlock(position, source.getFullBlock(local))
     }
 }
 

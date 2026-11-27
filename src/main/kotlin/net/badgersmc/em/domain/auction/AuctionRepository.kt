@@ -27,9 +27,8 @@ interface AuctionRepository : AuctionPaymentRepository {
     fun hasOtherOpenGuildBid(guildId: String, auctionId: AuctionId): Boolean
     fun hasGuildOpeningRoundWin(roundId: String, guildId: String): Boolean
     fun findExpired(): List<Auction>
-    fun createEmergency(auction: Auction)
     fun previewListings(id: AuctionId, offset: Long, limit: Int): List<EmergencyListing>
-    fun create(auction: Auction)
+    fun create(auction: Auction, captureEmergencyListings: Boolean = false)
     /** Opens all lots and transitions their stalls together. Returns the first conflicting stall. */
     fun openImportedLots(lots: List<Pair<Stall, Auction>>): StallId?
     fun save(auction: Auction)

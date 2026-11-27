@@ -89,17 +89,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // Phase 3: Read config from Nexus for database + i18n + scheduler bootstrap.
         val cfg = ctx.getBean<EnthusiaMarketConfig>()
 
-        // Ensure the schematic snapshot directory exists so the first capture
-        // never fails on a missing folder (REQ-270, INFRA-20).
-        val schematicsDir = File(dataFolder, cfg.schematics.directory)
-        if (!schematicsDir.exists() && !schematicsDir.mkdirs()) {
-            logger.warning("Failed to create schematics directory: ${schematicsDir.absolutePath}")
-        }
-        // Ship the default entity-limit groups (REQ-220) on first run so
-        // operators have a template to edit; never overwrite local edits.
-        if (!File(dataFolder, "entitylimits.yml").exists()) {
-            saveResource("entitylimits.yml", false)
-        }
+        ensureDefaultResources(cfg)
 
         // i18n service — wired manually since LangService lives outside the EM scan package.
         net.badgersmc.em.infrastructure.i18n.BalancedLocaleUpgrade.apply(dataFolder.toPath(), logger)
@@ -109,18 +99,7 @@ open class EnthusiaMarket : JavaPlugin() {
         finderTrail = ctx.getBean<net.badgersmc.em.infrastructure.listeners.FinderTrailService>()
 
         // Database via nexus-persistence
-        val dbSpec = when (cfg.database.type) {
-            "mariadb" -> DatabaseSpec.MariaDB(
-                host = cfg.database.mariadb.host,
-                port = cfg.database.mariadb.port,
-                database = cfg.database.mariadb.database,
-                username = cfg.database.mariadb.username,
-                password = cfg.database.mariadb.password
-            )
-            else -> DatabaseSpec.Sqlite(File(dataFolder, cfg.database.sqliteFile))
-        }
-        val ds = DatabaseFactory.open(dbSpec)
-        MigrationRunner(ds, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
+        val ds = openDataSource(cfg)
         ctx.registerBean("dataSource", DataSource::class, ds as DataSource)
         shopNotifications = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ShopNotificationStorage>()
         shopHistory = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ShopHistoryStorage>()
@@ -444,6 +423,33 @@ open class EnthusiaMarket : JavaPlugin() {
             logger.info("Registered GuildShopLookup for LumaGuilds")
         }
         logger.info("EnthusiaMarket enabled (v${description.version})")
+    }
+
+    private fun ensureDefaultResources(cfg: EnthusiaMarketConfig) {
+        // Ensure the schematic snapshot directory exists so the first capture
+        // never fails on a missing folder (REQ-270, INFRA-20).
+        val schematicsDir = File(dataFolder, cfg.schematics.directory)
+        if (!schematicsDir.exists() && !schematicsDir.mkdirs()) {
+            logger.warning("Failed to create schematics directory: ${schematicsDir.absolutePath}")
+        }
+        // Ship the default entity-limit groups (REQ-220) on first run; never overwrite local edits.
+        if (!File(dataFolder, "entitylimits.yml").exists()) saveResource("entitylimits.yml", false)
+    }
+
+    private fun openDataSource(cfg: EnthusiaMarketConfig): DataSource {
+        val spec = when (cfg.database.type) {
+            "mariadb" -> DatabaseSpec.MariaDB(
+                host = cfg.database.mariadb.host,
+                port = cfg.database.mariadb.port,
+                database = cfg.database.mariadb.database,
+                username = cfg.database.mariadb.username,
+                password = cfg.database.mariadb.password,
+            )
+            else -> DatabaseSpec.Sqlite(File(dataFolder, cfg.database.sqliteFile))
+        }
+        return DatabaseFactory.open(spec).also {
+            MigrationRunner(it, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
+        }
     }
 
     /**

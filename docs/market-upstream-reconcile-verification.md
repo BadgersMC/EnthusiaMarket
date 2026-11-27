@@ -1,0 +1,31 @@
+# Market upstream reconciliation verification
+
+Date: 2026-11-27
+
+## Scope and source pins
+
+- Upstream release candidate PR #226 branch started at `2a1019ab5ebe64b712e1cc62a8887a5453fb17ba`.
+- Fork `main`: `39bc541afe27e52f440b7b0ceb6bcba18b4a0bbc`.
+- Emergency auction shop preview: `55abd07214b946c23eaa1bc1fe69fb53913ec0a4`.
+- In-game irregular stall region editor: `9198b428058b1684367fbd8c5078e4d1b88abd26`.
+
+## Reconciliation decisions
+
+- Merged the fork's current `main`, the emergency-auction shop preview, and the in-game irregular region editor into the release candidate.
+- Resolved overlapping release code by retaining the release branch's readable `/em list`, tab-completion wiring, and Balanced locale implementation while keeping the new fork features.
+- Reduced the six Codacy findings reported on PR #226: startup complexity, stall access authorization complexity, policy pruning complexity, repository method count, and schematic restore length/complexity.
+- The combined emergency listing work also exposed repository function-count and SQL nesting findings in Detekt. Emergency snapshot capture is now an explicit option on the existing auction creation operation and remains transactional with auction insertion. Auction row query helpers are factored out of the repository class.
+
+## Verification
+
+- `test detekt shadowJar -PuseMavenLocal=true`: passed.
+- Java 22 ran Detekt; Gradle/Kotlin used the project's Java 25 toolchain.
+- Test results: 1,269 tests, 0 failures, 0 errors, 17 skipped.
+- `git diff --check`: passed.
+- A Detekt invocation under Java 25 failed before analysis with the runtime/tool error `25.0.3`; rerunning on the supported Java 22 analyzer passed.
+
+## Remaining release gates
+
+- Push the reviewed combined source to the existing fork head used by upstream PR #226 only after verifying the remote head has not moved.
+- Re-read hosted checks and actionable review findings for the pushed exact head.
+- The PR remains open until BadgersMC review. No upstream PR merge, server deployment, or runtime activation is part of this work.

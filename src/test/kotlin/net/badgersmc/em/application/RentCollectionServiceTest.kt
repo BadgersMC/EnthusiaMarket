@@ -222,7 +222,7 @@ class RentCollectionServiceTest {
         assertEquals(0, report.errors)
         verify(exactly = 0) { svc.shopRepo.freezeByStall(any(), any()) }
         verify(exactly = 0) { svc.stallRepo.save(any()) }
-        verify(exactly = 0) { svc.auctionRepo.createEmergency(any()) }
+        verify(exactly = 0) { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
     }
 
     // --- Emergency auction on grace expiry ---
@@ -310,7 +310,7 @@ class RentCollectionServiceTest {
                     it.owner == forfeited.owner &&
                     it.members.isEmpty()
             })
-            fixture.auctionRepo.createEmergency(any())
+            fixture.auctionRepo.create(any(), captureEmergencyListings = true)
             fixture.ipLimiter.releaseStallByOwnerId(playerUuid.toString())
             fixture.shopRepo.findByStall(forfeited.id.value)
             fixture.shopRepo.delete(41L)
@@ -334,7 +334,7 @@ class RentCollectionServiceTest {
         verify(exactly = 0) { raced.shopRepo.findByStall(any()) }
         verify(exactly = 0) { raced.regions.clearOwnersAndMembers(any(), any()) }
         verify(exactly = 0) { raced.schematics.restore(any(), any(), any()) }
-        verify(exactly = 0) { raced.auctionRepo.createEmergency(any()) }
+        verify(exactly = 0) { raced.auctionRepo.create(any(), captureEmergencyListings = true) }
     }
 
     @Test
@@ -344,7 +344,7 @@ class RentCollectionServiceTest {
             nextRentAt = now.minus(Duration.ofDays(4)),
         )
         val fixture = buildEmergencyForfeitureFixture(stalls = listOf(forfeited))
-        every { fixture.auctionRepo.createEmergency(any()) } throws IllegalStateException("synthetic auction insert failure")
+        every { fixture.auctionRepo.create(any(), captureEmergencyListings = true) } throws IllegalStateException("synthetic auction insert failure")
 
         val report = fixture.service.tick(now)
 
@@ -479,7 +479,7 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         verify(exactly = 1) { svc.shopRepo.delete(11L) }
         verify(exactly = 0) { svc.shopRepo.delete(12L) }
-        verify { svc.auctionRepo.createEmergency(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING &&
                 it.owner == graceStall.owner &&
@@ -534,11 +534,11 @@ class RentCollectionServiceTest {
         every { svc.stallRepo.all() } returns listOf(graceStall)
         val beforeDeadline = svc.service.tick(deadline.minusSeconds(1))
         assertEquals(0, beforeDeadline.evictions)
-        verify(exactly = 0) { svc.auctionRepo.createEmergency(any()) }
+        verify(exactly = 0) { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
 
         val afterDeadline = svc.service.tick(deadline.plusSeconds(1))
         assertEquals(1, afterDeadline.evictions)
-        verify(exactly = 1) { svc.auctionRepo.createEmergency(any()) }
+        verify(exactly = 1) { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
     }
 
     // --- tick: OWNED stall with nextRentAt past grace → instant emergency auction ---
@@ -557,7 +557,7 @@ class RentCollectionServiceTest {
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }
-        verify { svc.auctionRepo.createEmergency(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.shopRepo.freezeByStall(pastDue.id.value, true) }
     }
 
@@ -573,7 +573,7 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.auctionRepo.createEmergency(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }
@@ -674,7 +674,7 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.auctionRepo.createEmergency(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }

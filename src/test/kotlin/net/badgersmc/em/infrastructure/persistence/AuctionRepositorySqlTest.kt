@@ -40,7 +40,7 @@ class AuctionRepositorySqlTest {
                 }
             }
         }
-        repo.createEmergency(auction)
+        repo.create(auction, captureEmergencyListings = true)
         ds.connection.use { it.createStatement().use { statement -> statement.executeUpdate("DELETE FROM shop_items") } }
         val listings = AuctionRepositorySql(ds).previewListings(auction.id, 0, 6)
         assertEquals(listOf(1, 2), listings.map { it.amount })
@@ -52,7 +52,7 @@ class AuctionRepositorySqlTest {
     @Test fun `emergency capture failure rolls back the new auction`() {
         ds.connection.use { it.createStatement().use { statement -> statement.executeUpdate("DROP TABLE shop_items") } }
         val auction = sampleAuction()
-        assertFailsWith<java.sql.SQLException> { repo.createEmergency(auction) }
+        assertFailsWith<java.sql.SQLException> { repo.create(auction, captureEmergencyListings = true) }
         assertNull(repo.findById(auction.id))
     }
 

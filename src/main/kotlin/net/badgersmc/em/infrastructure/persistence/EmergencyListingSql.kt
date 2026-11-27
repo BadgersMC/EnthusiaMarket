@@ -16,25 +16,27 @@ internal object EmergencyListingSql {
             (auction_id, shop_id, direction, item, quantity, payment, amount) VALUES (?, ?, ?, ?, ?, ?, ?)"""
         connection.prepareStatement(select).use { source ->
             source.setString(1, auction.stallId.value)
-            source.executeQuery().use { rows ->
-                connection.prepareStatement(insert).use { target ->
-                    while (rows.next()) {
-                        val direction = SignDirection.valueOf(rows.getString("direction"))
-                        val material = rows.getString("sell_material")?.takeIf { it.isNotBlank() }
-                            ?: materialOf(rows.getString("sell_item"))
-                        val payment = if (direction == SignDirection.TRADE) materialOf(rows.getString("cost_item")) else "raw gold"
-                        target.setString(1, auction.id.value)
-                        target.setLong(2, rows.getLong("id"))
-                        target.setString(3, direction.name)
-                        target.setString(4, label(material))
-                        target.setInt(5, rows.getInt("sell_amount"))
-                        target.setString(6, label(payment))
-                        target.setInt(7, rows.getInt("cost_amount"))
-                        target.addBatch()
-                    }
-                    target.executeBatch()
-                }
+            source.executeQuery().use { rows -> copyRows(connection, insert, auction, rows) }
+        }
+    }
+
+    private fun copyRows(connection: Connection, sql: String, auction: Auction, rows: java.sql.ResultSet) {
+        connection.prepareStatement(sql).use { target ->
+            while (rows.next()) {
+                val direction = SignDirection.valueOf(rows.getString("direction"))
+                val material = rows.getString("sell_material")?.takeIf { it.isNotBlank() }
+                    ?: materialOf(rows.getString("sell_item"))
+                val payment = if (direction == SignDirection.TRADE) materialOf(rows.getString("cost_item")) else "raw gold"
+                target.setString(1, auction.id.value)
+                target.setLong(2, rows.getLong("id"))
+                target.setString(3, direction.name)
+                target.setString(4, label(material))
+                target.setInt(5, rows.getInt("sell_amount"))
+                target.setString(6, label(payment))
+                target.setInt(7, rows.getInt("cost_amount"))
+                target.addBatch()
             }
+            target.executeBatch()
         }
     }
 

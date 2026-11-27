@@ -80,7 +80,7 @@ class SchematicRestoreTest {
         verify(exactly = 1) {
             schematics.restore(graceStall.id.value, graceStall.world, graceStall.regionId)
         }
-        verify { auctionRepo.createEmergency(any()) }
+        verify { auctionRepo.create(any(), captureEmergencyListings = true) }
         verify {
             stallRepo.save(match {
                 it.state == StallState.EMERGENCY_AUCTIONING && it.members.isEmpty()

@@ -24,18 +24,18 @@ import javax.sql.DataSource
 @Repository
 class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, AuctionPaymentRepository by AuctionPaymentSql(ds) {
 
-    override fun findById(id: AuctionId): Auction? = queryOne("SELECT * FROM auctions WHERE id = ?") {
+    override fun findById(id: AuctionId): Auction? = ds.queryOneAuction("SELECT * FROM auctions WHERE id = ?", ::mapRow) {
         setString(1, id.value)
     }
 
     override fun findOpenByStall(stallId: StallId): Auction? =
-        queryOne("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN' AND end_at > ? ORDER BY start_at DESC LIMIT 1") {
+        ds.queryOneAuction("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN' AND end_at > ? ORDER BY start_at DESC LIMIT 1", ::mapRow) {
             setString(1, stallId.value)
             setLong(2, Instant.now().toEpochMilli())
         }
 
     override fun allOpen(): List<Auction> =
-        queryMany("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at > ?") {
+        ds.queryManyAuctions("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at > ?", ::mapRow) {
             setLong(1, Instant.now().toEpochMilli())
         }
 
@@ -51,19 +51,17 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, Auct
             setString(2, guildId)
         }
 
-    override fun createEmergency(auction: Auction) {
-        ds.inTransaction { connection ->
-            insert(connection, auction)
-            EmergencyListingSql.capture(connection, auction)
-        }
-    }
-
     override fun previewListings(id: AuctionId, offset: Long, limit: Int) =
         ds.connection.use { EmergencyListingSql.page(it, id, offset, limit) }
 
-    override fun create(auction: Auction) {
-        ds.connection.use { conn ->
-            insert(conn, auction)
+    override fun create(auction: Auction, captureEmergencyListings: Boolean) {
+        if (captureEmergencyListings) {
+            ds.inTransaction { connection ->
+                insert(connection, auction)
+                EmergencyListingSql.capture(connection, auction)
+            }
+        } else ds.connection.use { connection ->
+            insert(connection, auction)
         }
     }
 
@@ -208,17 +206,17 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, Auct
     }
 
     override fun findExpired(): List<Auction> =
-        queryMany("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at <= ?") {
+        ds.queryManyAuctions("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at <= ?", ::mapRow) {
             setLong(1, Instant.now().toEpochMilli())
         }
 
     override fun findMostRecentClosedByStall(stallId: StallId): Auction? =
-        queryOne("SELECT * FROM auctions WHERE stall_id = ? AND state = 'CLOSED' ORDER BY end_at DESC LIMIT 1") {
+        ds.queryOneAuction("SELECT * FROM auctions WHERE stall_id = ? AND state = 'CLOSED' ORDER BY end_at DESC LIMIT 1", ::mapRow) {
             setString(1, stallId.value)
         }
 
     override fun findByStall(stallId: StallId): List<Auction> =
-        queryMany("SELECT * FROM auctions WHERE stall_id = ? ORDER BY end_at DESC") {
+        ds.queryManyAuctions("SELECT * FROM auctions WHERE stall_id = ? ORDER BY end_at DESC", ::mapRow) {
             setString(1, stallId.value)
         }
 
@@ -263,30 +261,6 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, Auct
             }
         }
 
-    private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Auction? {
-        ds.connection.use { conn ->
-            conn.prepareStatement(sql).use { ps ->
-                ps.prep()
-                ps.executeQuery().use { rs ->
-                    return if (rs.next()) mapRow(rs) else null
-                }
-            }
-        }
-    }
-
-    private fun queryMany(sql: String, prep: PreparedStatement.() -> Unit): List<Auction> {
-        ds.connection.use { conn ->
-            conn.prepareStatement(sql).use { ps ->
-                ps.prep()
-                ps.executeQuery().use { rs ->
-                    val out = mutableListOf<Auction>()
-                    while (rs.next()) out.add(mapRow(rs))
-                    return out
-                }
-            }
-        }
-    }
-
     private fun mapRow(rs: ResultSet): Auction {
         val highBidAmount = rs.getLong("high_bid_amount").takeIf { !rs.wasNull() }
         val highBidderStr = rs.getString("high_bidder")
@@ -314,5 +288,27 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, Auct
             auctionDuration = Duration.ofSeconds(rs.getLong("auction_duration_sec")),
             openingRoundId = rs.getString("opening_round_id"),
         )
+    }
+}
+
+private fun DataSource.queryOneAuction(
+    sql: String,
+    mapper: (ResultSet) -> Auction,
+    prep: PreparedStatement.() -> Unit,
+): Auction? = connection.use { connection ->
+    connection.prepareStatement(sql).use { statement ->
+        statement.prep()
+        statement.executeQuery().use { rows -> if (rows.next()) mapper(rows) else null }
+    }
+}
+
+private fun DataSource.queryManyAuctions(
+    sql: String,
+    mapper: (ResultSet) -> Auction,
+    prep: PreparedStatement.() -> Unit,
+): List<Auction> = connection.use { connection ->
+    connection.prepareStatement(sql).use { statement ->
+        statement.prep()
+        statement.executeQuery().use { rows -> buildList { while (rows.next()) add(mapper(rows)) } }
     }
 }

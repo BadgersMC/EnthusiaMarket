@@ -31,13 +31,19 @@ class StallAccessSettingsService(
         ?.takeIf { stall.state in ACTIVE_STATES && it.ownershipKey == StallAccessSettings.ownershipKey(stall) }
         ?: StallAccessSettings.defaults(stall)
 
-    fun mayManage(stall: Stall, actor: UUID): Boolean = stall.id.value !in uncertain && index.isFresh(stall.id.value) &&
-        !gate.isStallLocked(stall.id.value) && stall.state in ACTIVE_STATES && when (stall.owner.type) {
-            OwnerType.NONE -> false
-            OwnerType.SOLO -> soloMember(stall, actor)
-            OwnerType.GUILD -> guilds.isMember(actor, stall.owner.id) &&
-                guilds.hasShopPermission(actor, stall.owner.id, GuildProvider.GuildPermission.MANAGE_SHOPS)
-        }
+    fun mayManage(stall: Stall, actor: UUID): Boolean = stall.id.value !in uncertain &&
+        index.isFresh(stall.id.value) && !gate.isStallLocked(stall.id.value) &&
+        stall.state in ACTIVE_STATES && ownerAllowsManagement(stall, actor)
+
+    private fun ownerAllowsManagement(stall: Stall, actor: UUID): Boolean = when (stall.owner.type) {
+        OwnerType.NONE -> false
+        OwnerType.SOLO -> soloMember(stall, actor)
+        OwnerType.GUILD -> guildManager(stall, actor)
+    }
+
+    private fun guildManager(stall: Stall, actor: UUID): Boolean =
+        guilds.isMember(actor, stall.owner.id) &&
+            guilds.hasShopPermission(actor, stall.owner.id, GuildProvider.GuildPermission.MANAGE_SHOPS)
 
     fun edit(actor: UUID, id: String, change: (StallAccessSettings) -> StallAccessSettings): StallAccessSettings {
         val stall = index.cached(id) ?: error("Stall missing")

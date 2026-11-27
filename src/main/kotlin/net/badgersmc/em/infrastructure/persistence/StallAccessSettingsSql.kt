@@ -22,9 +22,7 @@ class StallAccessSettingsSql(private val ds: DataSource) : StallAccessSettingsRe
                                 val id = rows.getString(1)
                                 val key = rows.getString(2)
                                 val stall = stalls[id]
-                                if (stall?.state == StallState.MODERATION_HOLD) continue
-                                if (stall == null || stall.state !in setOf(StallState.OWNED, StallState.GRACE) ||
-                                    key != StallAccessSettings.ownershipKey(stall)) add(id to key)
+                                if (shouldPrune(stall, key)) add(id to key)
                             }
                         }
                     }
@@ -39,6 +37,13 @@ class StallAccessSettingsSql(private val ds: DataSource) : StallAccessSettingsRe
                 }
             }
         }
+    }
+
+    private fun shouldPrune(stall: Stall?, key: String): Boolean = when {
+        stall?.state == StallState.MODERATION_HOLD -> false
+        stall == null -> true
+        stall.state !in ACTIVE_STATES -> true
+        else -> key != StallAccessSettings.ownershipKey(stall)
     }
 
     override fun all(): List<StallAccessSettings> = ds.connection.use { connection ->
@@ -124,4 +129,8 @@ class StallAccessSettingsSql(private val ds: DataSource) : StallAccessSettingsRe
     )
 
     private fun split(value: String): List<String> = value.split(',').filter(String::isNotEmpty)
+
+    private companion object {
+        val ACTIVE_STATES = setOf(StallState.OWNED, StallState.GRACE)
+    }
 }

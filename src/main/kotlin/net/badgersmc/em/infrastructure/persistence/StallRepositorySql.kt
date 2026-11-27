@@ -106,11 +106,11 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ps.setString(offset + 8, stall.rentTerms.mode.name)
         ps.setDouble(offset + 9, stall.rentTerms.pct)
         ps.setLong(offset + 10, stall.rentTerms.flatAmount)
-        ps.setString(offset + 11, encodeMembers(stall.members))
+        ps.setString(offset + 11, StallSqlCodec.encodeMembers(stall.members))
         ps.setInt(offset + 12, stall.maxMembers)
         ps.setInstant(offset + 13, stall.nextRentAt)
         ps.setString(offset + 14, stall.kind)
-        ps.setString(offset + 15, encodeExtraEntities(stall.extraEntities))
+        ps.setString(offset + 15, StallSqlCodec.encodeExtraEntities(stall.extraEntities))
         ps.setInt(offset + 16, stall.extraTotal)
     }
 
@@ -156,31 +156,6 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ps.setLong(18, stall.moderationRevision)
     }
 
-    private fun encodeMembers(members: Set<UUID>): String =
-        members.joinToString(",") { it.toString() }
-
-    private fun decodeMembers(raw: String?): Set<UUID> {
-        if (raw.isNullOrEmpty()) return emptySet()
-        return raw.split(',')
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .map { UUID.fromString(it.trim()) }
-            .toSet()
-    }
-
-    private fun encodeExtraEntities(map: Map<String, Int>): String =
-        if (map.isEmpty()) "" else map.entries.joinToString(",") { "${it.key}:${it.value}" }
-
-    private fun decodeExtraEntities(raw: String?): Map<String, Int> {
-        if (raw.isNullOrEmpty()) return emptyMap()
-        return raw.split(',')
-            .filter { it.isNotBlank() }
-            .associate { entry ->
-                val parts = entry.trim().split(':', limit = 2)
-                parts[0] to (parts.getOrElse(1) { "0" }.toIntOrNull() ?: 0)
-            }
-    }
-
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Stall? {
         ds.connection.use { conn ->
             conn.prepareStatement(sql).use { ps ->
@@ -221,14 +196,35 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             ownerSince = ownerSinceMs?.let { Instant.ofEpochMilli(it) },
             winningBid = rs.getLong("winning_bid"),
             rentTerms = rentTerms,
-            members = decodeMembers(rs.getString("members")),
+            members = StallSqlCodec.decodeMembers(rs.getString("members")),
             maxMembers = rs.getInt("max_members"),
             nextRentAt = rs.getLong("next_rent_at").takeIf { !rs.wasNull() }?.let { Instant.ofEpochMilli(it) },
             kind = rs.getString("kind"),
-            extraEntities = decodeExtraEntities(rs.getString("extra_entities")),
+            extraEntities = StallSqlCodec.decodeExtraEntities(rs.getString("extra_entities")),
             extraTotal = rs.getInt("extra_total"),
             moderationRevision = rs.getLong("moderation_revision"),
         )
+    }
+}
+
+/** Database encodings kept separate from repository orchestration. */
+private object StallSqlCodec {
+    fun encodeMembers(members: Set<UUID>): String = members.joinToString(",") { it.toString() }
+
+    fun decodeMembers(raw: String?): Set<UUID> {
+        if (raw.isNullOrEmpty()) return emptySet()
+        return raw.split(',').asSequence().filter { it.isNotBlank() }.map { UUID.fromString(it.trim()) }.toSet()
+    }
+
+    fun encodeExtraEntities(map: Map<String, Int>): String =
+        if (map.isEmpty()) "" else map.entries.joinToString(",") { "${it.key}:${it.value}" }
+
+    fun decodeExtraEntities(raw: String?): Map<String, Int> {
+        if (raw.isNullOrEmpty()) return emptyMap()
+        return raw.split(',').filter { it.isNotBlank() }.associate { entry ->
+            val parts = entry.trim().split(':', limit = 2)
+            parts[0] to (parts.getOrElse(1) { "0" }.toIntOrNull() ?: 0)
+        }
     }
 }
 
