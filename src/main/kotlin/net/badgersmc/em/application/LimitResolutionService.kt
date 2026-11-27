@@ -44,6 +44,7 @@ class LimitResolutionService(
             val cap: Int
             data class TotalCapReached(override val cap: Int) : Rejected
             data class KindCapReached(val kind: String, override val cap: Int) : Rejected
+            data class GuildCapReached(override val cap: Int) : Rejected
         }
     }
 
@@ -95,6 +96,19 @@ class LimitResolutionService(
             return ClaimDecision.Rejected.KindCapReached(kind, kindCap)
         }
         return ClaimDecision.Allowed
+    }
+
+    /**
+     * REQ-399: may [actor] claim one more stall for guild [guildId], which owns
+     * [currentGuildTotal] guild stalls? The cap is [EnthusiaMarketConfig.guildStallLimit]
+     * plus [extraFromGuild] (LumaGuilds prestige perk). A cap below zero is unlimited,
+     * and the admin bypass applies. Stalls above the cap are never taken away.
+     */
+    fun canClaimForGuild(actor: UUID, currentGuildTotal: Int, extraFromGuild: Int): ClaimDecision {
+        val base = config.guildStallLimit
+        if (base < 0 || perms.has(actor, bypassNode)) return ClaimDecision.Allowed
+        val cap = base + extraFromGuild.coerceAtLeast(0)
+        return if (currentGuildTotal >= cap) ClaimDecision.Rejected.GuildCapReached(cap) else ClaimDecision.Allowed
     }
 
     /**

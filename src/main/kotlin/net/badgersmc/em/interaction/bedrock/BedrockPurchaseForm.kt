@@ -20,7 +20,8 @@ class BedrockPurchaseForm(
     private val shop: Shop,
     private val onConfirm: () -> ContainerTradeResult,
     logger: Logger,
-    lang: LangService
+    lang: LangService,
+    private val displayedPrice: Long = shop.costAmount.toLong(),
 ) : BedrockMenuBase(player, logger, lang) {
 
     override fun buildForm(): SimpleForm {
@@ -34,7 +35,7 @@ class BedrockPurchaseForm(
             .content(lang.legacy(
                 "bedrock.purchase.content",
                 "amount" to shop.sellAmount,
-                "price" to shop.costAmount,
+                "price" to displayedPrice,
                 "owner" to ownerName,
                 "status" to statusMm
             ))
@@ -46,9 +47,16 @@ class BedrockPurchaseForm(
 
         return builder
             .validResultHandler { response: SimpleFormResponse ->
-                handleButton(response.clickedButtonId())
+                dispatchButton(response.clickedButtonId())
             }
             .build()
+    }
+
+    private fun dispatchButton(index: Int) {
+        if (Bukkit.isPrimaryThread()) handleButton(index)
+        else Bukkit.getScheduler().runTask(org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(javaClass), Runnable {
+            if (player.isOnline) handleButton(index)
+        })
     }
 
     internal fun handleButton(buttonId: Int) {

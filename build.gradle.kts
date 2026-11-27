@@ -56,7 +56,13 @@ repositories {
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
 
     maven("https://repo.extendedclip.com/content/repositories/placeholderapi/") // PlaceholderAPI
+    maven("https://repo.codemc.io/repository/maven-releases/") {
+        content { includeGroup("com.github.retrooper") }
+    }
 
+    maven("https://api.modrinth.com/maven") {
+        content { includeModule("maven.modrinth", "EeyAn23L") }
+    }
     // Nexus releases — served via JitPack (https://jitpack.io). No token
     // required; the repo at https://github.com/BadgersMC/Nexus is public.
     // jitpack.io is already declared above.
@@ -69,10 +75,15 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.129-stable")
+    // Optional stall-only locator adapter; never shade PacketEvents.
+    compileOnly("com.github.retrooper:packetevents-spigot:2.14.0")
+    testImplementation("com.github.retrooper:packetevents-spigot:2.14.0")
     compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.9")
+    // Domain mutation tests need no Bukkit plugin or its bundled SQL migrations.
+    testImplementation("com.sk89q.worldguard:worldguard-core:7.0.9")
     // WorldEdit + FAWE — backs the SchematicService adapter (REQ-270..272).
     // compileOnly: provided by the WorldEdit/FAWE plugins at runtime (softdepend).
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
@@ -113,6 +124,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
 
     // PlaceholderAPI expansion — provide-side only; registerNexusExpansions no-ops without PAPI.
+    compileOnly("maven.modrinth:EeyAn23L:53lykMXY") { isTransitive = false }
     compileOnly("me.clip:placeholderapi:2.11.6")
     implementation("$nexusGroup:nexus-papi:$nexusVersion")
 
@@ -183,6 +195,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 // version instead of the literal token. Runs before generateNexusPermissions
 // (which splices the permissions block into the already-expanded staged file).
 tasks.processResources {
+    inputs.property("descriptorVersion", project.version.toString())
     filesMatching("paper-plugin.yml") {
         expand(mapOf("version" to project.version))
     }
@@ -263,6 +276,16 @@ tasks {
         outputs.upToDateWhen { !accountingMariaPort.isPresent }
         testMariaPort.orNull?.let { environment("GUILD_SHOP_XP_TEST_MARIA_PORT", it) }
         outputs.upToDateWhen { !testMariaPort.isPresent }
+        // External disposable schemas must execute afresh, including partial/invalid opt-ins.
+        val nativeMariaVariables = listOf("MARKET_TEST_MARIADB_PORT", "MARKET_TEST_MARIADB_USER", "MARKET_TEST_MARIADB_PASSWORD")
+        val nativeMariaConfigured = nativeMariaVariables.any { providers.environmentVariable(it).isPresent }
+        inputs.property("marketNativeMariaConfigured", nativeMariaConfigured)
+        inputs.property("marketNativeMariaPort", providers.environmentVariable("MARKET_TEST_MARIADB_PORT").orElse(""))
+        nativeMariaVariables.forEach { name ->
+            providers.environmentVariable(name).orNull?.let { environment(name, it) }
+        }
+        outputs.upToDateWhen { !nativeMariaConfigured }
+        outputs.doNotCacheIf("Native MariaDB fixtures require fresh execution") { nativeMariaConfigured }
         // Runtime-contract tests inspect this exact companion artifact through an isolated loader.
         val companionPath = providers.environmentVariable("LUMAGUILDS_JAR")
         inputs.property("guildsRuntimePath", companionPath.orElse(""))
@@ -271,6 +294,8 @@ tasks {
             environment("LUMAGUILDS_JAR", path)
         }
     }
+    // Test compilation may run jar after shadowJar. Keep the deployable artifact intact.
+    jar { archiveClassifier.set("plain") }
     shadowJar {
         archiveClassifier.set("")
         // Do NOT relocate net.badgersmc.nexus. gradleup/shadow 8.3.6 does

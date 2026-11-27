@@ -3,13 +3,13 @@ package net.badgersmc.em.infrastructure.persistence
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import net.badgersmc.em.domain.shop.ShopTransaction
+import net.badgersmc.em.domain.shop.ShopSaleAttribution
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.testing.MarketMariaDbFixture
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.MariaDBContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import org.junit.jupiter.api.extension.RegisterExtension
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -17,7 +17,6 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-@Testcontainers(disabledWithoutDocker = true)
 class ShopHistoryMariaDbTest {
     private lateinit var source: HikariDataSource
     private lateinit var repository: ShopTransactionRepositorySql
@@ -35,6 +34,8 @@ class ShopHistoryMariaDbTest {
         source.connection.use { connection -> connection.createStatement().use { statement ->
             statement.execute("DROP TABLE IF EXISTS shop_transactions")
             statement.execute("DROP TABLE IF EXISTS shop_history_receipts")
+            statement.execute("DROP TABLE IF EXISTS website_public_sales")
+            statement.execute("DROP TABLE IF EXISTS website_sales_rejections")
             statement.execute("""CREATE TABLE shop_transactions (
                 id BIGINT PRIMARY KEY AUTO_INCREMENT, shop_id BIGINT NOT NULL, owner VARCHAR(36) NOT NULL,
                 buyer VARCHAR(36) NOT NULL, direction VARCHAR(8) NOT NULL, item VARCHAR(128) NOT NULL,
@@ -44,11 +45,31 @@ class ShopHistoryMariaDbTest {
                 .bufferedReader().use { it.readText() }
             statement.execute(migration)
             statement.execute(migration) // Reapplication must preserve receipts.
+            for (file in listOf("V036__shop_sale_attribution.sql", "V037__website_public_sales.sql", "V038__website_sale_award_owners.sql")) {
+                val content = javaClass.classLoader.getResourceAsStream("migrations/$file")!!
+                    .bufferedReader().use { it.readText() }
+                content.lineSequence().filterNot { it.trimStart().startsWith("--") }.joinToString("\n")
+                    .split(';').map(String::trim).filter(String::isNotEmpty).forEach { statement.execute(it) }
+            }
         } }
         repository = ShopTransactionRepositorySql(source)
     }
 
     @AfterEach fun cleanup() { source.close() }
+
+    @Test fun `mariadb public archive records a sale once and survives history pruning`() {
+        val id=UUID.randomUUID()
+        val eligibleSale=sale.copy(buyer=UUID.randomUUID())
+        val attribution=ShopSaleAttribution("stall17",null,publicCashEligible=true)
+        repository.recordAttributedOnce(id,eligibleSale,attribution)
+        repository.recordAttributedOnce(id,eligibleSale,attribution)
+        val archive=WebsiteSalesArchiveSql(source)
+        val before=archive.readAfter(0)
+        assertEquals(1,before.items.size)
+        assertEquals("stall17",before.items.single().stall)
+        repository.prune(eligibleSale.createdAt+1)
+        assertEquals(before,archive.readAfter(0))
+    }
 
     @Test fun `mariadb replay survives retention`() {
         val id = UUID.randomUUID()
@@ -88,13 +109,7 @@ class ShopHistoryMariaDbTest {
     }
 
     companion object {
-        @Container @JvmStatic
-        val database = HistoryMariaDbContainer("mariadb:11.8.3").apply {
-            withDatabaseName("enthusia_market_test")
-            withUsername("market_test")
-            withPassword("market_test")
-        }
+        @RegisterExtension @JvmField
+        val database = MarketMariaDbFixture("history")
     }
-
-    class HistoryMariaDbContainer(image: String) : MariaDBContainer<HistoryMariaDbContainer>(image)
 }

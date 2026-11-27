@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.domain.stall.RentPayment
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
@@ -84,8 +85,11 @@ class StallRentExtensionService(
             )
         }
 
-        val pushed = pushTimer(stall.nextRentAt)
-        persistExtension(stall, stallId, actor, amount, isGuild, pushed)
+        val paidAt = clock.instant()
+        val coveredFrom = maxOf(stall.nextRentAt ?: paidAt, paidAt)
+        val pushed = coveredFrom.plus(collectionInterval())
+        val payer = if (isGuild) stall.owner else net.badgersmc.em.domain.stall.OwnerRef.solo(actor)
+        persistExtension(stall, actor, pushed, RentPayment(payer, amount, paidAt, coveredFrom))
         return Result.Extended(pushed, amount)
     }
 
@@ -114,15 +118,16 @@ class StallRentExtensionService(
      */
     private fun persistExtension(
         stall: Stall,
-        stallId: StallId,
         actor: UUID,
-        amount: Long,
-        isGuild: Boolean,
         pushed: Instant,
+        payment: RentPayment,
     ) {
+        val stallId = stall.id
+        val amount = payment.amount
+        val isGuild = payment.payer.type == OwnerType.GUILD
         try {
             val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
-            stalls.save(updated)
+            stalls.savePaidExtension(updated, payment)
             fireStateChanged(stallId.value, stall.state, updated.state)
         } catch (e: Exception) {
             val refunded = try {

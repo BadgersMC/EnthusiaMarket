@@ -1,5 +1,7 @@
 package net.badgersmc.em
 
+import java.time.Instant
+import net.badgersmc.em.infrastructure.website.WebsiteSalesHttpServer
 import net.badgersmc.em.application.ItemStackMatch
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.shop.Shop
@@ -35,6 +37,8 @@ open class EnthusiaMarket : JavaPlugin() {
     private var shopHistory: net.badgersmc.em.infrastructure.listeners.ShopHistoryStorage? = null
     private var scheduler: NexusScheduler? = null
     private var websiteSync: net.badgersmc.em.websync.WebsiteSyncService? = null
+    private var weeklyStallShowcases: net.badgersmc.em.infrastructure.website.WeeklyStallShowcases? = null
+    private var websiteSales: WebsiteSalesHttpServer? = null
     private var bedrockHeadStore: net.badgersmc.em.websync.heads.BedrockHeadStore? = null
     private var geyserHeadIntegration: AutoCloseable? = null
     private var floodgateHeadIntegration: AutoCloseable? = null
@@ -56,16 +60,11 @@ open class EnthusiaMarket : JavaPlugin() {
         // — which makes Brigadier hide every /em and /shop subcommand from non-ops
         // ("Unknown command"). Reading the same generated descriptor keeps the
         // nexus-permissions DSL the single source of truth (no drift). Idempotent.
-        registerDeclaredPermissions()
+        DeclaredPermissionRegistrar.register(this)
 
         // Phase 1: Detect Vault availability before Nexus DI context is created,
         // so that schedulers/listeners see the correct VaultHealth value (REQ-041).
-        val vaultHealth = VaultHealth()
-        val vaultRsp = Bukkit.getServicesManager().getRegistration(Economy::class.java)
-        vaultHealth.isAvailable = vaultRsp != null
-        if (vaultRsp == null) {
-            logger.severe("Vault Economy not found — rent collection, shop signs, and auctions disabled")
-        }
+        val vaultHealth = detectVault()
 
         // Phase 2: Create Nexus DI context — generates enthusiamarket.yaml with defaults
         // if it doesn't exist yet (ConfigLoader handles this).
@@ -89,39 +88,21 @@ open class EnthusiaMarket : JavaPlugin() {
         // Phase 3: Read config from Nexus for database + i18n + scheduler bootstrap.
         val cfg = ctx.getBean<EnthusiaMarketConfig>()
 
-        // Ensure the schematic snapshot directory exists so the first capture
-        // never fails on a missing folder (REQ-270, INFRA-20).
-        val schematicsDir = File(dataFolder, cfg.schematics.directory)
-        if (!schematicsDir.exists() && !schematicsDir.mkdirs()) {
-            logger.warning("Failed to create schematics directory: ${schematicsDir.absolutePath}")
-        }
-        // Ship the default entity-limit groups (REQ-220) on first run so
-        // operators have a template to edit; never overwrite local edits.
-        if (!File(dataFolder, "entitylimits.yml").exists()) {
-            saveResource("entitylimits.yml", false)
-        }
+        ensureDefaultResources(cfg)
 
         // i18n service — wired manually since LangService lives outside the EM scan package.
+        net.badgersmc.em.infrastructure.i18n.BalancedLocaleUpgrade.apply(dataFolder.toPath(), logger)
         val lang = LangService(this, Locale(cfg.lang.locale), EnthusiaMarketLang::class.java)
         ctx.registerBean("langService", LangService::class, lang)
+        net.badgersmc.em.interaction.StallAccessUi.configure(lang, logger)
         finderTrail = ctx.getBean<net.badgersmc.em.infrastructure.listeners.FinderTrailService>()
 
         // Database via nexus-persistence
-        val dbSpec = when (cfg.database.type) {
-            "mariadb" -> DatabaseSpec.MariaDB(
-                host = cfg.database.mariadb.host,
-                port = cfg.database.mariadb.port,
-                database = cfg.database.mariadb.database,
-                username = cfg.database.mariadb.username,
-                password = cfg.database.mariadb.password
-            )
-            else -> DatabaseSpec.Sqlite(File(dataFolder, cfg.database.sqliteFile))
-        }
-        val ds = DatabaseFactory.open(dbSpec)
-        MigrationRunner(ds, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
+        val ds = openDataSource(cfg)
         ctx.registerBean("dataSource", DataSource::class, ds as DataSource)
         shopNotifications = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ShopNotificationStorage>()
         shopHistory = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ShopHistoryStorage>()
+        startWebsiteSales(ds, cfg)
         stallAccounting = ctx.getBean<net.badgersmc.em.infrastructure.listeners.StallAccountingStorage>()
 
         // Stable Staff integration. Register the policy before Nexus constructs any
@@ -185,7 +166,9 @@ open class EnthusiaMarket : JavaPlugin() {
             org.bukkit.plugin.ServicePriority.Normal,
         )
         val accessSettings = net.badgersmc.em.application.StallAccessSettingsService(
-            stallRepository, net.badgersmc.em.infrastructure.persistence.StallAccessSettingsSql(ds),
+            stallRepository, net.badgersmc.em.infrastructure.persistence.StallAccessSettingsSql(ds).also {
+                it.pruneEndedTenancies(stallRepository.currentStalls().associateBy { stall -> stall.id.value })
+            },
             ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class), marketMutationGate,
         )
         net.badgersmc.em.infrastructure.bootstrap.StallAccessBeans.registerSettings(ctx, accessSettings)
@@ -202,6 +185,10 @@ open class EnthusiaMarket : JavaPlugin() {
             { id, error -> logger.warning("Guild-shop XP delivery needs retry/investigation for sale $id: ${error.javaClass.simpleName}") },
         )
         ctx.registerBean("guildSaleRewards", net.badgersmc.em.domain.ports.GuildSaleRewards::class, saleRewards)
+        val weeklyPlayerNames = net.badgersmc.em.infrastructure.website.WeeklyPlayerNameLookup.load(
+            java.nio.file.Path.of("usercache.json"), { server.getOfflinePlayer(it).name }, logger::warning,
+        )
+        ctx.registerBean("weeklyPlayerNames", net.badgersmc.em.domain.ports.WeeklyPlayerNames::class, weeklyPlayerNames)
         server.scheduler.runTaskTimerAsynchronously(this, Runnable { saleRewards.replay() }, 20L, 200L)
 
         // Shop repository + in-memory container index (REQ-281/282, PERF-4). The hopper-control
@@ -297,6 +284,7 @@ open class EnthusiaMarket : JavaPlugin() {
         val sched = NexusScheduler(this)
         ctx.registerBean("nexusScheduler", NexusScheduler::class, sched)
         scheduler = sched
+        net.badgersmc.em.interaction.AuctionBidUi.configure(sched, ctx.getBean<net.badgersmc.em.interaction.MenuFactory>())
 
         // Provisioning priority for stall regions (REQ Workstream F) — a
         // plain Int bean so ImportStallsService can be DI-constructed.
@@ -308,28 +296,34 @@ open class EnthusiaMarket : JavaPlugin() {
         // itemMaterials suggestion provider backs `/shop search` tab-completion (REQ-283):
         // computed once here, prefix-filtered per keystroke by the pure MaterialSuggestions helper.
         val itemMaterialNames = org.bukkit.Material.entries.filter { it.isItem }.map { it.name }
+        val lotImport = net.badgersmc.em.infrastructure.commands.AuctionLotImport()
+        ctx.registerBean("auctionLotImport", net.badgersmc.em.infrastructure.commands.AuctionLotImport::class, lotImport)
         ctx.registerPaperCommands(
             basePackage = "net.badgersmc.em",
             classLoader = this::class.java.classLoader,
             plugin = this,
             suggestionProviders = mapOf(
-                "itemMaterials" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
+                "itemMaterials" to com.mojang.brigadier.suggestion.SuggestionProvider<io.papermc.paper.command.brigadier.CommandSourceStack> { _, builder ->
                     net.badgersmc.em.application.MaterialSuggestions
                         .matching(itemMaterialNames, builder.remaining)
                         .forEach(builder::suggest)
                     builder.buildFuture()
                 },
-                "openAuctionIds" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
-                    val repo = ctx.getBean(net.badgersmc.em.domain.auction.AuctionRepository::class)
-                    repo.allOpen().map { it.id.value }.forEach(builder::suggest)
+                "stallRegionIds" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
+                    val known = ctx.getBean(net.badgersmc.em.domain.ports.RegionProvider::class)
+                        .listByPrefix(cfg.market.world, cfg.market.regionPrefix)
+                        .map { it.id }
+                    val suggestions = known + (1..200).map { "${cfg.market.regionPrefix}$it" }.filterNot(known::contains)
+                    suggestions.forEach(builder::suggest)
                     builder.buildFuture()
                 },
-            ),
+            ) + net.badgersmc.em.infrastructure.commands.StallCommandSuggestions.providers(ctx, stallRepository, dataFolder.toPath().resolve("auction-lots"), cfg),
         )
 
         // Phase 5b: Register /finditem as a top-level Paper Brigadier command.
         // @Subcommand("") crashes Nexus; we bypass it entirely.
         net.badgersmc.em.infrastructure.commands.FindItemRegistrar.register(this, itemMaterialNames, ctx)
+        net.badgersmc.em.infrastructure.commands.FindStallRegistrar.register(this, ctx)
         net.badgersmc.em.infrastructure.commands.GuildSalesRegistrar.register(this, ctx)
 
         // Phase 6: Discover every @Listener-annotated bean in the scan
@@ -370,7 +364,7 @@ open class EnthusiaMarket : JavaPlugin() {
             classLoader = this::class.java.classLoader,
             nexus = ctx,
         )
-
+        startWeeklyStallDisplays(ctx)
         pruneTransactionHistory(ctx, cfg)
 
         // M-16: on guild disband, free its stalls + unbind its shops.
@@ -384,7 +378,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // player. Purges expired outlines first.
         val particleService = ctx.getBean<net.badgersmc.em.application.ParticleBorderService>()
         org.bukkit.Bukkit.getScheduler().runTaskTimer(this, Runnable {
-            particleService.purgeExpired(java.time.Instant.now())
+            particleService.purgeExpired(Instant.now())
             particleService.renderTick(cfg.particles.maxPerTick, this)
         }, 0L, 4L)
 
@@ -421,7 +415,40 @@ open class EnthusiaMarket : JavaPlugin() {
         // M-19: one-time best-effort backfill of stock_count for shops written before V019.
         scheduleStockBackfill(shopRepoForBackfill)
 
+        // REQ-400: tell LumaGuilds' guild page whether a guild owns a stall.
+        val stallCounter = ctx.getBean<net.badgersmc.em.application.StallOwnershipCounter>()
+        val shopApi = net.badgersmc.em.infrastructure.lumaguilds.GuildShopLookupRegistration.lumaGuildsApi()
+        if (net.badgersmc.em.infrastructure.lumaguilds.GuildShopLookupRegistration.register(this, shopApi) { stallCounter.guildCount(it.toString()) > 0 }) {
+            logger.info("Registered GuildShopLookup for LumaGuilds")
+        }
         logger.info("EnthusiaMarket enabled (v${description.version})")
+    }
+
+    private fun ensureDefaultResources(cfg: EnthusiaMarketConfig) {
+        // Ensure the schematic snapshot directory exists so the first capture
+        // never fails on a missing folder (REQ-270, INFRA-20).
+        val schematicsDir = File(dataFolder, cfg.schematics.directory)
+        if (!schematicsDir.exists() && !schematicsDir.mkdirs()) {
+            logger.warning("Failed to create schematics directory: ${schematicsDir.absolutePath}")
+        }
+        // Ship the default entity-limit groups (REQ-220) on first run; never overwrite local edits.
+        if (!File(dataFolder, "entitylimits.yml").exists()) saveResource("entitylimits.yml", false)
+    }
+
+    private fun openDataSource(cfg: EnthusiaMarketConfig): DataSource {
+        val spec = when (cfg.database.type) {
+            "mariadb" -> DatabaseSpec.MariaDB(
+                host = cfg.database.mariadb.host,
+                port = cfg.database.mariadb.port,
+                database = cfg.database.mariadb.database,
+                username = cfg.database.mariadb.username,
+                password = cfg.database.mariadb.password,
+            )
+            else -> DatabaseSpec.Sqlite(File(dataFolder, cfg.database.sqliteFile))
+        }
+        return DatabaseFactory.open(spec).also {
+            MigrationRunner(it, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
+        }
     }
 
     /**
@@ -472,67 +499,6 @@ open class EnthusiaMarket : JavaPlugin() {
             as? org.bukkit.block.Container
     }
 
-    /**
-     * Register every permission declared in the bundled `paper-plugin.yml`
-     * `permissions:` block with Bukkit, with its declared default. This is the
-     * runtime registration Paper/Leaf isn't performing for us; without it,
-     * default-true player nodes resolve to op-only on a server with no permission
-     * manager and Brigadier hides the commands from non-ops. Idempotent — skips
-     * nodes already present so it never clobbers an externally-managed perm.
-     */
-    private fun registerDeclaredPermissions() {
-        val perms = loadDeclaredPermissions() ?: return
-        val pm = Bukkit.getPluginManager()
-        val registered = perms.getKeys(false).count { registerPermissionNode(pm, perms, it) }
-        logger.info("Registered $registered EnthusiaMarket permissions")
-    }
-
-    /**
-     * Parse the bundled `paper-plugin.yml` `permissions:` section. The path separator
-     * is set to `/` so dotted node names (e.g. `enthusiamarket.shop.use`) aren't split
-     * by `getString("$node/default")` — splitting on `.` reads a missing path and
-     * silently defaults every perm to OP. Null on any IO/parse failure.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun loadDeclaredPermissions(): org.bukkit.configuration.ConfigurationSection? {
-        val stream = this::class.java.classLoader.getResourceAsStream("paper-plugin.yml") ?: run {
-            logger.warning("paper-plugin.yml not found on classpath; skipping permission registration")
-            return null
-        }
-        return try {
-            val yaml = org.bukkit.configuration.file.YamlConfiguration()
-            yaml.options().pathSeparator('/')
-            yaml.load(java.io.InputStreamReader(stream, Charsets.UTF_8))
-            yaml.getConfigurationSection("permissions")
-        } catch (e: Exception) {
-            logger.warning("Failed to read declared permissions: ${e.message}")
-            null
-        }
-    }
-
-    /** Register [node] with its declared default if Bukkit doesn't already have it. Returns true when added. */
-    private fun registerPermissionNode(
-        pm: org.bukkit.plugin.PluginManager,
-        perms: org.bukkit.configuration.ConfigurationSection,
-        node: String,
-    ): Boolean {
-        if (pm.getPermission(node) != null) return false
-        return try {
-            pm.addPermission(org.bukkit.permissions.Permission(node, permissionDefault(perms.getString("$node/default"))))
-            true
-        } catch (e: IllegalArgumentException) {
-            false // registered concurrently between the check and the add
-        }
-    }
-
-    private fun permissionDefault(token: String?): org.bukkit.permissions.PermissionDefault =
-        when (token?.lowercase()) {
-            "true" -> org.bukkit.permissions.PermissionDefault.TRUE
-            "false" -> org.bukkit.permissions.PermissionDefault.FALSE
-            "not op", "notop", "!op" -> org.bukkit.permissions.PermissionDefault.NOT_OP
-            else -> org.bukkit.permissions.PermissionDefault.OP
-        }
-
     private fun startBedrockHeadProviders(headStore: net.badgersmc.em.websync.heads.BedrockHeadStore) {
         geyserHeadIntegration = net.badgersmc.em.websync.heads.GeyserHeadIntegration.start(
             this, net.badgersmc.em.websync.heads.BedrockSkinCapture(headStore::capture),
@@ -555,24 +521,47 @@ open class EnthusiaMarket : JavaPlugin() {
     }
 
     override fun onDisable() {
+        runCatching { weeklyStallShowcases?.close() }
+        runCatching { websiteSales?.close() }
+        net.badgersmc.em.interaction.StallAccessUi.reset()
+        net.badgersmc.em.interaction.AuctionBidUi.reset()
+        net.badgersmc.em.interaction.gui.AuctionBidMenu.clearPending()
         stallAccounting?.close()
         shopHistory?.close()
         shopNotifications?.close()
         rentWarnings?.close()
         finderTrail?.close()
         server.servicesManager.unregisterAll(this)
+        closeStallServices()
+        closeBedrockIntegrations()
+        websiteSync?.close()
+        scheduler?.cancelAll()
+        nexus?.close()
+        logger.info("EnthusiaMarket disabled")
+    }
+
+    private fun detectVault(): VaultHealth {
+        val vaultHealth = VaultHealth()
+        val vaultRsp = Bukkit.getServicesManager().getRegistration(Economy::class.java)
+        vaultHealth.isAvailable = vaultRsp != null
+        if (vaultRsp == null) {
+            logger.severe("Vault Economy not found — rent collection, shop signs, and auctions disabled")
+        }
+        return vaultHealth
+    }
+
+    private fun closeStallServices() {
         runCatching { moderationProvider?.close() }
         runCatching { stallEffectGuard?.close() }
         runCatching { stallAccessRefresh?.close() }
+    }
+
+    private fun closeBedrockIntegrations() {
         runCatching { geyserHeadIntegration?.close() }
         runCatching { floodgateHeadIntegration?.close() }
         runCatching { floodgateSkinCapture?.close() }
         bedrockHeadStore?.close()
         headUploadClientCache?.clear()
-        websiteSync?.close()
-        scheduler?.cancelAll()
-        nexus?.close()
-        logger.info("EnthusiaMarket disabled")
     }
 
     private fun applyStallAccessPolicies(
@@ -580,4 +569,26 @@ open class EnthusiaMarket : JavaPlugin() {
         service: net.badgersmc.em.application.StallAccessSettingsService,
         projection: net.badgersmc.em.infrastructure.listeners.StallAccessProjection,
     ) { stalls.all().forEach { projection.apply(it, service.current(it)) } }
+
+    private fun startWeeklyStallDisplays(ctx: NexusContext) {
+        val showcases = net.badgersmc.em.infrastructure.website.WeeklyStallShowcases.open(this)
+        weeklyStallShowcases = showcases
+        if (showcases == null && !Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) return
+        val placeholders = ctx.getBean<net.badgersmc.em.infrastructure.papi.ShopPlaceholders>()
+        val player = placeholders.stallWeekDisplay
+        val guild = placeholders.guildStallWeekDisplay
+        Bukkit.getScheduler().runTaskTimerAsynchronously(this, Runnable {
+            player.refresh()
+            guild.refresh()
+            showcases?.prepare(player, guild)
+        }, 20L, 1200L)
+        if (showcases != null) {
+            Bukkit.getScheduler().runTaskTimer(this, Runnable { showcases.render(player, guild) }, 220L, 20L)
+        }
+    }
+    private fun startWebsiteSales(ds: DataSource, config: EnthusiaMarketConfig) {
+        websiteSales = net.badgersmc.em.infrastructure.website.WebsiteSalesBootstrap(this) {
+            shopHistory?.drained() == true
+        }.start(ds, config)
+    }
 }

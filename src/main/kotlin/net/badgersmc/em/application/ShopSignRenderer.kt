@@ -1,9 +1,9 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.annotations.Service
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 
@@ -26,26 +26,26 @@ class ShopSignRenderer {
         displayName: Component? = null,
     ): List<Component> {
         val headerTag = when (direction) {
-            SignDirection.BUY -> "gold"
-            SignDirection.TRADE -> "light_purple"
-            else -> "aqua"
+            SignDirection.BUY -> "#FFCF1F"
+            SignDirection.TRADE -> "#E4AB65"
+            else -> "#F2B66D"
         }
         val shadow = "<shadow:#000000:1>"
         val itemName: Component = if (displayName != null) {
             truncate(parseMiniMessageIfNeeded(displayName))
         } else {
             val truncated = if (sellMaterialName.length > 11) sellMaterialName.take(11) + "…" else sellMaterialName
-            Component.text(truncated, NamedTextColor.WHITE)
+            Component.text(truncated, MarketText.cream)
         }
         // Escape user-provided strings to prevent MiniMessage injection
         val safeCost = minimessage.escapeTags(costDisplay)
         val safeDir = minimessage.escapeTags(direction.name)
         return listOf(
             minimessage.deserialize("$shadow<$headerTag>[$safeDir]</$headerTag></shadow>"),
-            minimessage.deserialize("$shadow<white>${sellAmount}x </white></shadow>")
+            minimessage.deserialize("$shadow<#FFF6E0>${sellAmount}x </#FFF6E0></shadow>")
                 .append(itemName),
-            minimessage.deserialize("$shadow<gold>$safeCost</gold></shadow>"),
-            minimessage.deserialize("$shadow<gold>[Shop]</gold></shadow>"),
+            minimessage.deserialize("$shadow<#FFCF1F>$safeCost</#FFCF1F></shadow>"),
+            minimessage.deserialize("$shadow<#FFCF1F>[Shop]</#FFCF1F></shadow>"),
         )
     }
 

@@ -2,7 +2,22 @@ package net.badgersmc.em.domain.ports
 
 import java.util.UUID
 
-interface GuildProvider {
+interface GuildBankProvider {
+    fun canWithdrawForStall(player: UUID, guildId: String): Boolean = false
+
+    fun bankBalance(guildId: String): Long
+    fun bankWithdraw(guildId: String, amount: Long): Boolean
+    fun bankDeposit(guildId: String, amount: Long): Boolean
+
+    /** Shop settlement context is separate from the system bank actor. */
+    fun shopBankWithdraw(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
+        bankWithdraw(guildId, amount)
+
+    fun shopBankDeposit(guildId: String, amount: Long, playerName: String, reversal: Boolean = false): Boolean =
+        bankDeposit(guildId, amount)
+}
+
+interface GuildProvider : GuildBankProvider {
     data class BannerPattern(val type: String, val color: String)
 
     data class BannerDesign(val baseColor: String, val patterns: List<BannerPattern>)
@@ -27,7 +42,12 @@ interface GuildProvider {
 
     /** Public visual data when supported by the backing guild plugin. */
     fun visualById(id: String): GuildVisual? = null
+    /** Null when the backing lookup cannot verify the roster. */
+    fun verifiedMembership(player: UUID, guildId: String): Boolean? = null
     fun isMember(player: UUID, guildId: String): Boolean
+    /** REQ-399: extra guild stalls the guild plugin grants (prestige); 0 when unsupported. */
+    fun extraGuildStalls(guildId: String): Int = 0
+
     /** Optional live alliance lookup; absence never grants allied access. */
     fun areAllied(guildId: String, otherGuildId: String): Boolean = false
 
@@ -56,10 +76,6 @@ interface GuildProvider {
         /** Can change prices on shop signs */
         MODIFY_SHOP_PRICES
     }
-
-    fun bankBalance(guildId: String): Long
-    fun bankWithdraw(guildId: String, amount: Long): Boolean
-    fun bankDeposit(guildId: String, amount: Long): Boolean
 
     /** Every guild known to the backing system (for pickers). */
     fun listGuilds(): List<GuildRef>

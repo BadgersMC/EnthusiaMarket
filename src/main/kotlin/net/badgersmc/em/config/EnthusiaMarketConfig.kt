@@ -5,46 +5,7 @@ import net.badgersmc.nexus.config.ConfigFile
 
 @ConfigFile("enthusiamarket")
 @Comment("EnthusiaMarket Configuration")
-class EnthusiaMarketConfig {
-    @Comment("Binding world for stall regions")
-    var market: Market = Market()
-    @Comment("Periodic rent charge configuration")
-    var rent: Rent = Rent()
-    @Comment("Informational login warnings; rent remains manually prepaid.")
-    var rentWarnings: RentWarnings = RentWarnings()
-    @Comment("Auction settings")
-    var auction: Auction = Auction()
-    @Comment("Sign shop trade settings")
-    var shop: Shop = Shop()
-    @Comment("LumaGuilds integration")
-    var lumaguilds: LumaGuilds = LumaGuilds()
-    @Comment("Database settings")
-    var database: Database = Database()
-    @Comment("Bedrock/Floodgate settings")
-    var bedrock: Bedrock = Bedrock()
-    @Comment("Debug logging")
-    var debug: Debug = Debug()
-    @Comment("Localisation / language file selection")
-    var lang: Lang = Lang()
-    @Comment("Purchase-sign trigger token + permissions (REQ-250..253)")
-    var signs: Signs = Signs()
-    @Comment("Stall schematic snapshot/restore on claim/unclaim (REQ-270..274)")
-    var schematics: Schematics = Schematics()
-    @Comment("Stall boundary particle outline rendering (REQ-220 region kinds)")
-    var particles: Particles = Particles()
-    @Comment("Private direction trails from shop search results.")
-    var finderTrail: FinderTrail = FinderTrail()
-    @Comment("Guild tariff/embargo player notifications")
-    var guildPolicy: GuildPolicy = GuildPolicy()
-    @Comment("Periodic shop audit/repair sweeper (IS2-7/8, REQ-294)")
-    var shopAudit: ShopAudit = ShopAudit()
-    @Comment("Store URL for /store command (IS2-15, REQ-301)")
-    var store: Store = Store()
-    @Comment("IP-based fairness limits: one active auction bid and/or one owned stall per IP")
-    var ipLimiter: IpLimiter = IpLimiter()
-    @Comment("Volume-based stall pricing: rent scales with region block volume (width × height × length)")
-    var pricing: Pricing = Pricing()
-
+class EnthusiaMarketConfig : MarketConfigSections() {
     class Particles {
         @Comment("Master switch for stall boundary particle outlines.")
         var enabled: Boolean = true
@@ -57,6 +18,18 @@ class EnthusiaMarketConfig {
 
     class FinderTrail {
         var enabled: Boolean = true
+        @Comment("LOCATOR, PARTICLES or BOTH. Unsupported locator clients always retain particles.")
+        var mode: String = "BOTH"
+        var showDistance: Boolean = true
+        var arrivalSound: Boolean = true
+        var arrivalSoundName: String = "BLOCK_NOTE_BLOCK_PLING"
+        var arrivalVolume: Double = 0.4
+        var arrivalPitch: Double = 1.5
+        @Comment("LOW, NORMAL or HIGH; all remain subject to the shared particle budget.")
+        var intensity: String = "NORMAL"
+        var pulseSpeed: Double = 2.0
+        var routing: FinderRouting = FinderRouting()
+        var locator: FinderLocator = FinderLocator()
         var durationSeconds: Long = 60
         var maxRange: Double = 256.0
         var maxActive: Int = 64
@@ -65,14 +38,34 @@ class EnthusiaMarketConfig {
         var outline: FinderOutline = FinderOutline()
     }
 
+    class FinderRouting {
+        var enabled: Boolean = true
+        var attachmentDistance: Double = 12.0
+        @Comment("At most 128 nodes per world. Explicit links are bidirectional; coordinates must describe safe walkways.")
+        var nodes: MutableList<Any> = mutableListOf()
+    }
+
+    class FinderLocator {
+        var enabled: Boolean = true
+        @Comment("Use minecraft:default without a custom pack. Install the supplied Nexo add-on for enthusiamarket:stall.")
+        var style: String = "minecraft:default"
+        @Comment("Custom styles require a successfully loaded resource pack; otherwise use a vanilla gold icon.")
+        var requireResourcePack: Boolean = true
+    }
+
     class FinderOutline {
         var enabled: Boolean = true
+        @Comment("Private full-bright glowing display beams. False restores the original particle outline.")
+        var glow: Boolean = true
+        var beamWidth: Double = 0.04
+        var maxDisplaysPerPlayer: Int = 48
+        var maxDisplays: Int = 512
         var revealDistance: Double = 24.0
         var arrivalSeconds: Long = 10
         var height: Double = 3.0
         var spacing: Double = 1.0
         var maxParticlesPerPlayer: Int = 64
-        @Comment("RGB hex color; invalid values fall back to gold. Particle renderer, not entity glow.")
+        @Comment("RGB hex color; invalid values fall back to gold. Used by glow and particle fallback.")
         var color: String = "#FFC857"
         var particleSize: Double = 1.0
         var showShopMarker: Boolean = true
@@ -134,6 +127,12 @@ class EnthusiaMarketConfig {
     )
     var defaultStallLimit: Int = -1
 
+    @Comment(
+        "Most stalls one guild may own (REQ-399). LumaGuilds prestige can add one more. " +
+            "Guilds already above this keep their stalls but cannot claim another. -1 = unlimited."
+    )
+    var guildStallLimit: Int = 1
+
     class LimitGroup {
         @Comment("Maximum total stalls a player in this group may own. -1 = unlimited.")
         var total: Int = -1
@@ -147,6 +146,8 @@ class EnthusiaMarketConfig {
         var world: String = "world"
         @Comment("WorldGuard region prefix for stall detection (production regions are stall1..stall71, no underscore)")
         var regionPrefix: String = "stall"
+        @Comment("WorldGuard parent region for newly created stalls in the in-game region editor")
+        var parentRegion: String = "market"
         @Comment(
             "WorldGuard priority stamped on stall regions during /em import. " +
                 "Must exceed the surrounding safezone priority (market=10, spawn=10) " +
@@ -187,6 +188,8 @@ class EnthusiaMarketConfig {
     }
 
     class Auction {
+        @Comment("ID to stamp on new staff auctions for the opening round; blank disables tagging")
+        var openingRoundId: String = ""
         @Comment("Default auction duration (ISO-8601)")
         var defaultDuration: String = "PT24H"
         @Comment("Minimum auction duration (ISO-8601)")
@@ -248,6 +251,8 @@ class EnthusiaMarketConfig {
         var notifyEnabled: Boolean = true
         @Comment("Days of shop transaction history to keep; 0 disables pruning.")
         var historyRetentionDays: Int = 30
+        @Comment("Opt in to sale-time archive attribution; requires a reviewed rollback plan for newer pending history records.")
+        var archiveCaptureEnabled: Boolean = false
     }
 
     class LumaGuilds {

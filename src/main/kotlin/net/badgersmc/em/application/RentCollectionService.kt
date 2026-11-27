@@ -199,7 +199,7 @@ class RentCollectionService(
         } catch (e: Exception) {
             log.warning("Emergency auction broadcast failed for stall ${stall.id.value}: ${e.message}")
         }
-        auctionRepository.create(auction)
+        auctionRepository.create(auction, captureEmergencyListings = true)
         cleanupEmergencyForfeiture(stall)
         return ProcessResult.Evicted  // reuse Evicted for counting
     }

@@ -32,7 +32,7 @@ class ExplodeCleanupListener(
                 )
                 for (shop in shops) {
                     shopRepository.delete(shop.id)
-                    Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
+                    Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner, shop))
                     logger.info("Shop ${shop.id} deleted due to explosion at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ}")
                 }
             }

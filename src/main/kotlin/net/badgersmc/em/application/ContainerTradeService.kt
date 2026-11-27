@@ -2,6 +2,7 @@ package net.badgersmc.em.application
 
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.ports.WeeklyPlayerNames
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
@@ -31,14 +32,20 @@ internal data class TransactionEventData(
     val cost: Long,
     val shopId: Long,
     val direction: net.badgersmc.em.domain.shop.SignDirection,
-    val guildId: UUID? = null
+    val guildId: UUID? = null,
+    val stallId: String? = null,
+    val publicCashEligible: Boolean = false,
+    val awardOwner: net.badgersmc.em.domain.shop.SaleAwardOwner? = null,
+    val awardCaptureIncomplete: Boolean = false,
 )
 
 private data class TradeContext(
     val ownerUuid: UUID,
     val guildId: UUID?,
     val player: Player,
-    val containerInv: Inventory
+    val containerInv: Inventory,
+    val ownerType: OwnerType,
+    val stallOwnerId: UUID?,
 )
 
 /**
@@ -57,12 +64,40 @@ open class ContainerTradeService(
     private val shopVault: ShopVaultService? = null,
     private val stallAccess: net.badgersmc.em.domain.ports.StallAccessPolicy = net.badgersmc.em.domain.ports.StallAccessPolicy.Open,
     private val saleRewards: net.badgersmc.em.domain.ports.GuildSaleRewards? = null,
+    private val shopRepository: net.badgersmc.em.domain.shop.ShopRepository,
+    private val weeklyPlayerNames: WeeklyPlayerNames = WeeklyPlayerNames { Bukkit.getOfflinePlayer(it).name },
 ) {
     private val log = Logger.getLogger(ContainerTradeService::class.java.name)
     private val compensationAlerts = CompensationAlertService()
 
+    fun offerIsCurrent(offer: Shop): Boolean {
+        val current = shopRepository.findById(offer.id) ?: return false
+        return current == offer.copy(stockCount = current.stockCount, trusted = current.trusted,
+            hopperAllowIn = current.hopperAllowIn, hopperAllowOut = current.hopperAllowOut,
+            searchEnabled = current.searchEnabled)
+    }
+
+    fun priceFactor(shop: Shop, actor: UUID): Double {
+        if (shop.direction == net.badgersmc.em.domain.shop.SignDirection.TRADE) return 1.0
+        val guild = resolveStall(shop)?.let(::resolveGuildUuid) ?: return 1.0
+        val stance = tradePolicy?.stanceFor(guild.toString(), actor, shop.direction)
+        return (stance as? GuildTradePolicyService.TradeStance.Allowed)?.factor ?: 1.0
+    }
+
     /** Read-only balance lookup for purchase-menu affordability previews. */
     fun balanceOf(playerUuid: UUID): Long = economy.balance(playerUuid)
+
+    /** Current stock for menu previews; trade execution still performs its own checks. */
+    fun availableTrades(shop: Shop): Int {
+        if (unlimitedPreviewStock(shop)) return Int.MAX_VALUE
+        if (shop.sellAmount <= 0) return 0
+        val item = deserializeStack(shop.sellItem) ?: return 0
+        val container = getContainer(shop) ?: return 0
+        return ItemStackMatch.countSimilar(container.inventory, item) / shop.sellAmount
+    }
+
+    private fun unlimitedPreviewStock(shop: Shop): Boolean =
+        shop.direction == net.badgersmc.em.domain.shop.SignDirection.BUY || shop.adminShop
 
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult =
         executeBuyBatch(shop, playerUuid, 1)
@@ -106,7 +141,7 @@ open class ContainerTradeService(
             return BuyPreconditions(result = ContainerTradeResult.Failure("You don't have the items to sell"))
         val container = getContainer(shop)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Container missing"))
-        return BuyPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory), sellStack)
+        return BuyPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory, stall.owner.type, ownerUuid(stall)), sellStack)
     }
 
     private fun executeBuyTransaction(
@@ -136,31 +171,35 @@ open class ContainerTradeService(
     private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, cost: Long): ContainerTradeResult {
         val guildId = ctx.guildId
         if (cost > 0L) {
-            if (!withdrawFromShop(guildId, ctx.ownerUuid, cost)) {
+            if (!withdrawFromShop(guildId, ctx.ownerUuid, cost, ctx.player.name)) {
                 return buyPaymentWithdrawFailed(ctx, sellStack, guildId)
             }
             if (!economy.deposit(ctx.player.uniqueId, cost)) {
                 return buyPaymentDepositFailed(ctx, sellStack, guildId, cost)
             }
         }
-        publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, sellStack.amount, cost, shop.id, shop.direction, ctx.guildId))
+        publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, sellStack.amount, cost, shop.id, shop.direction, ctx.guildId, shop.stallId))
         return ContainerTradeResult.Success("Sold ${sellStack.amount}x for $cost")
     }
 
     private fun buyPaymentWithdrawFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?): ContainerTradeResult {
-        rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
+        val returned = rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
         return ContainerTradeResult.CompensationFailed(
             error = guildPaymentFailure(guildId, "Owner payment failed").reason,
-            compensation = "Item returned"
+            compensation = if (returned) "Item returned" else "Item return failed — contact staff"
         )
     }
 
     private fun buyPaymentDepositFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?, cost: Long): ContainerTradeResult {
-        val refunded = refundShop(guildId, ctx.ownerUuid, cost)
-        rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
+        val refunded = refundShop(guildId, ctx.ownerUuid, cost, ctx.player.name)
+        val returned = rollbackContainerAndPlayer(ctx.containerInv, ctx.player, sellStack)
         return ContainerTradeResult.CompensationFailed(
             error = "Player deposit failed",
-            compensation = if (refunded) "Full rollback" else "Partial rollback — shop refund failed"
+            compensation = when {
+                !returned -> "Item return failed — contact staff"
+                !refunded -> "Partial rollback — shop refund failed"
+                else -> "Full rollback"
+            }
         )
     }
 
@@ -214,7 +253,7 @@ open class ContainerTradeService(
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Container missing"))
         if (!inventoryHasAtLeast(container.inventory, sellStack, shop.sellAmount))
             return SellPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
-        return SellPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory), sellStack)
+        return SellPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory, stall.owner.type, ownerUuid(stall)), sellStack)
     }
 
     @Suppress("ReturnCount", "CyclomaticComplexMethod")
@@ -253,7 +292,26 @@ open class ContainerTradeService(
             else saleRewards?.aborted(intent)
         }
         if (result is ContainerTradeResult.Success) {
-            publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, scaledSell, cost, shop.id, shop.direction, ctx.guildId))
+            val currencyVerified = net.badgersmc.em.infrastructure.website.salesCurrencyVerified()
+            val facts = runCatching {
+                net.badgersmc.em.domain.shop.WebsiteSaleFacts(
+                    shop.direction, cost, scaledSell, shop.stallId, currencyVerified,
+                    shop.adminShop, ctx.stallOwnerId?.let { ctx.player.uniqueId == it || ctx.player.uniqueId == ctx.ownerUuid },
+                    sellStack.hasItemMeta() && !ItemStackMatch.matches(sellStack, ItemStack(sellStack.type)),
+                    ctx.ownerType == OwnerType.GUILD,
+                    ctx.guildId?.let { id -> guildProvider?.verifiedMembership(ctx.player.uniqueId, id.toString()) },
+                )
+            }.getOrNull()
+            val eligible = facts?.let(net.badgersmc.em.domain.shop.WebsiteSaleEligibility::accepts) == true
+            val awardOwner = if (eligible) runCatching { saleAwardOwner(ctx) }.getOrNull() else null
+            val possiblyEligible = facts?.let {
+                net.badgersmc.em.domain.shop.WebsiteSaleEligibility.accepts(it.copy(
+                    ownShop = it.ownShop ?: false, guildMemberBuyer = it.guildMemberBuyer ?: false,
+                ))
+            } ?: (currencyVerified && cost > 0 && !shop.adminShop)
+            publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, scaledSell, cost,
+                shop.id, shop.direction, ctx.guildId, shop.stallId, eligible && (ctx.guildId == null || awardOwner != null),
+                awardOwner, possiblyEligible && awardOwner == null))
         }
         return result
     }
@@ -280,7 +338,7 @@ open class ContainerTradeService(
         }
 
         val guildId = ctx.guildId
-        if (!depositToShop(guildId, ctx.ownerUuid, cost)) {
+        if (!depositToShop(guildId, ctx.ownerUuid, cost, ctx.player.name)) {
             collectedItems.forEach { ctx.containerInv.addItem(it) }
             val playerRefunded = economy.deposit(playerUuid, cost)
             return ContainerTradeResult.CompensationFailed(
@@ -299,7 +357,7 @@ open class ContainerTradeService(
         if (delivery.leftoverAmount > 0) {
             InventoryTradeDelivery.removeDelivered(ctx.player.inventory, delivery.addedPerItem)
             val rolledBack = rollbackFullTransaction(
-                ctx.guildId, ctx.ownerUuid, playerUuid, order.cost, ctx.containerInv, collectedItems,
+                ctx.guildId, ctx.ownerUuid, playerUuid, ctx.player.name, order.cost, ctx.containerInv, collectedItems,
             )
             return ContainerTradeResult.CompensationFailed(
                 error = "Inventory full",
@@ -312,15 +370,16 @@ open class ContainerTradeService(
 
     private data class SaleOrder(val stack: ItemStack, val amount: Int, val cost: Long)
 
-    private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack) {
+    private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack): Boolean {
         val result = transferSimilar(containerInv, player.inventory, stack, stack.amount)
         if (result !is TransferResult.Success) {
-            Bukkit.getLogger().warning("Rollback failed: items could not be returned to ${player.name}")
+            log.warning("Rollback failed: items could not be returned to ${player.name}")
         }
+        return result is TransferResult.Success
     }
 
     private fun rollbackFullTransaction(
-        guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, cost: Long,
+        guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, playerName: String, cost: Long,
         containerInv: Inventory, collectedItems: List<ItemStack>,
     ): Boolean {
         // Restore actual collected container items (REQ-301) — not a template reconstruction.
@@ -330,7 +389,7 @@ open class ContainerTradeService(
             if (containerInv.addItem(item).isNotEmpty()) itemsRestored = false
         }
         val fundsReversed = if (guildId != null) {
-            guildProvider?.bankWithdraw(guildId.toString(), cost) == true
+            guildProvider?.shopBankWithdraw(guildId.toString(), cost, playerName, true) == true
         } else {
             economy.withdraw(ownerUuid, cost)
         }
@@ -346,18 +405,18 @@ open class ContainerTradeService(
         }
     }
 
-    private fun withdrawFromShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
-        return if (guildId != null) guildProvider?.bankWithdraw(guildId.toString(), cost) ?: false
+    private fun withdrawFromShop(guildId: UUID?, ownerUuid: UUID, cost: Long, playerName: String): Boolean {
+        return if (guildId != null) guildProvider?.shopBankWithdraw(guildId.toString(), cost, playerName) ?: false
         else economy.withdraw(ownerUuid, cost)
     }
 
-    private fun depositToShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
-        return if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
+    private fun depositToShop(guildId: UUID?, ownerUuid: UUID, cost: Long, playerName: String): Boolean {
+        return if (guildId != null) guildProvider?.shopBankDeposit(guildId.toString(), cost, playerName) ?: false
         else economy.deposit(ownerUuid, cost)
     }
 
-    private fun refundShop(guildId: UUID?, ownerUuid: UUID, cost: Long): Boolean {
-        return if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
+    private fun refundShop(guildId: UUID?, ownerUuid: UUID, cost: Long, playerName: String): Boolean {
+        return if (guildId != null) guildProvider?.shopBankDeposit(guildId.toString(), cost, playerName, true) ?: false
         else economy.deposit(ownerUuid, cost)
     }
 
@@ -373,6 +432,26 @@ open class ContainerTradeService(
             runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
         } else null
     }
+
+    private fun saleAwardOwner(ctx: TradeContext): net.badgersmc.em.domain.shop.SaleAwardOwner? {
+        val owner = ctx.stallOwnerId ?: return null
+        return when (ctx.ownerType) {
+            OwnerType.SOLO -> weeklyPlayerNames.nameOf(owner)?.let {
+                net.badgersmc.em.domain.shop.SaleAwardOwner(owner, it, owner)
+            }
+            OwnerType.GUILD -> guildAwardOwner(owner)
+            OwnerType.NONE -> null
+        }
+    }
+
+    private fun guildAwardOwner(owner: UUID): net.badgersmc.em.domain.shop.SaleAwardOwner? {
+        val guild = guildProvider?.guildById(owner.toString()) ?: return null
+        val leader = guildProvider.visualById(guild.id)?.leaderId ?: return null
+        return net.badgersmc.em.domain.shop.SaleAwardOwner(owner, guild.name, leader)
+    }
+
+    private fun ownerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? =
+        runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
 
     // --- Barter trade (TRADE direction) ---
 
@@ -394,7 +473,7 @@ open class ContainerTradeService(
         val container = validateBarterStock(shop, player, stacks.first, stacks.second)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
         return BarterPreconditions(
-            TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory),
+            TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory, stall.owner.type, ownerUuid(stall)),
             stacks.first, stacks.second
         )
     }
@@ -483,7 +562,7 @@ open class ContainerTradeService(
         } catch (e: Exception) {
             return rollbackBarterAfterVaultFailure(ctx, sellStack, costStack, collectedItems, e)
         }
-        publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction, ctx.guildId))
+        publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction, ctx.guildId, shop.stallId))
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
 
@@ -638,7 +717,7 @@ open class ContainerTradeService(
             compensationAlerts.alert("placement-barter-vault-deposit", detail, ctx.player.uniqueId, amounts.cost.toLong())
             return ContainerTradeResult.CompensationFailed("Barter vault persistence failed", detail)
         }
-        publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, ctx.sellStack, amounts.sell, 0, shop.id, shop.direction))
+        publishShopTransaction(TransactionEventData(ctx.player, ctx.ownerUuid, ctx.sellStack, amounts.sell, 0, shop.id, shop.direction, stallId = shop.stallId))
         return ContainerTradeResult.Success("Traded ${amounts.sell}x for ${amounts.cost}x")
     }
 
@@ -696,121 +775,5 @@ open class ContainerTradeService(
             else -> { /* success — already logged in fireTransactionEvent */ }
         }
         return this
-    }
-
-    /**
-     * Transfers [amount] items matching [template] (by [ItemStack.isSimilar]) from
-     * [source] to [dest], preserving the original item stacks including display names
-     * and NBT. Atomic — preflights source count and dest capacity before mutating
-     * either inventory. Returns [TransferResult.Success] when the full amount was
-     * transferred.
-     */
-    private sealed class TransferResult {
-        data object Success : TransferResult()
-        data class SourceFailure(val leftover: Map<Int, ItemStack>) : TransferResult()
-        data class DestFull(val leftover: Map<Int, ItemStack>) : TransferResult()
-    }
-
-    @Suppress("CyclomaticComplexMethod")
-    private fun transferSimilar(
-        source: Inventory,
-        dest: Inventory,
-        template: ItemStack,
-        amount: Int,
-    ): TransferResult {
-        val contents = source.contents
-        if (contents != null && contents.isNotEmpty()) {
-            // Preflight: don't mutate until we know the full amount can be moved
-            if (!ItemStackMatch.containsAtLeastSimilar(source, template, amount)) {
-                val fail = HashMap<Int, ItemStack>()
-                fail[0] = template.clone().apply { this.amount = amount }
-                return TransferResult.SourceFailure(fail)
-            }
-            if (!ItemStackMatch.canFitSimilar(dest, template, amount)) {
-                val fail = HashMap<Int, ItemStack>()
-                fail[0] = template.clone().apply { this.amount = amount }
-                return TransferResult.DestFull(fail)
-            }
-            var remaining = amount
-            for (item in contents) {
-                if (item == null) continue
-                if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
-                val take = minOf(item.amount, remaining)
-                val batch = item.clone().apply { this.amount = take }
-                source.removeItem(batch)
-                dest.addItem(batch)
-                remaining -= take
-                if (remaining <= 0) return TransferResult.Success
-            }
-        }
-        // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
-        val batch = template.clone().apply { this.amount = amount }
-        val removed = source.removeItem(batch)
-        if (removed.isNotEmpty()) return TransferResult.SourceFailure(removed)
-        val leftover = dest.addItem(batch)
-        if (leftover.isNotEmpty()) {
-            source.addItem(batch)
-            return TransferResult.DestFull(leftover)
-        }
-        return TransferResult.Success
-    }
-
-    /**
-     * Removes items matching [template] from [source] using
-     * [ItemStackMatch.isSimilarIgnoringDamageNullZero] instead of Bukkit's
-     * strict equality. Clones matched items from the inventory so their
-     * real metadata (including nullable Damage tag) is preserved in the
-     * removeItem call. Returns leftovers if the full amount can't be removed.
-     */
-    @Suppress("CyclomaticComplexMethod")
-    private fun removeSimilar(source: Inventory, template: ItemStack, amount: Int): Map<Int, ItemStack> {
-        var remaining = amount
-        val contents = source.contents
-        if (contents != null && contents.isNotEmpty()) {
-            for (item in contents) {
-                if (item == null) continue
-                if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
-                val take = minOf(item.amount, remaining)
-                val batch = item.clone().apply { this.amount = take }
-                source.removeItem(batch)
-                remaining -= take
-                if (remaining <= 0) return emptyMap()
-            }
-        }
-        if (remaining <= 0) return emptyMap()
-        // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
-        val batch = template.clone().apply { this.amount = remaining }
-        return source.removeItem(batch)
-    }
-
-    /**
-     * Like [removeSimilar] but also collects the cloned items that were removed
-     * from the source inventory (preserving their real NBT/components).
-     * REQ-301: returned collected items are the actual container items, to be
-     * delivered to the player instead of the deserialized template.
-     * Returns (collected: List<ItemStack>, leftovers: Map<Int, ItemStack>).
-     */
-    private fun removeAndCollectSimilar(source: Inventory, template: ItemStack, amount: Int): Pair<List<ItemStack>, Map<Int, ItemStack>> {
-        val collected = mutableListOf<ItemStack>()
-        var remaining = amount
-        val contents = source.contents
-        if (contents != null && contents.isNotEmpty()) {
-            for (item in contents) {
-                if (item == null) continue
-                if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
-                val take = minOf(item.amount, remaining)
-                val batch = item.clone().apply { this.amount = take }
-                source.removeItem(batch)
-                collected.add(batch)
-                remaining -= take
-                if (remaining <= 0) return collected to emptyMap()
-            }
-        }
-        if (remaining <= 0) return collected to emptyMap()
-        // Fallback for test mocks — use template
-        val batch = template.clone().apply { this.amount = remaining }
-        val leftovers = source.removeItem(batch)
-        if (leftovers.isEmpty()) collected.add(batch)
-        return collected to leftovers
     }
 }

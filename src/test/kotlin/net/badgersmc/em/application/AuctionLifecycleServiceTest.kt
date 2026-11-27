@@ -157,6 +157,7 @@ class AuctionLifecycleServiceTest {
             every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null)
         }
 
+        stubAuctionTransactions(auctionRepo, stallRepo)
         return ServiceWithMocks(
             service = AuctionLifecycleService(
                 auctionRepository = auctionRepo,
@@ -422,6 +423,15 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         verify { svc.auctionRepo.save(success.auction) }
         verify { svc.economy.deposit(playerUuid, 150L) }
         verify(exactly = 0) { svc.economy.deposit(otherPlayer, 225L) }
+    }
+
+    @Test
+    fun `closed auction cannot authorize a refund`() {
+        val closed = sampleAuction.copy(state = AuctionState.CLOSED, highBid = Bid(otherPlayer, 500, now))
+        val svc = buildService(auction = closed)
+        assertIs<AuctionResult.Failure>(svc.service.cancelAuction(auctionId, playerUuid))
+        verify(exactly = 0) { svc.auctionRepo.commitTransition(any(), any(), any(), any()) }
+        verify(exactly = 0) { svc.economy.deposit(any(), any()) }
     }
 
     // ===== cancelAuction =====
@@ -706,11 +716,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
     }
 
     @Test
-    fun `settleExpired closes auction and refunds held bid when award save throws`() {
-        // CodeRabbit on #57: if the stall revert ran BEFORE the auction close
-        // and threw, the auction stayed OPEN-and-expired — re-settling every
-        // scheduler tick, the exact wedge M-2 fixes. Close must happen first;
-        // a failed revert is best-effort.
+    fun `failed atomic award retains escrow for settlement retry`() {
         val winner = otherPlayer
         val expired = sampleAuction.copy(
             highBid = Bid(winner, 500L, now),
@@ -731,8 +737,8 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         assertEquals(1, report.errors)
         assertEquals(0, report.settled)
-        verify { svc.auctionRepo.save(match { it.state == AuctionState.CLOSED }) }
-        verify { svc.economy.deposit(winner, 500L) }
+        verify(exactly = 0) { svc.auctionRepo.save(any()) }
+        verify(exactly = 0) { svc.economy.deposit(winner, 500L) }
     }
 
     @Test

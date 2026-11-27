@@ -2,10 +2,7 @@ package net.badgersmc.em.infrastructure.lumaguilds
 
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.annotations.Component
-import net.kyori.adventure.text.minimessage.MiniMessage
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.lumalyte.lg.api.GuildLookup
-import net.lumalyte.lg.api.GuildSummary
 import net.lumalyte.lg.api.GuildVisualLookup
 import org.bukkit.Bukkit
 import java.util.UUID
@@ -39,6 +36,9 @@ class LumaGuildsGuildProvider : GuildProvider {
         val ally = parseUuid(otherGuildId) ?: return false
         return OptionalGuildAllianceLookup.areAllied(guild, ally)
     }
+
+    override fun extraGuildStalls(guildId: String): Int =
+        parseUuid(guildId)?.let(OptionalGuildPrestigePerkLookup::extraGuildStalls) ?: 0
 
     override fun guildOf(player: UUID): GuildProvider.GuildRef? {
         val lg = lookup ?: return null
@@ -92,52 +92,12 @@ class LumaGuildsGuildProvider : GuildProvider {
             .toSet()
     }
 
-    /** Map a LumaGuilds [GuildSummary] to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
-    private fun toGuildRef(guild: GuildSummary): GuildProvider.GuildRef =
-        GuildProvider.GuildRef(
-            guild.id.toString(),
-            guild.name,
-            normalizeToMiniMessage(guild.tag),
-            normalizeToMiniMessage(guild.emoji),
-        )
-
-    private fun parseUuid(value: String): UUID? =
-        try {
-            UUID.fromString(value)
-        } catch (_: IllegalArgumentException) {
-            null
-        }
-
-    /**
-     * Normalise a stored guild tag/emoji to MiniMessage so EM's sign renderer
-     * (which parses placeholder values as MiniMessage) colours it correctly.
-     *
-     * LumaGuilds stores tags in whatever format the setter passed: the Java
-     * tag-editor menu converts legacy `&` codes to MiniMessage on save, but the
-     * `/guild tag` command and the Bedrock editor store the raw input — so
-     * legacy-coded tags exist in the wild. Mirror LumaGuilds' own
-     * ColorCodeUtils.convertLegacyToMiniMessage: pass MiniMessage through
-     * unchanged, convert legacy `&` codes, and never throw.
-     */
-    private fun normalizeToMiniMessage(raw: String?): String {
-        val value = raw ?: return ""
-        if (value.isEmpty()) return ""
-        // Already MiniMessage (contains a tag) — leave it alone.
-        if (value.contains(MINI_TAG)) return value
-        // No legacy codes either — plain text, nothing to convert.
-        if (!value.contains('&') && !value.contains('§')) return value
-        return try {
-            val legacy = if (value.contains('§')) {
-                LegacyComponentSerializer.legacySection()
-            } else {
-                LegacyComponentSerializer.legacyAmpersand()
-            }
-            MiniMessage.miniMessage().serialize(legacy.deserialize(value))
-        } catch (_: Exception) {
-            value
-        }
+    override fun verifiedMembership(player: UUID, guildId: String): Boolean? {
+        val uuid = parseUuid(guildId) ?: return null
+        val source = lookup ?: return null
+        if (source.getGuild(uuid) == null) return null
+        return source.isMember(player, uuid)
     }
-
 
     override fun isMember(player: UUID, guildId: String): Boolean {
         val uuid = parseUuid(guildId) ?: return false
@@ -163,6 +123,11 @@ class LumaGuildsGuildProvider : GuildProvider {
         return lookup?.hasRankAtLeast(player, guildUuid, node) ?: false
     }
 
+    override fun canWithdrawForStall(player: UUID, guildId: String): Boolean {
+        val uuid = parseUuid(guildId) ?: return false
+        return lookup?.hasShopPermission(player, uuid, "WITHDRAW_FROM_BANK") == true
+    }
+
     override fun bankBalance(guildId: String): Long {
         val uuid = parseUuid(guildId) ?: return 0L
         return lookup?.getBankBalance(uuid) ?: 0L
@@ -179,6 +144,30 @@ class LumaGuildsGuildProvider : GuildProvider {
         val uuid = parseUuid(guildId) ?: return false
         return lookup?.systemBankDeposit(uuid, amount, "EnthusiaMarket") ?: false
     }
+
+    override fun shopBankWithdraw(guildId: String, amount: Long, playerName: String, reversal: Boolean): Boolean {
+        if (amount !in 1..Int.MAX_VALUE.toLong()) return false
+        val uuid = parseUuid(guildId) ?: return false
+        val role = if (reversal) "Buyer" else "Seller"
+        return lookup?.systemBankWithdraw(uuid, amount, shopPaymentReason(role, playerName, reversal)) ?: false
+    }
+
+    override fun shopBankDeposit(guildId: String, amount: Long, playerName: String, reversal: Boolean): Boolean {
+        if (amount !in 1..Int.MAX_VALUE.toLong()) return false
+        val uuid = parseUuid(guildId) ?: return false
+        val role = if (reversal) "Seller" else "Buyer"
+        return lookup?.systemBankDeposit(uuid, amount, shopPaymentReason(role, playerName, reversal)) ?: false
+    }
+
+    private fun shopPaymentReason(role: String, playerName: String, reversal: Boolean): String {
+        // Bound and sanitize player-controlled text before persisting it in the shared ledger.
+        val safeName = playerName.takeIf { it.length in 1..32 && it.all(::isSafeShopNameCharacter) }
+        val operation = if (reversal) "Shop payment reversal" else "Shop payment"
+        return if (safeName == null) "$operation | EnthusiaMarket" else "$operation | $role: $safeName | EnthusiaMarket"
+    }
+
+    private fun isSafeShopNameCharacter(character: Char): Boolean =
+        character.isLetterOrDigit() || character == '_' || character == '.' || character == ' '
 
     override fun onDissolved(handler: (String) -> Unit) {
         dissolveHandlers.add(handler)
@@ -198,9 +187,6 @@ class LumaGuildsGuildProvider : GuildProvider {
         }
     }
 
-    companion object {
-        private val MINI_TAG = Regex("<[^>]+>")
-    }
 }
 
 /**
@@ -213,3 +199,10 @@ private fun GuildProvider.GuildPermission.toRankPermission(): String? = when (th
     GuildProvider.GuildPermission.EDIT_SHOP_STOCK -> "EDIT_SHOP_STOCK"
     GuildProvider.GuildPermission.MODIFY_SHOP_PRICES -> "MODIFY_SHOP_PRICES"
 }
+
+private fun parseUuid(value: String): UUID? =
+    try {
+        UUID.fromString(value)
+    } catch (_: IllegalArgumentException) {
+        null
+    }

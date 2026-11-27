@@ -5,15 +5,12 @@ import com.zaxxer.hikari.HikariDataSource
 import net.badgersmc.em.domain.shop.ShopHistoryWindow
 import net.badgersmc.em.domain.shop.ShopTransaction
 import net.badgersmc.em.domain.shop.SignDirection
-import org.testcontainers.containers.MariaDBContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
+import net.badgersmc.em.testing.MarketMariaDbFixture
+import org.junit.jupiter.api.extension.RegisterExtension
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-@Testcontainers(disabledWithoutDocker = true)
 class ShopHistoryFilterMariaDbTest {
     @Test fun `MariaDB window privacy boundaries and stable pages match SQLite contract`() {
         HikariDataSource(HikariConfig().apply {
@@ -65,14 +62,11 @@ class ShopHistoryFilterMariaDbTest {
                     id BIGINT PRIMARY KEY AUTO_INCREMENT, shop_id BIGINT NOT NULL,
                     owner VARCHAR(36) NOT NULL, buyer VARCHAR(36) NOT NULL,
                     direction VARCHAR(10) NOT NULL, item TEXT NOT NULL, quantity INT NOT NULL,
-                    total_price BIGINT NOT NULL, created_at BIGINT NOT NULL, notified INT NOT NULL DEFAULT 0
+                    total_price BIGINT NOT NULL, created_at BIGINT NOT NULL, notified INT NOT NULL DEFAULT 0,
+                    sale_stall_id TEXT, sale_guild_id TEXT
                 )"""
 
-        @Container @JvmStatic
-        private val database = FilterMariaDbContainer("mariadb:11.8.3")
-            .withDatabaseName("history_filter_test").withUsername("market_test").withPassword("market_test")
+        @RegisterExtension @JvmField
+        val database = MarketMariaDbFixture("history_filter", "history_filter_test")
     }
-
-    private class FilterMariaDbContainer(image: String) :
-        MariaDBContainer<FilterMariaDbContainer>(DockerImageName.parse(image))
 }

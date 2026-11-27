@@ -2,6 +2,7 @@ package net.badgersmc.em.application
 
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.Auction
+import net.badgersmc.em.domain.auction.AuctionPayment
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
@@ -149,7 +150,8 @@ class AuctionLifecycleService(
             startingBid = startingBid,
             highBid = null,
             antiSnipeWindow = config.auction.antiSnipeWindowDuration,
-            antiSnipeExtension = config.auction.antiSnipeExtensionDuration
+            antiSnipeExtension = config.auction.antiSnipeExtensionDuration,
+            openingRoundId = config.auction.openingRoundId.trim().ifEmpty { null },
         )
 
         auctionRepository.create(auction)
@@ -223,7 +225,8 @@ class AuctionLifecycleService(
                 startingBid = startingBid,
                 highBid = null,
                 antiSnipeWindow = antiSnipe,
-                antiSnipeExtension = antiSnipeExtend
+                antiSnipeExtension = antiSnipeExtend,
+                openingRoundId = config.auction.openingRoundId.trim().ifEmpty { null },
             )
             // Persist auction first, then transition stall. If the stall save
             // fails we compensate by closing the just-created auction so we
@@ -248,6 +251,67 @@ class AuctionLifecycleService(
             logger.warning("startAuctionForStall: stall ${stall.id} failed — ${e.message}")
             return Pair(null, "error")
         }
+    }
+
+    internal fun previewImportedLots(lots: List<AuctionLot>, round: String, durationText: String): AuctionLotPlan {
+        val duration = requireNotNull(resolveDuration(durationText)) {
+            "Use an ISO-8601 duration between ${config.auction.minDuration} and ${config.auction.maxDuration}."
+        }
+        require(duration.nano == 0) { "Auction duration must be in whole seconds." }
+        return AuctionLotPlan(
+            lots.map { validateImportedLot(it) to it },
+            round,
+            duration,
+            config.auction.antiSnipeWindowDuration,
+            config.auction.antiSnipeExtensionDuration,
+        )
+    }
+
+    internal fun openImportedLots(plan: AuctionLotPlan): Instant {
+        val checked = previewImportedLots(plan.lots.map { it.second }, plan.round, plan.duration.toString())
+        require(checked == plan) { "Stall details or auction settings changed. Preview the file again." }
+        val now = clock.instant()
+        val ends = now.plus(plan.duration)
+        val conflict = auctionRepository.openImportedLots(importedAuctions(plan, now, ends))
+        require(conflict == null) { "Stall ${conflict?.value} changed. No lots were opened." }
+        for ((stall, _) in plan.lots) {
+            runCatching { stallRepository.onExternalStateCommit(stall.id) }.onFailure {
+                logger.log(Level.WARNING, "Could not refresh auction stall ${stall.id.value}", it)
+            }
+            fireStateChanged(stall.id.value, StallState.UNOWNED, StallState.AUCTIONING)
+        }
+        return ends
+    }
+
+    private fun importedAuctions(plan: AuctionLotPlan, now: Instant, ends: Instant) =
+        plan.lots.map { (stall, lot) ->
+            stall to Auction(
+                id = AuctionId(UUID.randomUUID().toString()),
+                stallId = stall.id,
+                state = AuctionState.OPEN,
+                startAt = now,
+                endAt = ends,
+                startingBid = lot.minimumBid,
+                highBid = null,
+                antiSnipeWindow = plan.antiSnipeWindow,
+                antiSnipeExtension = plan.antiSnipeExtension,
+                openingRoundId = plan.round,
+            )
+        }
+
+    private fun validateImportedLot(lot: AuctionLot): Stall {
+        val id = lot.stallId
+        validateStartingBid(lot.minimumBid)?.let { throw IllegalArgumentException("${id.value}: ${it.reason}") }
+        val stall = requireNotNull(stallRepository.findById(id)) { "Unknown stall ${id.value}." }
+        require(stall.id == id) { "Use the registered stall ID ${stall.id.value}." }
+        require(stall.state == StallState.UNOWNED && stall.owner.type == OwnerType.NONE &&
+            !mutationGate.isStallLocked(id.value)
+        ) { "Stall ${id.value} is unavailable." }
+        require(sellOffers.findByStall(id) == null) { "Stall ${id.value} has a sell offer." }
+        require(auctionRepository.findByStall(id).none { it.state == AuctionState.OPEN }) {
+            "Stall ${id.value} already has an unsettled auction."
+        }
+        return stall
     }
 
     private fun validateStartingBid(startingBid: Long): AuctionResult.Failure? {
@@ -287,11 +351,15 @@ class AuctionLifecycleService(
             it.hasShopPermission(actor, guildId, net.badgersmc.em.domain.ports.GuildProvider.GuildPermission.MANAGE_SHOPS)
     } ?: false
 
+    /** Fresh read for bid review; preserves the existing ID/stall fallback. No mutation. */
+    fun auctionForBid(auctionId: AuctionId): Auction? = findAuction(auctionId)
+
     data class BidRequest(val actor: UUID, val amount: Long, val ip: String, val guildId: String? = null)
 
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult =
         placeBid(auctionId, BidRequest(playerUuid, amount, ip))
 
+    @Synchronized
     fun placeBid(auctionId: AuctionId, request: BidRequest): AuctionResult {
         if (request.guildId != null && !mayManageGuild(request.actor, request.guildId)) return AuctionResult.Failure("You cannot bid for this guild")
         return try {
@@ -301,14 +369,46 @@ class AuctionLifecycleService(
         }
     }
 
+    /** REQ-399: the guild stall cap, with LumaGuilds' prestige bonus. */
+    private fun guildClaimDecision(actor: UUID, guildId: String): LimitResolutionService.ClaimDecision {
+        val extra = runCatching { guildProvider?.extraGuildStalls(guildId) ?: 0 }.getOrDefault(0)
+        return limits.canClaimForGuild(actor, ownership.guildCount(guildId), extra)
+    }
+
     private fun placeBidWithPermit(auctionId: AuctionId, request: BidRequest): AuctionResult {
+        guildCapRejection(request)?.let { return it }
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
         if (mutationGate.isStallLocked(auction.stallId.value)) return AuctionResult.Failure("This stall is temporarily unavailable")
         if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is not open")
+        guildBidRejection(auction, request.guildId)?.let { return it }
+        return reserveBid(auction, request)
+    }
+
+    private fun reserveBid(auction: Auction, request: BidRequest): AuctionResult {
         val reservation = ipLimiter.acquireAuction(request.ip, auction.id.value)
         if (!reservation.allowed) return AuctionResult.Failure("You already have an active bid on another auction.")
         return applyReservedBid(auction, request, reservation)
     }
+
+    private fun guildCapRejection(request: BidRequest): AuctionResult.Failure? {
+        val guildId = request.guildId ?: return null
+        val decision = guildClaimDecision(request.actor, guildId)
+        return (decision as? LimitResolutionService.ClaimDecision.Rejected)?.let {
+            AuctionResult.Failure("Your guild already owns its stall limit (${it.cap})")
+        }
+    }
+
+    private fun guildBidRejection(auction: Auction, guildId: String?): AuctionResult.Failure? = when {
+        guildId == null -> null
+        guildAlreadyWonOpeningRound(auction, guildId) ->
+            AuctionResult.Failure("Your guild has already won a stall in this opening round.")
+        auctionRepository.hasOtherOpenGuildBid(guildId, auction.id) ->
+            AuctionResult.Failure("Your guild is already leading another stall auction.")
+        else -> null
+    }
+
+    private fun guildAlreadyWonOpeningRound(auction: Auction, guildId: String): Boolean =
+        auction.openingRoundId?.let { auctionRepository.hasGuildOpeningRoundWin(it, guildId) } ?: false
 
     private fun applyReservedBid(auction: Auction, request: BidRequest, reservation: IpLimiter.Attempt): AuctionResult {
         var completed = false
@@ -351,11 +451,29 @@ class AuctionLifecycleService(
         if (!withdrawBid(newBid, charge)) {
             return AuctionResult.Failure("Could not withdraw $charge. Check your balance.")
         }
-        persistBidWithRollback(charge, updated, original.id)?.let { return it }
+        val refund = previousBid?.takeUnless { samePayer(it, newBid) }?.let { refundPayment(original, it) }
+        if (!commitChargedBid(original, updated, charge, refund)) return AuctionResult.Failure("Bid could not be saved")
+        refund?.let(::deliverPayment)
         val newBidderName = runCatching { Bukkit.getPlayer(playerUuid) }.getOrNull()?.name ?: "Unknown"
-        refundPreviousBidderIfOutbid(previousBid, newBid, original.id, original.stallId, amount, newBidderName)
+        notifyPreviousBidderIfOutbid(previousBid, newBid, original.stallId, newBidderName)
         return AuctionResult.Success(updated)
 
+    }
+
+    private fun commitChargedBid(original: Auction, updated: Auction, charge: Long, refund: AuctionPayment?): Boolean {
+        val newBid = requireNotNull(updated.highBid)
+        try {
+            auctionRepository.commitTransition(original, updated, null, refund)
+        } catch (failure: Exception) {
+            // Read back after an uncertain commit before reversing the new bid.
+            val saved = auctionRepository.findById(original.id)
+            if (saved != null && saved.highBid == original.highBid) {
+                refundBid(newBid, charge, "bid persistence failed for ${original.id}")
+                return false
+            }
+            if (saved?.highBid?.copy(placedAt = newBid.placedAt) != newBid) throw failure
+        }
+        return true
     }
 
     /**
@@ -381,44 +499,18 @@ class AuctionLifecycleService(
             ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
 
     /**
-     * Persist the updated auction and roll back the charge on failure.
-     * Returns `null` on success, or a [AuctionResult.Failure] that the
-     * caller should propagate.
-     */
-    private fun persistBidWithRollback(
-        charge: Long,
-        updated: Auction,
-        auctionId: AuctionId,
-    ): AuctionResult.Failure? {
-        try {
-            auctionRepository.save(updated)
-            return null
-        } catch (e: Exception) {
-            refundBid(updated.highBid!!, charge, "placeBid rollback after auction save failed for $auctionId")
-            return AuctionResult.Failure(e.message ?: "Bid rejected")
-        }
-    }
-
-    /**
-     * Refund the previous high bidder if they were outbid by a different
+     * Notify the previous high bidder if they were outbid by a different
      * player.
      */
-    private fun refundPreviousBidderIfOutbid(
+    private fun notifyPreviousBidderIfOutbid(
         previousBid: Bid?,
         next: Bid,
-        auctionId: AuctionId,
         stallId: StallId,
-        newAmount: Long,
         newBidderName: String,
     ) {
         if (previousBid != null && !samePayer(previousBid, next)) {
-            refundBid(
-                previousBid,
-                previousBid.amount,
-                "previous high-bidder refund after outbid on auction $auctionId",
-            )
             runCatching { Bukkit.getPlayer(previousBid.bidder) }?.getOrNull()?.sendMessage(
-                lang.msg("auction.outbid", "stall" to stallId.value, "amount" to newAmount, "bidder" to newBidderName)
+                lang.msg("auction.outbid", "stall" to stallId.value, "amount" to next.amount, "bidder" to newBidderName)
             )
         }
     }
@@ -430,9 +522,11 @@ class AuctionLifecycleService(
      * @param playerUuid the player requesting cancellation
      * @return [AuctionResult.Success] with the closed auction, or [AuctionResult.Failure]/[AuctionResult.NotFound]
      */
+    @Synchronized
     fun cancelAuction(auctionId: AuctionId, playerUuid: UUID): AuctionResult {
         val auction = auctionRepository.findById(auctionId)
             ?: return AuctionResult.NotFound
+        if (auction.state != AuctionState.OPEN) return AuctionResult.Failure("Auction is already closed")
         if (mutationGate.isStallLocked(auction.stallId.value)) {
             return AuctionResult.Failure("This stall is temporarily unavailable")
         }
@@ -452,11 +546,8 @@ class AuctionLifecycleService(
         }
 
         val closed = auction.close()
-        auctionRepository.save(closed)
+        closeAndRefund(auction, closed)
         ipLimiter.releaseAuctionBindings(auction.id.value)
-        auction.highBid?.let {
-            refundBid(it, it.amount, "cancelAuction refund for auction ${auction.id}")
-        }
         // Revert a system-mass-auctioned stall (AUCTIONING + no owner) back to
         // UNOWNED so the sign becomes buyable again after cancellation.
         if (stall.state == StallState.AUCTIONING &&
@@ -541,6 +632,7 @@ class AuctionLifecycleService(
      * @return number of auctions cancelled
      */
     @Suppress("LongMethod")
+    @Synchronized
     fun cancelAllAuctions(): Int {
         val open = auctionRepository.allOpen()
         var count = 0
@@ -561,10 +653,7 @@ class AuctionLifecycleService(
         if (mutationGate.isStallLocked(auction.stallId.value)) return false
         return try {
             val cancelled = auction.copy(state = AuctionState.CANCELLED)
-            auctionRepository.save(cancelled)
-            auction.highBid?.let {
-                refundBid(it, it.amount, "cancelAllAuctions refund for auction ${auction.id}")
-            }
+            closeAndRefund(auction, cancelled)
             ipLimiter.releaseAuctionBindings(auction.id.value)
             revertSystemAuctionedStall(auction, auctioningStates)
             true
@@ -599,6 +688,7 @@ class AuctionLifecycleService(
      * @return [SettlementReport] with counts of settled and errored auctions
      */
     @Suppress("NestedBlockDepth")
+    @Synchronized
     fun settleExpired(): SettlementReport {
         val expired = auctionRepository.findExpired()
         var settled = 0
@@ -654,7 +744,6 @@ class AuctionLifecycleService(
                 ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
             logger.info("Auction ${auction.id} winner is restricted; refunding without an ownership award")
             closeWithoutAward(auction, stall)
-            refundBid(bid, bid.amount, "market restriction refund for auction ${auction.id}")
         }
     }
 
@@ -664,31 +753,16 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
-        // REQ-212 — limit gate. The winner already paid at bid time, so close
-        // the auction first to avoid retry/double-refund loops, then refund.
-        if (bid.guildId != null && !mayManageGuild(bid.bidder, bid.guildId)) {
+        if (!winnerEligible(auction, stall, bid)) {
             closeWithoutAward(auction, stall)
-            refundBid(bid, bid.amount, "guild permission revoked before award")
-            return
-        }
-        val counts = ownership.counts(bid.bidder)
-        // Match direct guild purchase policy: personal limits do not apply to guild holdings.
-        val decision = if (bid.guildId != null) LimitResolutionService.ClaimDecision.Allowed else limits.canClaim(
-            player = bid.bidder,
-            kind = stall.kind,
-            currentTotal = counts.total,
-            currentForKind = counts.byKind[stall.kind] ?: 0,
-        )
-        if (decision is LimitResolutionService.ClaimDecision.Rejected) {
-            logger.info(
-                "Auction ${auction.id} winner ${bid.bidder} over limit " +
-                    "($decision); refunding and reverting without award."
-            )
-            closeWithoutAward(auction, stall)
-            refundBid(bid, bid.amount, "limit rejection refund for auction ${auction.id}")
             return
         }
 
+        if (!captureWinnerStall(auction, stall, bid)) return
+        awardWinner(auction, stall, bid)
+    }
+
+    private fun captureWinnerStall(auction: Auction, stall: Stall, bid: Bid): Boolean {
         // Winner already paid at bid time. Settlement must not charge again.
 
         // 0.5 REQ-270/273/274 — snapshot the stall geometry BEFORE finalising
@@ -705,25 +779,46 @@ class AuctionLifecycleService(
                         "aborting award and refunding ${bid.bidder}. cause=${capture.cause.message}"
                 )
                 closeWithoutAward(auction, stall)
-                refundBid(bid, bid.amount, "schematic failure refund for auction ${auction.id}")
                 fireCaptureFailed(stall.id.value, stall.world, stall.regionId, capture.cause)
-                return
+                return false
             }
         }
 
-        // 1. Persist state changes (stall awarded + auction closed).
-        //
-        // C3 fix — close the auction FIRST, then award the stall, and on a
-        // stall-save failure REFUND the winner and leave the auction CLOSED.
-        // The winner is already charged at step 0, which runs on every settle;
-        // the old ordering (save stall, then close auction) left the auction
-        // OPEN on a close-failure, so the scheduler re-settled and re-charged.
-        // Closing first + refund-on-failure makes settle charge-exactly-once:
-        //   • Success: auction closed, stall awarded — single charge.
-        //   • Stall-save failure: winner refunded, auction stays CLOSED (no
-        //     re-settle → no re-charge), stall best-effort reverted to UNOWNED
-        //     so it can be re-auctioned later. The winner is made whole either
-        //     way; no money is created or destroyed.
+        return true
+    }
+
+    private fun winnerEligible(auction: Auction, stall: Stall, bid: Bid): Boolean {
+        // REQ-212 — limit gate. The winner already paid at bid time, so close
+        // the auction first to avoid retry/double-refund loops, then refund.
+        if (!guildWinnerEligible(auction, bid)) return false
+        val decision = winnerLimit(stall, bid)
+        if (decision is LimitResolutionService.ClaimDecision.Rejected) {
+            logger.info(
+                "Auction ${auction.id} winner ${bid.bidder} over limit " +
+                    "($decision); refunding and reverting without award."
+            )
+            return false
+        }
+        return true
+    }
+
+    private fun guildWinnerEligible(auction: Auction, bid: Bid): Boolean {
+        val guild = bid.guildId ?: return true
+        return mayManageGuild(bid.bidder, guild) && !guildAlreadyWonOpeningRound(auction, guild)
+    }
+
+    private fun winnerLimit(stall: Stall, bid: Bid): LimitResolutionService.ClaimDecision {
+        val counts = ownership.counts(bid.bidder)
+        // Personal limits do not apply to guild holdings; the guild cap does (REQ-399).
+        return if (bid.guildId != null) guildClaimDecision(bid.bidder, bid.guildId) else limits.canClaim(
+            player = bid.bidder,
+            kind = stall.kind,
+            currentTotal = counts.total,
+            currentForKind = counts.byKind[stall.kind] ?: 0,
+        )
+    }
+
+    private fun awardWinner(auction: Auction, stall: Stall, bid: Bid) {
         val awardAt = clock.instant()
         val updatedStall = stall.awardTo(
             if (bid.guildId != null) OwnerRef(OwnerType.GUILD, bid.guildId) else OwnerRef.solo(bid.bidder),
@@ -731,40 +826,10 @@ class AuctionLifecycleService(
             awardAt,
             awardAt.plus(RentTimingPolicy.collectionInterval(config)),
         )
-        auctionRepository.save(auction.close())
-        try {
-            stallRepository.save(updatedStall)
-        } catch (e: Exception) {
-            // Stall award failed after the auction was closed + the winner charged.
-            // Refund the winner (no double-charge), keep the auction CLOSED so the
-            // scheduler does not re-settle, and best-effort revert the stall so it
-            // returns to the auctionable pool.
-            logger.severe(
-                "settleWithWinner: stall save failed for auction ${auction.id} after close + charge; " +
-                    "refunding winner ${bid.bidder} (${bid.amount}) and leaving the auction closed. " +
-                    "cause=${e.message}"
-            )
-            if (!refundBid(bid, bid.amount, "stall-save failure refund for auction ${auction.id}")) {
-                logger.severe(
-                    "settleWithWinner: REFUND FAILED for winner ${bid.bidder} (${bid.amount}) on auction " +
-                        "${auction.id} after stall-save failure — winner is charged with no stall and no " +
-                        "refund; manual intervention required."
-                )
-            }
-            try {
-                if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
-                    (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)) {
-                    releaseAuctionedStall(stall, "settleWithWinner rollback")
-                }
-            } catch (revert: Exception) {
-                logger.severe(
-                    "settleWithWinner: failed to revert stall ${stall.id.value} to UNOWNED after refunding " +
-                        "${bid.bidder}; stall may be stuck AUCTIONING but the winner was refunded. " +
-                        "cause=${revert.message}"
-                )
-            }
-            throw e
-        }
+        val payout = sellerPayment(auction, stall, bid)
+        auctionRepository.commitTransition(auction, auction.close(), updatedStall, payout)
+        stallRepository.onExternalStateCommit(stall.id)
+        payout?.let(::deliverPayment)
         cleanupPreviousOwnershipShops(updatedStall, "settleWithWinner")
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
@@ -773,6 +838,17 @@ class AuctionLifecycleService(
             lang.msg("auction.won", "stall" to stall.id.value, "amount" to bid.amount)
         )
 
+        syncAwardRegion(updatedStall, bid)
+    }
+
+    private fun sellerPayment(auction: Auction, stall: Stall, bid: Bid): AuctionPayment? {
+        val proceeds = bid.amount - (bid.amount * config.auction.feePct).toLong()
+        val seller = stall.owner.takeIf { it.type == OwnerType.SOLO ||
+            (it.type == OwnerType.GUILD && stall.state != StallState.EMERGENCY_AUCTIONING) }
+        return seller?.takeIf { proceeds > 0 }?.let { AuctionPayment(auction.id, "SELLER", it, proceeds) }
+    }
+
+    private fun syncAwardRegion(updatedStall: Stall, bid: Bid) {
         // 2. Sync region AFTER persist (best-effort).
         // If this fails, the DB is correct; /em rg resync can fix WG.
         try {
@@ -785,22 +861,31 @@ class AuctionLifecycleService(
             )
         }
 
-        // 2. Pay seller (after state is persisted — if this fails, seller funds are still held)
-        // Trade-off: if deposit fails, the winner has been charged but the seller hasn't been paid.
-        // The auction is already closed so it won't retry. Seller proceeds can be resolved manually.
-        // This is preferable to the reverse (paying seller twice on retry).
-        val feePct = config.auction.feePct
-        val feeAmount = (bid.amount * feePct).toLong()
-        val sellerProceeds = bid.amount - feeAmount
-        val sellerUuid = extractOwnerUuid(stall)
-        val sellerPaid = if (stall.owner.type == OwnerType.GUILD && stall.state != StallState.EMERGENCY_AUCTIONING)
-            guildProvider?.bankDeposit(stall.owner.id, sellerProceeds) == true
-        else sellerUuid != null && economy.deposit(sellerUuid, sellerProceeds)
-        if (!sellerPaid) {
-            logger.warning(
-                "Auction ${auction.id}: seller payment failed. " +
-                    "Winner charged ${bid.amount}, seller proceeds $sellerProceeds pending."
-            )
+    }
+
+    private fun refundPayment(auction: Auction, bid: Bid) = AuctionPayment(auction.id, "REFUND",
+        bid.guildId?.let(OwnerRef::guild) ?: OwnerRef.solo(bid.bidder), bid.amount)
+
+    private fun closeAndRefund(auction: Auction, closed: Auction) {
+        val refund = auction.highBid?.let { refundPayment(auction, it) }
+        auctionRepository.commitTransition(auction, closed, null, refund)
+        refund?.let(::deliverPayment)
+    }
+
+    fun retryPendingPayments() {
+        auctionRepository.pendingPayments(clock.millis()).forEach(::deliverPayment)
+    }
+
+    private fun deliverPayment(payment: AuctionPayment) {
+        try {
+            if (!auctionRepository.claimPayment(payment.id)) return
+            val recipient = payment.recipient
+            val paid = if (recipient.type == OwnerType.GUILD) guildProvider?.bankDeposit(recipient.id, payment.amount) == true
+                else economy.deposit(UUID.fromString(recipient.id), payment.amount)
+            auctionRepository.finishPayment(payment.id, paid, clock.millis() + 60_000)
+            if (!paid) logger.warning("Auction payment ${payment.id} declined; retained for retry")
+        } catch (failure: Exception) {
+            logger.log(Level.SEVERE, "Check auction payment ${payment.id} against the provider before reconciling an in-flight transfer", failure)
         }
     }
 
@@ -856,7 +941,7 @@ class AuctionLifecycleService(
      * an infinitely re-settling auction is not.
      */
     private fun closeWithoutAward(auction: Auction, stall: Stall) {
-        auctionRepository.save(auction.close())
+        closeAndRefund(auction, auction.close())
         // Revert any system-auctioned or emergency-auctioned stall back to
         // UNOWNED so it returns to the buyable pool. Emergency stalls also
         // clear the former owner — they lost their claim when the emergency
@@ -900,22 +985,6 @@ class AuctionLifecycleService(
         } catch (e: Exception) {
             logger.log(Level.SEVERE, "REFUND FAILED: player=$player amount=$amount context=$context; manual intervention required.", e)
             false
-        }
-    }
-
-    /**
-     * Extract the player UUID from the stall's owner ref.
-     * Returns null for non-SOLO owner types (guild owners cannot auction).
-     */
-    private fun extractOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
-        return if (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.SOLO) {
-            try {
-                UUID.fromString(stall.owner.id)
-            } catch (_: IllegalArgumentException) {
-                null
-            }
-        } else {
-            null
         }
     }
 

@@ -33,7 +33,8 @@ open class ShopCreateListener(
     private val lang: LangService,
     private val menuFactory: net.badgersmc.em.interaction.MenuFactory,
     private val shopSignRenderer: net.badgersmc.em.application.ShopSignRenderer,
-    private val guildProvider: GuildProvider? = null
+    private val guildProvider: GuildProvider? = null,
+    private val access: net.badgersmc.em.domain.ports.StallAccessPolicy = net.badgersmc.em.domain.ports.StallAccessPolicy.Open,
 ) : Listener {
 
     private val logger = java.util.logging.Logger.getLogger(ShopCreateListener::class.java.name)
@@ -41,22 +42,7 @@ open class ShopCreateListener(
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {
         val target = creationTarget(event) ?: return
-        val block = target.first
-        val attachedBlock = target.second
-        val loc = block.location
-
-        // Check the sign is inside an owned stall
-        val stall = findStallAt(loc) ?: run {
-            event.player.sendMessage(lang.msg("shop.create.not_in_stall"))
-            return
-        }
-
-        // Check player can manage this stall
-        if (!canManageStall(stall, event.player)) {
-            event.player.sendMessage(lang.msg("shop.create.no_authority"))
-            return
-        }
-
+        val stall = authorizedStall(event.player, target) ?: return
         event.setUseInteractedBlock(Event.Result.DENY)
 
         // Capture the held item as the sell item (REQ-012).
@@ -66,12 +52,34 @@ open class ShopCreateListener(
             return
         }
 
-        val signLoc = block.location
-        val containerLoc = attachedBlock.location
-        val player = event.player
+        showCreationMenu(event.player, stall, target, sellItemB64)
+    }
+
+    private fun authorizedStall(player: Player, target: Pair<org.bukkit.block.Block, org.bukkit.block.Block>): Stall? {
+        val block = target.first
+        val attachedBlock = target.second
+        val loc = block.location
+
+        // Check the sign is inside an owned stall
+        val stall = findStallAt(loc) ?: run {
+            player.sendMessage(lang.msg("shop.create.not_in_stall"))
+            return null
+        }
+
+        // Check player can manage this stall
+        if (!canManageStall(stall, player) || findStallAt(attachedBlock.location)?.id != stall.id) {
+            player.sendMessage(lang.msg("shop.create.no_authority"))
+            return null
+        }
+
+        return stall
+    }
+
+    private fun showCreationMenu(player: Player, stall: Stall, target: Pair<org.bukkit.block.Block, org.bukkit.block.Block>, sellItemB64: String) {
+        val signLoc = target.first.location
+        val containerLoc = target.second.location
         val authorised: (Player) -> Boolean = { actor ->
-            val current = stallRepository.findById(stall.id)
-            current != null && current.state in setOf(net.badgersmc.em.domain.stall.StallState.OWNED, net.badgersmc.em.domain.stall.StallState.GRACE) && canManageStall(current, actor)
+            mayStillCreate(stall, signLoc, containerLoc, actor)
         }
         if (menuFactory.shouldUseBedrockMenus(player)) {
             net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
@@ -86,6 +94,12 @@ open class ShopCreateListener(
                 authorised = authorised,
             ).open(player)
         }
+    }
+
+    private fun mayStillCreate(stall: Stall, sign: Location, container: Location, actor: Player): Boolean {
+        val current = stallRepository.findById(stall.id) ?: return false
+        if (current.state !in setOf(net.badgersmc.em.domain.stall.StallState.OWNED, net.badgersmc.em.domain.stall.StallState.GRACE)) return false
+        return findStallAt(sign)?.id == current.id && findStallAt(container)?.id == current.id && canManageStall(current, actor)
     }
 
     private fun interactionBlock(event: PlayerInteractEvent): org.bukkit.block.Block? {
@@ -166,11 +180,9 @@ open class ShopCreateListener(
                     player.sendMessage(lang.msg("shop.create.guild_unavailable"))
                     return false
                 }
-                provider.isMember(player.uniqueId, stall.owner.id) &&
-                    provider.hasShopPermission(
-                        player.uniqueId,
-                        stall.owner.id,
-                        GuildProvider.GuildPermission.MANAGE_SHOPS
+                access.allows(stall.id.value, player.uniqueId, net.badgersmc.em.domain.stall.StallCapability.STOCK) &&
+                    net.badgersmc.em.domain.stall.GuildStallAccessRules.allows(
+                        stall, player.uniqueId, provider, GuildProvider.GuildPermission.MANAGE_SHOPS,
                     )
             }
             OwnerType.NONE -> false

@@ -33,32 +33,12 @@ class BlockProtectionListener(
 
     private val logger = Logger.getLogger(BlockProtectionListener::class.java.name)
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {
         val block = event.block
 
         if (block.state is Sign) {
-            val shop = findShopBySign(block)
-            if (shop != null) {
-                val player = event.player
-                when {
-                    // Owner breaks their own sign -> delete the shop and let the break proceed,
-                    // so a broken sign never leaves an orphan row blocking the spot (REQ-015).
-                    management.canDelete(shop, player.uniqueId) -> {
-                        management.delete(player.uniqueId, shop.id)
-                        player.sendMessage(lang.msg("shop.protect.sign_broken_deleted"))
-                        event.isCancelled = false  // ensure break proceeds
-                    }
-                    // Admin in break-others mode -> admin delete and allow the break.
-                    player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId) -> {
-                        management.adminDelete(shop.id)
-                        player.sendMessage(lang.msg("shop.admin.breakothers.deleted"))
-                        event.isCancelled = false  // ensure break proceeds
-                    }
-                    // Anyone else -> protect the sign from being broken.
-                    else -> cancelSignBreak(event, shop, event.player)
-                }
-            }
+            findShopBySign(block)?.let { breakShopSign(event, it) }
             return
         }
 
@@ -69,6 +49,30 @@ class BlockProtectionListener(
             }
         }
     }
+
+    private fun breakShopSign(event: BlockBreakEvent, shop: Shop) {
+        val player = event.player
+        when {
+            // Owner breaks their own sign -> delete the shop and let the break proceed,
+            // so a broken sign never leaves an orphan row blocking the spot (REQ-015).
+            management.canDelete(shop, player.uniqueId) -> {
+                val deleted = management.delete(player.uniqueId, shop.id)
+                event.isCancelled = !deleted
+                player.sendMessage(lang.msg(if (deleted) "shop.protect.sign_broken_deleted" else "shop.protect.delete_error"))
+            }
+            // Admin in break-others mode -> admin delete and allow the break.
+            mayBreakAsAdmin(player) -> {
+                val deleted = management.adminDelete(shop.id)
+                event.isCancelled = !deleted
+                player.sendMessage(lang.msg(if (deleted) "shop.admin.breakothers.deleted" else "shop.protect.delete_error"))
+            }
+            // Anyone else -> protect the sign from being broken.
+            else -> cancelSignBreak(event, shop, event.player)
+        }
+    }
+
+    private fun mayBreakAsAdmin(player: org.bukkit.entity.Player) =
+        player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId)
 
     private fun findShopBySign(block: org.bukkit.block.Block): Shop? {
         val loc = block.location
@@ -108,11 +112,12 @@ class BlockProtectionListener(
         try {
             shopRepository.deleteByContainer(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ)
             for (shop in shops) {
-                Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
+                Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner, shop))
             }
             logger.info("Deleted ${shops.size} shop(s) at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ}")
             player.sendMessage(lang.msg("shop.protect.deleted", "count" to shops.size))
         } catch (e: Exception) {
+            event.isCancelled = true
             logger.severe("Failed to delete shops at container break: ${e.message}")
             player.sendMessage(lang.msg("shop.protect.delete_error"))
         }

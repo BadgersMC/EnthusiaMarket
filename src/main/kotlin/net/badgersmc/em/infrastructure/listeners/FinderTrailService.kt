@@ -28,28 +28,68 @@ class FinderTrailService(
     private val regions: RegionProvider,
 ) : Listener, AutoCloseable {
     private val tracker = FinderTrailTracker()
+    internal val glow = FinderGlowRenderer(plugin)
+    internal val navigation = FinderNavigationHud(config, lang, plugin)
     private var task: BukkitTask? = null
+    internal var clock: java.time.Clock = java.time.Clock.systemUTC()
 
     fun start(player: Player, shop: Shop) {
         if (!config.finderTrail.enabled) { player.sendMessage(lang.msg("finder_trail.disabled")); return }
         val target = FinderTrailTracker.Point(shop.signX + 0.5, shop.signY + 0.5, shop.signZ + 0.5)
+        begin(player, Destination(shop.signWorld, target, "finder_trail.started",
+            { regions.footprint(shop.signWorld, shop.stallId) },
+            { player.sendMessage(lang.msg("finder_trail.out_of_range")) },
+            { navigation.start(player, shop) }))
+    }
+
+    fun startStall(player: Player, stall: net.badgersmc.em.domain.stall.Stall) {
+        if (!config.finderTrail.enabled) { player.sendMessage(lang.msg("finder_trail.disabled")); return }
+        val shape = regions.footprint(stall.world, stall.regionId)
+        val pos = player.location
+        val corner = shape?.vertices?.minByOrNull { v ->
+            val dx = v.x - pos.x
+            val dz = v.z - pos.z
+            dx * dx + dz * dz
+        }
+        if (shape == null || corner == null) {
+            player.sendMessage(lang.msg("stall_finder.missing_region", "stall" to stall.id.value))
+            return
+        }
+        val y = pos.y.coerceIn(shape.minY + 0.5, shape.maxY - 0.5)
+        val target = FinderTrailTracker.Point(corner.x, y, corner.z)
+        begin(player, Destination(stall.world, target, "stall_finder.started", { shape }, {
+            player.sendMessage(lang.msg("stall_finder.location", "stall" to stall.id.value, "world" to stall.world,
+                "x" to floor(target.x).toInt(), "y" to floor(y).toInt(), "z" to floor(target.z).toInt()))
+        }, { navigation.startStall(player, stall.id.value) }))
+    }
+
+    private data class Destination(
+        val world: String, val target: FinderTrailTracker.Point, val startedKey: String,
+        val footprint: () -> RegionProvider.Footprint?, val onOutOfRange: () -> Unit, val startHud: () -> Unit,
+    )
+
+    private fun begin(player: Player, destination: Destination) {
+        val (world, target, startedKey, footprint, onOutOfRange, startHud) = destination
         val position = player.location
         val current = FinderTrailTracker.Point(position.x, position.y, position.z)
-        if (position.world?.name != shop.signWorld || current.distance(target) > range()) {
-            player.sendMessage(lang.msg("finder_trail.out_of_range")); return
+        if (position.world?.name != world || current.distance(target) > range()) {
+            onOutOfRange(); return
         }
-        val trail = FinderTrailTracker.Trail(shop.signWorld, target,
-            Instant.now().plusSeconds(config.finderTrail.durationSeconds.coerceIn(1, MAX_DURATION)),
-            footprint(shop))
+        val trail = FinderTrailTracker.Trail(world, target,
+            Instant.now(clock).plusSeconds(config.finderTrail.durationSeconds.coerceIn(1, MAX_DURATION)),
+            if (config.finderTrail.outline.enabled) footprint() else null, route(world, current, target))
         if (!tracker.start(player.uniqueId, trail, config.finderTrail.maxActive.coerceIn(1, MAX_ACTIVE))) {
             player.sendMessage(lang.msg("finder_trail.busy")); return
         }
+        glow.clear(player.uniqueId)
+        startHud()
         ensureRenderTask()
-        player.sendMessage(lang.msg("finder_trail.started", "seconds" to config.finderTrail.durationSeconds.coerceIn(1, MAX_DURATION)))
+        player.sendMessage(lang.msg(startedKey, "seconds" to config.finderTrail.durationSeconds.coerceIn(1, MAX_DURATION)))
     }
 
-    private fun footprint(shop: Shop): RegionProvider.Footprint? =
-        if (config.finderTrail.outline.enabled) regions.footprint(shop.signWorld, shop.stallId) else null
+    private fun route(world: String, from: FinderTrailTracker.Point, target: FinderTrailTracker.Point): List<FinderTrailTracker.Point> {
+        return FinderRouteConfiguration.plan(config.finderTrail.routing, world, from, target)
+    }
 
     private fun ensureRenderTask() {
         if (task == null) task = plugin.server.scheduler.runTaskTimer(plugin, Runnable { render() }, 1, RENDER_TICKS)
@@ -57,27 +97,52 @@ class FinderTrailService(
 
     fun stop(player: Player) {
         tracker.stop(player.uniqueId)
+        navigation.stop(player)
+        glow.clear(player.uniqueId)
         player.sendMessage(lang.msg("finder_trail.stopped"))
+    }
+
+    fun setMode(player: Player, value: String) {
+        if (!FinderNavigationPreferences.set(player, value)) {
+            player.sendMessage(lang.msg("finder_trail.mode_usage"))
+            return
+        }
+        player.sendMessage(lang.msg("finder_trail.mode_set",
+            "mode" to FinderNavigationPreferences.get(player, config.finderTrail.mode).name.lowercase()))
     }
 
     internal fun render() {
         if (!config.finderTrail.enabled) tracker.clear()
-        val plans = tracker.renderFrames(Instant.now(), FinderTrailTracker.RenderSettings(
+        val plans = tracker.renderFrames(Instant.now(clock), FinderTrailTracker.RenderSettings(
             config.finderTrail.maxParticlesPerRender.coerceIn(0, MAX_BUDGET),
-            range(), FinderOutlineStyle.options(config.finderTrail.outline))) { id ->
+            range(), FinderOutlineStyle.options(config.finderTrail.outline),
+            points = intensity(), pulseSpeed = config.finderTrail.pulseSpeed, feedbackWithoutOutline = true)) { id ->
             val player = Bukkit.getPlayer(id)?.takeIf { it.isOnline && !it.isDead } ?: return@renderFrames null
             val point = player.location
             player.world.name to FinderTrailTracker.Point(point.x, point.y + 0.5, point.z)
         }
-        val dust = FinderOutlineStyle.dust(config.finderTrail.outline)
-        plans.forEach { (id, frame) ->
-            val player = Bukkit.getPlayer(id) ?: return@forEach
-            frame.direction.filter { loaded(player, it) }
-                .forEach { player.spawnParticle(Particle.END_ROD, it.x, it.y, it.z, 1, 0.0, 0.0, 0.0, 0.0) }
-            frame.outline.filter { loaded(player, it) }
-                .forEach { player.spawnParticle(Particle.DUST, it.x, it.y, it.z, 1, 0.0, 0.0, 0.0, 0.0, dust) }
-        }
+        navigation.retain(plans.keys)
+        glow.retain(plans.keys)
+        plans.forEach { (id, frame) -> Bukkit.getPlayer(id)?.let { renderFrame(it, frame) } }
         if (tracker.count() == 0) { task?.cancel(); task = null }
+    }
+
+    private fun renderFrame(player: Player, frame: FinderTrailTracker.Frame) {
+        val direction = if (navigation.render(player, frame)) frame.direction else emptyList()
+        direction.filter { loaded(player, it) }.forEach {
+            player.spawnParticle(Particle.END_ROD, it.x, it.y, it.z, 1, 0.0, 0.0, 0.0, 0.0)
+        }
+        val outline = if (glow.render(player, frame, config.finderTrail.outline)) emptyList() else frame.outline
+        val dust = FinderOutlineStyle.dust(config.finderTrail.outline)
+        outline.filter { loaded(player, it) }.forEach {
+            player.spawnParticle(Particle.DUST, it.x, it.y, it.z, 1, 0.0, 0.0, 0.0, 0.0, dust)
+        }
+    }
+
+    private fun intensity(): Int = when (config.finderTrail.intensity.uppercase(java.util.Locale.ROOT)) {
+        "LOW" -> 6
+        "HIGH" -> 24
+        else -> 12
     }
 
     private fun loaded(player: Player, point: FinderTrailTracker.Point): Boolean =
@@ -86,11 +151,17 @@ class FinderTrailService(
     private fun range(): Double = config.finderTrail.maxRange.takeIf { it.isFinite() && it > 0 }
         ?.coerceAtMost(MAX_RANGE) ?: DEFAULT_RANGE
 
-    @EventHandler fun onQuit(event: PlayerQuitEvent) { tracker.stop(event.player.uniqueId) }
-    @EventHandler fun onWorldChange(event: PlayerChangedWorldEvent) { tracker.stop(event.player.uniqueId) }
-    @EventHandler fun onDeath(event: PlayerDeathEvent) { tracker.stop(event.player.uniqueId) }
+    @EventHandler fun onQuit(event: PlayerQuitEvent) { remove(event.player) }
+    @EventHandler fun onWorldChange(event: PlayerChangedWorldEvent) { remove(event.player) }
+    @EventHandler fun onDeath(event: PlayerDeathEvent) { remove(event.player) }
 
-    override fun close() { tracker.clear(); task?.cancel(); task = null }
+    private fun remove(player: Player) {
+        tracker.stop(player.uniqueId)
+        navigation.stop(player)
+        glow.clear(player.uniqueId)
+    }
+
+    override fun close() { tracker.clear(); navigation.close(); glow.close(); task?.cancel(); task = null }
 
     companion object {
         private const val MAX_DURATION = 300L

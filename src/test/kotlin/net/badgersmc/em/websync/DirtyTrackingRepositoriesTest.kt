@@ -6,6 +6,7 @@ import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.verify
 import io.mockk.verifyOrder
+import net.badgersmc.em.application.StallAccessIndex
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -58,6 +59,24 @@ class DirtyTrackingRepositoriesTest {
         DirtyTrackingStallRepository(delegate, WebsiteSyncDirtySink(ids::add)).save(guildOwned)
 
         assertEquals(listOf("stall1"), ids)
+    }
+
+    @Test
+    fun `external stall commit refreshes access and queues the website projection`() {
+        val original = stall("stall1")
+        val committed = original.copy(state = StallState.AUCTIONING, owner = OwnerRef.unowned())
+        val delegate = mockk<StallRepository>(relaxUnitFun = true)
+        val dirty = mutableListOf<String>()
+        every { delegate.all() } returns listOf(original)
+        every { delegate.findById(original.id) } returns committed
+        val index = StallAccessIndex(DirtyTrackingStallRepository(delegate, WebsiteSyncDirtySink(dirty::add)))
+        index.rebuild()
+
+        index.onExternalStateCommit(original.id)
+
+        assertEquals(committed, index.cached(original.id.value))
+        assertEquals(listOf(original.id.value), dirty)
+        verify(exactly = 0) { delegate.save(any()) }
     }
 
     @Test

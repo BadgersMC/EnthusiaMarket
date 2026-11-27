@@ -8,6 +8,8 @@ import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
 import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicService
+import net.badgersmc.em.events.SchematicCaptureFailedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
@@ -37,6 +39,7 @@ class StallBuyoutService(
     private val ipLimiter: IpLimiter,
     private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
     private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
+    private val schematics: SchematicService = SchematicService.Disabled,
 ) {
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
 
@@ -54,7 +57,7 @@ class StallBuyoutService(
 
     private data class BuyRequest(
         val stallId: StallId,
-        val payer: UUID,
+        val actor: UUID,
         val owner: OwnerRef,
         val price: Long,
         val ip: String,
@@ -63,20 +66,30 @@ class StallBuyoutService(
     fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result =
         buyForOwner(BuyRequest(stallId, buyer, OwnerRef.solo(buyer), price, ip))
 
-    fun buyForGuild(stallId: StallId, actor: UUID, price: Long, ip: String): Result {
+    data class GuildQuote(val stallId: StallId, val price: Long, val guildId: String)
+
+    fun buyForGuild(quote: GuildQuote, actor: UUID, ip: String): Result {
         val guild = guildProvider.guildOf(actor) ?: return Result.NotInGuild
-        if (!guildProvider.hasShopPermission(actor, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS)) {
+        if (guild.id != quote.guildId) return Result.Rejected("Your guild changed. Reopen the purchase sign.")
+        if (!guildProvider.hasShopPermission(actor, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS) ||
+            !guildProvider.canWithdrawForStall(actor, guild.id)
+        ) {
             return Result.NoGuildPermission
         }
-        return buyForOwner(BuyRequest(stallId, actor, OwnerRef.guild(guild.id), price, ip))
+        return buyForOwner(BuyRequest(quote.stallId, actor, OwnerRef.guild(guild.id), quote.price, ip))
     }
 
     private fun enforceLimit(request: BuyRequest, stall: Stall): Result? {
+        if (request.owner.type == OwnerType.GUILD) return enforceGuildLimit(request)
         if (request.owner.type != OwnerType.SOLO) return null
-        val counts = ownership.counts(request.payer)
+        return enforcePersonalLimit(request.actor, stall)
+    }
+
+    private fun enforcePersonalLimit(actor: UUID, stall: Stall): Result? {
+        val counts = ownership.counts(actor)
         return when (
             val decision = limits.canClaim(
-                request.payer,
+                actor,
                 stall.kind,
                 counts.total,
                 counts.byKind[stall.kind] ?: 0,
@@ -86,28 +99,39 @@ class StallBuyoutService(
                 Result.Rejected("Stall limit reached (${decision.cap})")
             is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
                 Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
+            is LimitResolutionService.ClaimDecision.Rejected.GuildCapReached ->
+                Result.Rejected("Stall limit reached (${decision.cap})")
             LimitResolutionService.ClaimDecision.Allowed -> null
         }
     }
 
+    private fun enforceGuildLimit(request: BuyRequest): Result? {
+        val guildId = request.owner.id
+        val extra = runCatching { guildProvider.extraGuildStalls(guildId) }.getOrDefault(0)
+        val decision = limits.canClaimForGuild(request.actor, ownership.guildCount(guildId), extra)
+        return (decision as? LimitResolutionService.ClaimDecision.Rejected)
+            ?.let { Result.Rejected("Your guild already owns its stall limit (${it.cap})") }
+    }
+
     private fun refundAfterFailedAward(request: BuyRequest, cause: Exception) {
         val refunded = try {
-            economy.deposit(request.payer, request.price)
+            if (request.owner.type == OwnerType.GUILD) guildProvider.bankDeposit(request.owner.id, request.price)
+            else economy.deposit(request.actor, request.price)
         } catch (refund: Exception) {
-            log.severe("StallBuyoutService: refund of ${request.price} to ${request.payer} threw: ${refund.message}")
+            log.severe("StallBuyoutService: refund of ${request.price} to ${request.owner} threw: ${refund.message}")
             false
         }
         val stallId = request.stallId.value
         if (refunded) {
             log.severe(
                 "StallBuyoutService: ownership transfer failed for stall $stallId after charging " +
-                    "payer ${request.payer} price=${request.price} (owner=${request.owner}). " +
+                    "actor ${request.actor} price=${request.price} (owner=${request.owner}). " +
                     "Payer has been refunded. cause=${cause.message}",
             )
         } else {
             log.severe(
                 "StallBuyoutService: ownership transfer failed for stall $stallId AND the refund of " +
-                    "${request.price} to ${request.payer} failed — manual refund required. cause=${cause.message}",
+                    "${request.price} to ${request.owner} failed — manual refund required. cause=${cause.message}",
             )
         }
     }
@@ -136,7 +160,7 @@ class StallBuyoutService(
     }
 
     private fun buyForOwner(request: BuyRequest): Result = try {
-        moderationPolicy.withAcquisitionPermit(request.payer) { buyForOwnerWithPermit(request) }
+        moderationPolicy.withAcquisitionPermit(request.actor) { buyForOwnerWithPermit(request) }
     } catch (blocked: MarketAcquisitionBlockedException) {
         Result.Rejected(blocked.message ?: "Market acquisitions are restricted")
     }
@@ -161,7 +185,12 @@ class StallBuyoutService(
     }
 
     private fun executePurchase(stall: Stall, request: BuyRequest): Result {
-        if (!economy.withdraw(request.payer, request.price)) {
+        snapshotRejection(stall)?.let { return it }
+        if (request.owner.type == OwnerType.GUILD) {
+            if (!guildProvider.bankWithdraw(request.owner.id, request.price)) {
+                return Result.Rejected("Guild bank payment declined: ${request.price} required")
+            }
+        } else if (!economy.withdraw(request.actor, request.price)) {
             return Result.Rejected("Insufficient funds: ${request.price} required")
         }
         val updated = persistAward(stall, request)
@@ -169,6 +198,37 @@ class StallBuyoutService(
         syncRegionOwnership(updated, request)
         fireStateChanged(request.stallId.value, stall.state, updated.state)
         return Result.Purchased(updated, request.price, request.owner)
+    }
+
+    private fun snapshotRejection(stall: Stall): Result.Rejected? {
+        if (!config.schematics.enabled) return null
+        val failure = captureFailure(stall) ?: return null
+        reportCaptureFailure(stall, failure)
+        return Result.Rejected("Stall snapshot failed; please contact staff")
+    }
+
+    private fun captureFailure(stall: Stall): Throwable? {
+        val capture = try {
+            schematics.capture(stall.id.value, stall.world, stall.regionId)
+        } catch (failure: Exception) {
+            SchematicService.Result.Failure(failure)
+        }
+        return when (capture) {
+            is SchematicService.Result.Failure -> capture.cause
+            SchematicService.Result.Disabled -> IllegalStateException("Snapshot provider is unavailable")
+            SchematicService.Result.Success -> null
+        }
+    }
+
+    private fun reportCaptureFailure(stall: Stall, failure: Throwable) {
+        log.warning("Stall snapshot failed for ${stall.id.value}; purchase cancelled: ${failure.message}")
+        try {
+            Bukkit.getServer()?.pluginManager?.callEvent(
+                SchematicCaptureFailedEvent(stall.id.value, stall.world, stall.regionId, failure),
+            )
+        } catch (failure: Exception) {
+            log.warning("Failed to notify staff of snapshot failure: ${failure.message}")
+        }
     }
 
     private fun persistAward(stall: Stall, request: BuyRequest): Stall {

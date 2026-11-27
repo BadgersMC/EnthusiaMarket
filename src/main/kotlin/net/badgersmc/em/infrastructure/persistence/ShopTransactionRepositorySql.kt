@@ -4,6 +4,8 @@ import net.badgersmc.em.domain.shop.PriceStats
 import net.badgersmc.em.domain.shop.PendingShopSales
 import net.badgersmc.em.domain.shop.ShopTransaction
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
+import net.badgersmc.em.domain.shop.ShopSaleAttribution
+import net.badgersmc.em.domain.shop.WebsiteSaleFacts
 import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.annotations.Repository
 import net.badgersmc.em.domain.shop.ShopHistoryWindow
@@ -18,19 +20,17 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
         return ds.connection.use { c -> insert(c, tx) }
     }
 
-    override fun recordOnce(recordingId: UUID, tx: ShopTransaction) {
+    override fun recordOnce(recordingId: UUID, tx: ShopTransaction) = recordInternal(recordingId, tx, null)
+
+    override fun recordAttributedOnce(recordingId: UUID, tx: ShopTransaction, attribution: ShopSaleAttribution) =
+        recordInternal(recordingId, tx, attribution)
+
+    private fun recordInternal(recordingId: UUID, tx: ShopTransaction, attribution: ShopSaleAttribution?) {
         ds.connection.use { connection ->
             connection.autoCommit = false
             try {
                 if (!hasReceipt(connection, recordingId)) {
-                    connection.prepareStatement(
-                        "INSERT INTO shop_history_receipts (recording_id, recorded_at) VALUES (?, ?)"
-                    ).use { statement ->
-                        statement.setString(1, recordingId.toString())
-                        statement.setLong(2, tx.createdAt)
-                        statement.executeUpdate()
-                    }
-                    insert(connection, tx)
+                    insertWithReceipt(connection, recordingId, tx, attribution)
                 }
                 connection.commit()
             } catch (failure: Exception) {
@@ -41,17 +41,46 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
         }
     }
 
+    private fun insertWithReceipt(connection: java.sql.Connection, recordingId: UUID, tx: ShopTransaction, attribution: ShopSaleAttribution?) {
+        connection.prepareStatement(
+            "INSERT INTO shop_history_receipts (recording_id, recorded_at) VALUES (?, ?)"
+        ).use { statement ->
+            statement.setString(1, recordingId.toString())
+            statement.setLong(2, tx.createdAt)
+            statement.executeUpdate()
+        }
+        val stored = insert(connection, tx, attribution)
+        if (attribution?.publicCashEligible == true) archiveSale(connection, recordingId, stored, attribution)
+    }
+
+    private fun archiveSale(connection: java.sql.Connection, recordingId: UUID, tx: ShopTransaction, attribution: ShopSaleAttribution) {
+        val facts = WebsiteSaleFacts(tx.direction, tx.totalPrice, tx.quantity, attribution.stallId,
+            cashCurrencyVerified = true, adminShop = false, ownShop = tx.owner == tx.buyer,
+            modifiedItem = false, guildOwned = attribution.guildId != null, guildMemberBuyer = attribution.awardOwner?.let { false })
+        try {
+            WebsiteSalesArchiveSql(ds).insert(connection, tx.id, recordingId, facts, tx.item, attribution.guildId?.let { attribution.awardOwner?.name },
+                tx.createdAt, attribution.awardOwner)
+        } catch (_: IllegalArgumentException) {
+            connection.prepareStatement("INSERT INTO website_sales_rejections (recording_id,reason,recorded_at) VALUES (?,?,?)").use { rejected ->
+                rejected.setString(1, recordingId.toString())
+                rejected.setString(2, "invalid_public_projection")
+                rejected.setLong(3, tx.createdAt)
+                rejected.executeUpdate()
+            }
+        }
+    }
+
     private fun hasReceipt(connection: java.sql.Connection, recordingId: UUID): Boolean =
         connection.prepareStatement("SELECT recording_id FROM shop_history_receipts WHERE recording_id = ?").use {
             it.setString(1, recordingId.toString())
             it.executeQuery().use { rows -> rows.next() }
         }
 
-    private fun insert(c: java.sql.Connection, tx: ShopTransaction): ShopTransaction {
+    private fun insert(c: java.sql.Connection, tx: ShopTransaction, attribution: ShopSaleAttribution? = null): ShopTransaction {
             c.prepareStatement(
                 """INSERT INTO shop_transactions
-                   (shop_id, owner, buyer, direction, item, quantity, total_price, created_at, notified)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (shop_id, owner, buyer, direction, item, quantity, total_price, created_at, notified, sale_stall_id, sale_guild_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 java.sql.Statement.RETURN_GENERATED_KEYS,
             ).use { ps ->
                 ps.setLong(1, tx.shopId)
@@ -63,6 +92,8 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
                 ps.setLong(7, tx.totalPrice)
                 ps.setLong(8, tx.createdAt)
                 ps.setBoolean(9, tx.notified)
+                ps.setString(10, attribution?.stallId)
+                ps.setString(11, attribution?.guildId?.toString())
                 ps.executeUpdate()
                 val id = ps.generatedKeys.use {
                     if (it.next()) it.getLong(1)

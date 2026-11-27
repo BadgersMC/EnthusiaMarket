@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, 'codex/market-sales-release']
 
 jobs:
   build:
@@ -15,8 +15,15 @@ jobs:
       LUMAGUILDS_REF: 283d75f1e1016d415aa5afdfac840252f0391846
       LUMAGUILDS_SHA256: 3CA71CC1ADC2B3B69565755D25F0A5A2241B52163E41A08B005F7C50ACBB65F1
       LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.39.jar
+      MARKET_LEGACY_RELEASE_JAR: ${{ github.workspace }}/libs/EnthusiaMarket-1.0.52-rehearsal.jar
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify offline history outbox audit
+        run: python3 -B -m unittest discover -s scripts/tests -p test_audit_shop_history_outbox.py -v
+
+      - name: Verify offline generation inspection
+        run: python3 -B -m unittest discover -s scripts/tests -p test_inspect_sales_generation.py -v
 
       - uses: actions/setup-java@v4
         with:
@@ -51,10 +58,38 @@ jobs:
           test -s "$LUMAGUILDS_JAR"
           printf '%s  %s\n' "$LUMAGUILDS_SHA256" "$LUMAGUILDS_JAR" | sha256sum --check
 
+      - name: Download verified legacy Market rehearsal binary
+        run: |
+          curl --fail --location --silent --show-error \
+            -o "$MARKET_LEGACY_RELEASE_JAR" \
+            'https://github.com/BadgersMC/EnthusiaMarket/releases/download/v1.0.52/EnthusiaMarket-1.0.52.jar'
+          printf '%s  %s\n' '1c7dee48dbe060a826a00ca85d828b656bd690e88387e9a49da031e7425d0483' "$MARKET_LEGACY_RELEASE_JAR" | sha256sum --check
+
       # detekt 1.23.8 does not support running on JDK 25. Keep the production
       # build green on the required 26.2 toolchain; migrate detekt to 2.x separately.
+      - name: Pin TEST artifact version to checked-out source
+        run: |
+          SOURCE_SHA=$(git rev-parse HEAD)
+          echo "MARKET_TEST_VERSION=1.0.53-market-ui.${SOURCE_SHA:0:12}-UNMERGED-TEST" >> "$GITHUB_ENV"
+
       - name: Test and shadowJar
-        run: ./gradlew test shadowJar jacocoTestReport -PuseMavenLocal=true --no-daemon
+        run: >-
+          ./gradlew test shadowJar jacocoTestReport recordTestArtifactDependencies
+          -I .github/scripts/test-artifact.init.gradle
+          -PuseMavenLocal=true -PreleaseVersion="$MARKET_TEST_VERSION" --no-daemon
+
+      - name: Verify legacy repository rehearsal executed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+          report = Path('build/test-results/test/TEST-net.badgersmc.em.infrastructure.persistence.LegacyReleaseRepositoryRehearsalTest.xml')
+          suite = ElementTree.parse(report).getroot()
+          counts = {name: int(suite.attrib.get(name, '0')) for name in ('tests', 'skipped', 'failures', 'errors')}
+          print('Legacy repository rehearsal:', counts)
+          if counts['tests'] < 1 or any(counts[name] for name in ('skipped', 'failures', 'errors')):
+              raise SystemExit('Legacy repository rehearsal did not execute cleanly')
+          PY
 
       - name: Verify MariaDB moderation tests executed
         run: |
@@ -93,6 +128,51 @@ jobs:
           if counts["tests"] < 1 or any(counts[name] for name in ("skipped", "failures", "errors")):
               raise SystemExit("Guild-shop XP v2 runtime contract did not execute cleanly")
           PY
+
+      - name: Verify journal and accounting MariaDB tests executed
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+          suites = ("GuildSaleJournalMariaDbTest", "StallAccountingMariaDbTest")
+          for suite in suites:
+              reports = list(pathlib.Path("build/test-results/test").glob("TEST-*." + suite + ".xml"))
+              if len(reports) != 1:
+                  raise SystemExit("Missing exact required suite: " + suite)
+              header = reports[0].read_text().split("<testsuite", 1)[1].split(">", 1)[0]
+              counts = {key: re.search(r'\b' + key + r'="([0-9]+)"', header) for key in ("tests", "skipped", "failures", "errors")}
+              if any(value is None for value in counts.values()):
+                  raise SystemExit("Missing suite counts: " + suite)
+              values = {key: int(value.group(1)) for key, value in counts.items()}
+              if values["tests"] < 1 or any(values[key] for key in ("skipped", "failures", "errors")):
+                  raise SystemExit("Required native fixture did not pass: " + suite)
+              print(suite, values)
+          PY
+
+      - name: Install pinned manifest XML parser
+        run: |
+          python3 -m venv "$RUNNER_TEMP/market-manifest-venv"
+          "$RUNNER_TEMP/market-manifest-venv/bin/python3" -m pip install --require-hashes --only-binary=:all: -r .github/scripts/requirements.txt
+          echo "$RUNNER_TEMP/market-manifest-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Verify manifest fail-closed fixtures
+        run: python3 .github/scripts/tests/test_artifact_manifest.py
+
+      - name: Record verified TEST artifact provenance
+        run: python3 .github/scripts/test-artifact-manifest.py
+
+      - name: Upload successful UNMERGED TEST artifact and reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: market-ui-UNMERGED-TEST-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/libs/*-UNMERGED-TEST.jar
+            build/test-artifact/*.json
+            build/test-results/test/TEST-*.xml
+            build/reports/tests/test/
+            build/reports/jacoco/test/
 
       - name: Upload coverage to Codacy
         uses: codacy/codacy-coverage-reporter-action@v1

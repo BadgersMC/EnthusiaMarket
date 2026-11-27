@@ -30,3 +30,9 @@ Use `/stallaccess settings <stall>` or the Guilds detail shortcut (#216). Add a 
 Selected effects are restored on exit, quit and plugin disable only for unexpired remaining duration; death discards the held effect. Abrupt process termination cannot run restoration callbacks and is not claimed as tested. Trail/search/warning work and this access work remain unmerged local review artifacts; no production change or stall reset.
 
 Final delivery: reconciled Market #213 passed the clean 890-case suite with zero failures/errors and eight external skips, shadowJar/JaCoCo, architecture and Java-21 Detekt. Broader pending-stack rehearsal passed 972 cases, zero failures/errors, 14 skips. Current review threads are resolved/absent; Market hosted workflow approval is pending, while Guilds #216 hosted checks pass. See approved-features-delivery.md for tested commits and final artifact evidence. These task checks establish source implementation and local proof, not hosted build approval or production/client acceptance.
+
+## Visitor access menu presentation
+
+When a manager opens visitor access for a guild stall, the menu shall use the owning guild's selected background when the optional Guilds title service provides it. When no themed title is available, the menu shall open with its plain title. Each control shall use a vanilla item related to its function; Trade with shops uses Raw Gold. This change adds no access grants or persistence changes.
+
+The Market build against the existing TEST Guilds JAR and 29 focused stall-access tests passed. The bridge tests cover an absent service, a registered service, and a provider that declines a title. The themed client appearance still needs TEST acceptance with both companion builds and the Guilds pack.

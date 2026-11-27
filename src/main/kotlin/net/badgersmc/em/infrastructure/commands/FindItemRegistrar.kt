@@ -49,7 +49,7 @@ object FindItemRegistrar {
                             val query = StringArgumentType.getString(ctx, "query")
                             val sender = ctx.source.sender
                             val player = sender as? Player ?: run {
-                                sender.sendRichMessage("<red>Players only")
+                                sender.sendRichMessage("<#FFD0C6>Players only")
                                 return@executes 0
                             }
                             // Offload DB queries off the main thread; open the GUI

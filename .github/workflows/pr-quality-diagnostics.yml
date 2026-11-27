@@ -101,9 +101,13 @@ jobs:
               --jq '.check_runs[] | select(.name == "Codacy Static Code Analysis") | .id' \
               | head -1)
             if [[ -n "$CHECK_ID" ]]; then
-              STATUS=$(gh api "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID" --jq '.status')
+              read -r STATUS ANNOTATIONS < <(gh api "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID" --jq '[.status, .output.annotations_count] | @tsv')
               if [[ "$STATUS" == "completed" ]]; then
-                echo "=== CODACY ANNOTATIONS ==="
+                if [[ "$ANNOTATIONS" == "0" ]]; then
+                echo "Codacy completed with zero annotations."
+                exit 0
+              fi
+              echo "=== CODACY ANNOTATIONS ==="
                 gh api --paginate "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID/annotations" \
                   --jq '.[] | [.annotation_level, .path, .start_line, .title, .message] | @tsv'
                 exit 0

@@ -98,6 +98,18 @@ class RentCollectionServiceTest {
         val auctionRepo: AuctionRepository
     )
 
+    private data class RentServiceDependencies(
+        val stalls: StallRepository,
+        val shops: net.badgersmc.em.domain.shop.ShopRepository,
+        val config: EnthusiaMarketConfig,
+        val auctions: AuctionRepository,
+        val lang: net.badgersmc.nexus.i18n.LangService,
+        val regions: RegionMemberSync,
+        val ipLimiter: IpLimiter,
+        val mutationGate: MarketMutationGate,
+        val schematics: SchematicService = SchematicService.Disabled,
+    )
+
     private fun buildService(
         stalls: List<Stall> = listOf(ownedStall),
         gracePeriod: String = "P3D",
@@ -117,16 +129,9 @@ class RentCollectionServiceTest {
         val ipLimiter = mockk<IpLimiter>(relaxed = true)
 
         return ServiceWithMocks(
-            service = newRentCollectionService(
-                stallRepo = stallRepo,
-                shopRepo = shopRepo,
-                cfg = cfg,
-                auctionRepo = auctionRepo,
-                lang = lang,
-                regions = regions,
-                ipLimiter = ipLimiter,
-                mutationGate = mutationGate,
-            ),
+            service = newRentCollectionService(RentServiceDependencies(
+                stallRepo, shopRepo, cfg, auctionRepo, lang, regions, ipLimiter, mutationGate,
+            )),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             config = cfg,
@@ -134,26 +139,16 @@ class RentCollectionServiceTest {
         )
     }
 
-    private fun newRentCollectionService(
-        stallRepo: StallRepository,
-        shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
-        cfg: EnthusiaMarketConfig,
-        auctionRepo: AuctionRepository,
-        lang: net.badgersmc.nexus.i18n.LangService,
-        regions: RegionMemberSync,
-        ipLimiter: IpLimiter,
-        mutationGate: MarketMutationGate,
-        schematics: SchematicService = SchematicService.Disabled,
-    ) = RentCollectionService(
-        stallRepository = stallRepo,
-        shops = shopRepo,
-        config = cfg,
-        auctionRepository = auctionRepo,
-        lang = lang,
-        regionMembers = regions,
-        ipLimiter = ipLimiter,
-        mutationGate = mutationGate,
-        schematics = schematics,
+    private fun newRentCollectionService(dependencies: RentServiceDependencies) = RentCollectionService(
+        stallRepository = dependencies.stalls,
+        shops = dependencies.shops,
+        config = dependencies.config,
+        auctionRepository = dependencies.auctions,
+        lang = dependencies.lang,
+        regionMembers = dependencies.regions,
+        ipLimiter = dependencies.ipLimiter,
+        mutationGate = dependencies.mutationGate,
+        schematics = dependencies.schematics,
     )
 
     private data class RecoveryLifecycleFixture(
@@ -180,16 +175,9 @@ class RentCollectionServiceTest {
         val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
 
         return RecoveryLifecycleFixture(
-            service = newRentCollectionService(
-                stallRepo = stallRepo,
-                shopRepo = shopRepo,
-                cfg = cfg,
-                auctionRepo = auctionRepo,
-                lang = lang,
-                regions = regions,
-                ipLimiter = ipLimiter,
-                mutationGate = mutationGate,
-            ),
+            service = newRentCollectionService(RentServiceDependencies(
+                stallRepo, shopRepo, cfg, auctionRepo, lang, regions, ipLimiter, mutationGate,
+            )),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             auctionRepo = auctionRepo,
@@ -222,7 +210,7 @@ class RentCollectionServiceTest {
         assertEquals(0, report.errors)
         verify(exactly = 0) { svc.shopRepo.freezeByStall(any(), any()) }
         verify(exactly = 0) { svc.stallRepo.save(any()) }
-        verify(exactly = 0) { svc.auctionRepo.create(any()) }
+        verify(exactly = 0) { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
     }
 
     // --- Emergency auction on grace expiry ---
@@ -265,17 +253,10 @@ class RentCollectionServiceTest {
         val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
 
         return EmergencyForfeitureFixture(
-            service = newRentCollectionService(
-                stallRepo = stallRepo,
-                shopRepo = shopRepo,
-                cfg = cfg,
-                auctionRepo = auctionRepo,
-                lang = lang,
-                regions = regions,
-                ipLimiter = ipLimiter,
-                mutationGate = MarketMutationGate.Open,
-                schematics = schematics,
-            ),
+            service = newRentCollectionService(RentServiceDependencies(
+                stallRepo, shopRepo, cfg, auctionRepo, lang, regions, ipLimiter,
+                MarketMutationGate.Open, schematics,
+            )),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             auctionRepo = auctionRepo,
@@ -310,7 +291,7 @@ class RentCollectionServiceTest {
                     it.owner == forfeited.owner &&
                     it.members.isEmpty()
             })
-            fixture.auctionRepo.create(any())
+            fixture.auctionRepo.create(any(), captureEmergencyListings = true)
             fixture.ipLimiter.releaseStallByOwnerId(playerUuid.toString())
             fixture.shopRepo.findByStall(forfeited.id.value)
             fixture.shopRepo.delete(41L)
@@ -334,7 +315,7 @@ class RentCollectionServiceTest {
         verify(exactly = 0) { raced.shopRepo.findByStall(any()) }
         verify(exactly = 0) { raced.regions.clearOwnersAndMembers(any(), any()) }
         verify(exactly = 0) { raced.schematics.restore(any(), any(), any()) }
-        verify(exactly = 0) { raced.auctionRepo.create(any()) }
+        verify(exactly = 0) { raced.auctionRepo.create(any(), captureEmergencyListings = true) }
     }
 
     @Test
@@ -344,7 +325,7 @@ class RentCollectionServiceTest {
             nextRentAt = now.minus(Duration.ofDays(4)),
         )
         val fixture = buildEmergencyForfeitureFixture(stalls = listOf(forfeited))
-        every { fixture.auctionRepo.create(any()) } throws IllegalStateException("synthetic auction insert failure")
+        every { fixture.auctionRepo.create(any(), captureEmergencyListings = true) } throws IllegalStateException("synthetic auction insert failure")
 
         val report = fixture.service.tick(now)
 
@@ -479,7 +460,7 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         verify(exactly = 1) { svc.shopRepo.delete(11L) }
         verify(exactly = 0) { svc.shopRepo.delete(12L) }
-        verify { svc.auctionRepo.create(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING &&
                 it.owner == graceStall.owner &&
@@ -534,11 +515,11 @@ class RentCollectionServiceTest {
         every { svc.stallRepo.all() } returns listOf(graceStall)
         val beforeDeadline = svc.service.tick(deadline.minusSeconds(1))
         assertEquals(0, beforeDeadline.evictions)
-        verify(exactly = 0) { svc.auctionRepo.create(any()) }
+        verify(exactly = 0) { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
 
         val afterDeadline = svc.service.tick(deadline.plusSeconds(1))
         assertEquals(1, afterDeadline.evictions)
-        verify(exactly = 1) { svc.auctionRepo.create(any()) }
+        verify(exactly = 1) { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
     }
 
     // --- tick: OWNED stall with nextRentAt past grace → instant emergency auction ---
@@ -557,7 +538,7 @@ class RentCollectionServiceTest {
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }
-        verify { svc.auctionRepo.create(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.shopRepo.freezeByStall(pastDue.id.value, true) }
     }
 
@@ -573,7 +554,7 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.auctionRepo.create(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }
@@ -674,7 +655,7 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.auctionRepo.create(any()) }
+        verify { svc.auctionRepo.create(any(), captureEmergencyListings = true) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }

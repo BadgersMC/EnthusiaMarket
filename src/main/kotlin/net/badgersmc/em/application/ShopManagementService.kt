@@ -79,7 +79,7 @@ class ShopManagementService(
         val shop = shopRepository.findById(shopId) ?: return false
         if (!canDelete(shop, actor)) return false
         shopRepository.delete(shopId)
-        fireShopDeleted(shop.owner)
+        fireShopDeleted(shop)
         return true
     }
 
@@ -88,7 +88,7 @@ class ShopManagementService(
         if (access == null) {
             val owned = shopRepository.findByOwner(actor)
             val count = shopRepository.deleteByOwner(actor)
-            owned.forEach { fireShopDeleted(it.owner) }
+            owned.forEach { fireShopDeleted(it) }
             return count
         }
         val owned = shopsOwnedBy(actor).filter { canDelete(it, actor) }
@@ -100,7 +100,7 @@ class ShopManagementService(
     fun adminDelete(shopId: Long): Boolean {
         val shop = shopRepository.findById(shopId) ?: return false
         shopRepository.delete(shopId)
-        fireShopDeleted(shop.owner)
+        fireShopDeleted(shop)
         return true
     }
 
@@ -111,10 +111,10 @@ class ShopManagementService(
      * unit tests (no event fired, no NPE), mirroring AuctionLifecycleService.
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun fireShopDeleted(owner: UUID) {
+    private fun fireShopDeleted(shop: Shop) {
         try {
             org.bukkit.Bukkit.getServer()?.pluginManager?.callEvent(
-                net.badgersmc.em.events.ShopDeletedEvent(owner)
+                net.badgersmc.em.events.ShopDeletedEvent(shop.owner, shop)
             )
         } catch (e: Exception) {
             log.warning("Failed to fire ShopDeletedEvent: ${e.message}")

@@ -88,6 +88,7 @@ class AuctionLifecycleSchematicTest {
         val sellOffers = mockk<SellOfferRepository>(relaxed = true)
         every { sellOffers.findByStall(any()) } returns null
 
+        stubAuctionTransactions(auctionRepo, stallRepo)
         val service = AuctionLifecycleService(
             auctionRepo, stallRepo, economy, cfg, limits, sellOffers,
             mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true),

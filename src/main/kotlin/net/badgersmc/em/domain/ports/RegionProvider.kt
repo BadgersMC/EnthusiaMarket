@@ -21,10 +21,25 @@ interface RegionProvider {
      * or world is not found. The box is axis-aligned from minimum to
      * maximum block coordinates (inclusive).
      */
-    data class RegionBounds(
+    data class RegionBounds @JvmOverloads constructor(
         val minX: Int, val minY: Int, val minZ: Int,
         val maxX: Int, val maxY: Int, val maxZ: Int,
+        val claimedColumns: Long? = rectangularColumns(minX, maxX, minZ, maxZ),
     ) {
+        val claimedVolume: Long? get() {
+            val columns = claimedColumns ?: return null
+            val layers = maxY.toLong() - minY + 1
+            return if (columns > 0 && layers > 0 && columns <= Long.MAX_VALUE / layers) columns * layers else null
+        }
+
+        companion object {
+            private fun rectangularColumns(minX: Int, maxX: Int, minZ: Int, maxZ: Int): Long? {
+                val x = maxX.toLong() - minX + 1
+                val z = maxZ.toLong() - minZ + 1
+                return if (x > 0 && z > 0 && x <= Long.MAX_VALUE / z) x * z else null
+            }
+        }
+
         /** Inclusive block span on the X axis. */
         val width: Int get() = maxX - minX + 1
         /** Inclusive block span on the Y axis. */

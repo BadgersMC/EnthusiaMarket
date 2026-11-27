@@ -1,12 +1,17 @@
 package net.badgersmc.em.infrastructure.persistence
 
+import net.badgersmc.em.domain.stall.RentPayment
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
+import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.RentTerms
+import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
+import net.badgersmc.em.domain.stall.StallState
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -14,10 +19,43 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class AuctionRepositorySqlTest {
+    @Test fun `50 imported lots commit together and a late conflict rolls everything back`() {
+        val stalls = StallRepositorySql(ds)
+        val lots = (1..50).map { number ->
+            val id = "rehearsal_" + number.toString().padStart(2, '0')
+            val stall = Stall(StallId(id), id, "world", StallState.UNOWNED,
+                OwnerRef.unowned(), null, 0, RentTerms.formula(1.0))
+            stalls.create(stall)
+            stall to sampleAuction(id, id, startingBid = 10L + number)
+                .copy(openingRoundId = "rehearsal-opening")
+        }
+        val unrelated = lots.first().first.copy(id = StallId("unrelated"), regionId = "unrelated")
+        stalls.create(unrelated)
+        val (last, lastAuction) = lots.last()
+        stalls.save(last.copy(state = StallState.AUCTIONING))
+        assertEquals(last.id, repo.openImportedLots(lots))
+        assertTrue(lots.all { repo.findByStall(it.first.id).isEmpty() })
+        assertEquals(StallState.UNOWNED, stalls.findById(lots.first().first.id)?.state)
+        stalls.save(last)
+
+        assertNull(repo.openImportedLots(lots))
+        for ((stall, auction) in lots) {
+            assertEquals(auction, repo.findById(auction.id))
+            assertEquals(StallState.AUCTIONING, stalls.findById(stall.id)?.state)
+        }
+        assertEquals(lastAuction, repo.findById(lastAuction.id))
+        assertEquals(StallState.UNOWNED, stalls.findById(unrelated.id)?.state)
+        assertTrue(repo.findByStall(unrelated.id).isEmpty())
+        assertEquals(lots.first().first.id, repo.openImportedLots(lots))
+    }
+
     @Test fun `guild bidder funding survives create and reload`() {
         val guildId = UUID.randomUUID().toString()
         val auction = sampleAuction(highBid = Bid(UUID.randomUUID(), 100, Instant.now(), guildId))
@@ -26,6 +64,107 @@ class AuctionRepositorySqlTest {
         repo.save(auction.copy(highBid = auction.highBid!!.copy(amount = 120)))
         assertEquals(guildId, repo.findById(auction.id)?.highBid?.guildId)
     }
+    @Test fun `guild lead remains reserved until the auction stops being open`() {
+        val guild = UUID.randomUUID().toString()
+        val auction = sampleAuction(highBid = Bid(UUID.randomUUID(), 100, Instant.now(), guild))
+            .copy(openingRoundId = "new-market")
+        repo.create(auction)
+        val reloaded = AuctionRepositorySql(ds)
+        val other = AuctionId("other")
+        assertEquals("new-market", reloaded.findById(auction.id)?.openingRoundId)
+        assertTrue(reloaded.hasOtherOpenGuildBid(guild, other))
+        assertFalse(reloaded.hasOtherOpenGuildBid(guild, auction.id))
+
+        repo.save(auction.copy(highBid = Bid(UUID.randomUUID(), 101, Instant.now())))
+        assertFalse(reloaded.hasOtherOpenGuildBid(guild, other))
+    }
+
+    @Test fun `opening round award rolls back with the stall and persists after transfer`() {
+        val guild = UUID.randomUUID().toString()
+        val owner = OwnerRef.guild(guild)
+        val stalls = StallRepositorySql(ds)
+        val award = Stall(StallId("stall_01"), "region_01", "world", StallState.OWNED,
+            owner, Instant.now(), 100, RentTerms.formula(1.0))
+        val secondAward = award.copy(id = StallId("stall_02"), regionId = "region_02")
+
+        assertFailsWith<MarketModerationConflictException> { stalls.saveOpeningRoundGuildAward(award, "new-market") }
+        assertFalse(repo.hasGuildOpeningRoundWin("new-market", guild))
+
+        stalls.create(award.releaseOwnership())
+        stalls.create(secondAward.releaseOwnership())
+        stalls.saveOpeningRoundGuildAward(award, "new-market")
+        stalls.save(award.releaseOwnership())
+
+        val reloaded = AuctionRepositorySql(ds)
+        assertTrue(reloaded.hasGuildOpeningRoundWin("new-market", guild))
+        assertFalse(reloaded.hasGuildOpeningRoundWin("another-round", guild))
+        assertFailsWith<java.sql.SQLException> { stalls.saveOpeningRoundGuildAward(secondAward, "new-market") }
+        assertEquals(StallState.UNOWNED, stalls.findById(secondAward.id)?.state)
+    }
+
+    @Test fun `cancellation and payment claim survive restart without a second credit`() {
+        val bid = Bid(UUID.randomUUID(), 125, Instant.now())
+        val auction = sampleAuction(highBid = bid)
+        repo.create(auction)
+        val payment = net.badgersmc.em.domain.auction.AuctionPayment(auction.id, "REFUND", OwnerRef.solo(bid.bidder), bid.amount)
+        repo.commitTransition(auction, auction.close(), null, payment)
+        val restarted = AuctionRepositorySql(ds)
+        assertFailsWith<IllegalStateException> { restarted.commitTransition(auction, auction.close(), null, payment.copy(id = "duplicate")) }
+        assertEquals(listOf(payment), restarted.pendingPayments(0))
+        assertTrue(restarted.claimPayment(payment.id))
+        assertFalse(restarted.claimPayment(payment.id))
+        assertTrue(restarted.pendingPayments(Long.MAX_VALUE).isEmpty())
+        restarted.finishPayment(payment.id, false, 60)
+        assertTrue(restarted.pendingPayments(59).isEmpty())
+        assertEquals(listOf(payment), restarted.pendingPayments(60))
+        assertTrue(restarted.claimPayment(payment.id))
+        restarted.finishPayment(payment.id, true, 0)
+        assertTrue(restarted.pendingPayments(Long.MAX_VALUE).isEmpty())
+    }
+
+    @Test fun `failed award rolls back auction and payout then commits both on retry`() {
+        val bid = Bid(UUID.randomUUID(), 150, Instant.now())
+        val auction = sampleAuction(highBid = bid)
+        repo.create(auction)
+        val stall = Stall(auction.stallId, "region", "world", StallState.OWNED, OwnerRef.solo(bid.bidder),
+            Instant.now(), bid.amount, RentTerms.formula(1.0))
+        val payment = net.badgersmc.em.domain.auction.AuctionPayment(auction.id, "SELLER", OwnerRef.solo(UUID.randomUUID()), 140)
+        assertFailsWith<MarketModerationConflictException> { repo.commitTransition(auction, auction.close(), stall, payment) }
+        assertEquals(AuctionState.OPEN, repo.findById(auction.id)?.state)
+        assertTrue(repo.pendingPayments(0).isEmpty())
+        val stalls = StallRepositorySql(ds)
+        stalls.create(stall.releaseOwnership())
+        repo.commitTransition(auction, auction.close(), stall, payment)
+        assertEquals(stall.owner, stalls.findById(stall.id)?.owner)
+        assertEquals(AuctionState.CLOSED, repo.findById(auction.id)?.state)
+        assertEquals(listOf(payment), repo.pendingPayments(0))
+    }
+
+    @Test fun `paid rent receipt and new expiry commit together`() {
+        val paidAt = Instant.ofEpochMilli(3000)
+        val payer = OwnerRef.guild("guild-rent")
+        val stall = Stall(StallId("rent"), "region", "world", StallState.OWNED, payer, paidAt,
+            400, RentTerms.formula(1.0), nextRentAt = paidAt.plusSeconds(90))
+        val stalls = StallRepositorySql(ds)
+        stalls.create(stall)
+        val extended = stall.copy(nextRentAt = stall.nextRentAt!!.plusSeconds(3600))
+        stalls.savePaidExtension(extended, RentPayment(payer, 77, paidAt, stall.nextRentAt!!))
+        ds.connection.use { conn -> conn.createStatement().use { statement ->
+            statement.executeQuery("SELECT * FROM rent_ledger").use { row ->
+                assertTrue(row.next())
+                assertEquals(payer.id, row.getString("payer_id"))
+                assertEquals("GUILD", row.getString("payer_type"))
+                assertEquals(77, row.getInt("amount"))
+                assertEquals(stall.nextRentAt!!.toEpochMilli(), row.getLong("covered_from"))
+                assertEquals(extended.nextRentAt!!.toEpochMilli(), row.getLong("covered_until"))
+                assertFalse(row.next())
+            }
+            statement.execute("CREATE TRIGGER reject_receipt BEFORE INSERT ON rent_ledger BEGIN SELECT RAISE(ABORT,'unavailable'); END")
+        } }
+        assertFailsWith<java.sql.SQLException> { stalls.savePaidExtension(stall, RentPayment(payer, 77, paidAt, paidAt)) }
+        assertEquals(extended.nextRentAt, stalls.findById(stall.id)?.nextRentAt)
+    }
+
     private lateinit var ds: HikariDataSource
     private lateinit var repo: AuctionRepositorySql
 
@@ -39,28 +178,6 @@ class AuctionRepositorySqlTest {
     }
 
     @AfterTest fun tearDown() { ds.close() }
-
-    private fun sampleAuction(
-        id: String = "auc-0001",
-        stallId: String = "stall_01",
-        startingBid: Long = 100L,
-        state: AuctionState = AuctionState.OPEN,
-        highBid: Bid? = null,
-        startAt: Instant = Instant.parse("2026-01-01T00:00:00Z"),
-        endAt: Instant = Instant.parse("2026-01-02T00:00:00Z"),
-        antiSnipeWindow: Duration = Duration.ofMinutes(1),
-        antiSnipeExtension: Duration = Duration.ofMinutes(1)
-    ) = Auction(
-        id = AuctionId(id),
-        stallId = StallId(stallId),
-        state = state,
-        startAt = startAt,
-        endAt = endAt,
-        startingBid = startingBid,
-        highBid = highBid,
-        antiSnipeWindow = antiSnipeWindow,
-        antiSnipeExtension = antiSnipeExtension
-    )
 
     @Test fun `findById returns null for unknown id`() {
         assertNull(repo.findById(AuctionId("nope")))
@@ -181,3 +298,22 @@ class AuctionRepositorySqlTest {
         assertEquals(0, repo.findByStall(StallId("nope")).size)
     }
 }
+
+private fun sampleAuction(
+    id: String = "auc-0001",
+    stallId: String = "stall_01",
+    startingBid: Long = 100L,
+    state: AuctionState = AuctionState.OPEN,
+    highBid: Bid? = null,
+    endAt: Instant = Instant.parse("2026-01-02T00:00:00Z"),
+) = Auction(
+    id = AuctionId(id),
+    stallId = StallId(stallId),
+    state = state,
+    startAt = Instant.parse("2026-01-01T00:00:00Z"),
+    endAt = endAt,
+    startingBid = startingBid,
+    highBid = highBid,
+    antiSnipeWindow = Duration.ofMinutes(1),
+    antiSnipeExtension = Duration.ofMinutes(1)
+)

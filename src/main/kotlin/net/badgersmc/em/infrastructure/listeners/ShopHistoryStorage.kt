@@ -2,6 +2,7 @@ package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.domain.shop.ShopTransaction
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
+import net.badgersmc.em.domain.shop.ShopSaleAttribution
 import net.badgersmc.em.infrastructure.persistence.ShopHistoryOutbox
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.plugin.Plugin
@@ -17,7 +18,22 @@ open class ShopHistoryStorage(repository: ShopTransactionRepository, plugin: Plu
     private val executor = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "EnthusiaMarket-shop-history").apply { isDaemon = true }
     }
+    private val outboxDirectory = plugin.dataFolder.toPath().resolve("history-outbox")
+    private val captureFailure = outboxDirectory.resolve("award-capture-failed")
+    @Volatile private var failed = false
     private var closed = false
+
+    fun markCaptureFailure() {
+        failed = true
+        java.nio.file.Files.writeString(captureFailure, "Review sales coverage before clearing this marker.")
+    }
+
+    fun drained(): Boolean = !failed && java.nio.file.Files.list(outboxDirectory).use { paths ->
+        paths.noneMatch { file ->
+            val name = file.fileName.toString()
+            name.endsWith(".pending") || name.endsWith(".tmp") || name.endsWith(".corrupt") || file == captureFailure
+        }
+    }
     private var lastFailureReport = 0L
 
     init {
@@ -36,6 +52,12 @@ open class ShopHistoryStorage(repository: ShopTransactionRepository, plugin: Plu
     open fun record(tx: ShopTransaction) {
         check(!closed) { "Shop history storage is closed" }
         outbox.append(tx)
+    }
+
+    @Synchronized
+    open fun recordAttributed(tx: ShopTransaction, attribution: ShopSaleAttribution) {
+        check(!closed) { "Shop history storage is closed" }
+        outbox.appendAttributed(tx, attribution)
     }
 
     @Synchronized

@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionRepository
@@ -68,10 +69,10 @@ class PurchaseSignRenderer(
     }
 
     private fun moderationHold(sign: PurchaseSign): List<Component> = listOf(
-        Component.text("[Staff Review]"),
-        Component.text(sign.stallId.value),
-        Component.text("Unavailable"),
-        Component.text("Contact staff"),
+        Component.text("[Staff Review]", MarketText.copper),
+        Component.text(sign.stallId.value, MarketText.gold),
+        Component.text("Unavailable", MarketText.error),
+        Component.text("Contact staff", MarketText.cream),
     )
 
     private fun buyable(sign: PurchaseSign): List<Component> = listOf(

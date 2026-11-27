@@ -7,9 +7,9 @@ import net.badgersmc.em.domain.shop.SignDirection
 object ShopDisplay {
 
     fun directionLabel(direction: SignDirection): String = when (direction) {
-        SignDirection.SELL -> "<green>Sell</green>"
-        SignDirection.BUY -> "<gold>Buy</gold>"
-        SignDirection.TRADE -> "<light_purple>Trade</light_purple>"
+        SignDirection.SELL -> "<#B6D7A8>Sell</#B6D7A8>"
+        SignDirection.BUY -> "<#FFCF1F>Buy</#FFCF1F>"
+        SignDirection.TRADE -> "<#F2B66D>Trade</#F2B66D>"
     }
 
     fun tradesAvailable(shop: Shop): Int = when (shop.direction) {

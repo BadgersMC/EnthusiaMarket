@@ -1,5 +1,7 @@
 package net.badgersmc.em.infrastructure.listeners
 
+import net.badgersmc.em.interaction.EmergencyShopPreview
+import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.application.StallRentExtensionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
@@ -17,7 +19,6 @@ import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component as AdventureComponent
 import net.kyori.adventure.text.event.ClickEvent
-import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
 import org.bukkit.Tag
 import org.bukkit.event.EventHandler
@@ -110,12 +111,15 @@ open class PurchaseSignClickListener(
                 )
                 val auction = auctions.findOpenByStall(sign.stallId)
                 if (auction != null) {
+                    if (stall.state == StallState.EMERGENCY_AUCTIONING) {
+                        EmergencyShopPreview.send(EmergencyShopPreview.Request(player, auction, 1, auctions, lang))
+                    }
                     val cmd = "/em bid ${auction.id} "
                     player.sendMessage(
-                        AdventureComponent.text("  /em bid ", NamedTextColor.GRAY)
-                            .append(AdventureComponent.text(auction.id.value, NamedTextColor.YELLOW)
+                        AdventureComponent.text("  /em bid ", MarketText.cream)
+                            .append(AdventureComponent.text(auction.id.value, MarketText.gold)
                                 .clickEvent(ClickEvent.suggestCommand(cmd)))
-                            .append(AdventureComponent.text(" <amount>", NamedTextColor.GRAY))
+                            .append(AdventureComponent.text(" <amount>", MarketText.cream))
                     )
                 }
             }

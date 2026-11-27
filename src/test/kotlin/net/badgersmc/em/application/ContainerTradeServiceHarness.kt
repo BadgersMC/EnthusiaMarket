@@ -22,7 +22,7 @@ fun inventoryFailsExcept(containerInv: Inventory): InventoryPredicate =
 
 /** Named test seam over [ContainerTradeService] — avoids Codacy anonymous-class limits. */
 open class ContainerTradeServiceHarness(
-    stallRepo: net.badgersmc.em.domain.stall.StallRepository,
+    stallRepo: net.badgersmc.em.domain.stall.StallRepository = mockk(relaxed = true),
     economy: EconomyProvider = mockk(relaxed = true),
     guildProvider: GuildProvider? = null,
     tradePolicy: GuildTradePolicyService? = null,
@@ -36,17 +36,9 @@ open class ContainerTradeServiceHarness(
     private val canFit: InventoryPredicate = inventoryFitsWhenPositive,
     saleRewards: net.badgersmc.em.domain.ports.GuildSaleRewards? = null,
     stallAccess: net.badgersmc.em.domain.ports.StallAccessPolicy = net.badgersmc.em.domain.ports.StallAccessPolicy.Open,
-) : ContainerTradeService(stallRepo, economy, guildProvider, tradePolicy, shopVault, saleRewards = saleRewards, stallAccess = stallAccess) {
+) : ContainerTradeService(stallRepo, economy, guildProvider, tradePolicy, shopVault, shopRepository = mockk(), saleRewards = saleRewards, stallAccess = stallAccess) {
     init {
-        // Batch trades clone and resize the deserialized stack before publishing events.
-        // Only MockK ItemStacks need synthetic mutable amount state; real Bukkit
-        // ItemStacks already implement clone/amount and must not be passed to every {}.
-        if (isMockKMock(mockItemStack)) {
-            var amount = mockItemStack.amount
-            every { mockItemStack.clone() } returns mockItemStack
-            every { mockItemStack.amount } answers { amount }
-            every { mockItemStack.amount = any() } answers { amount = firstArg<Int>() }
-        }
+        configureStackAmounts(mockItemStack)
     }
 
     override fun deserializeStack(base64: String): ItemStack? =
@@ -56,4 +48,16 @@ open class ContainerTradeServiceHarness(
         hasAtLeast(inventory, template, amount)
     override fun inventoryCanFit(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
         canFit(inventory, template, amount)
+}
+
+private fun configureStackAmounts(mockItemStack: ItemStack) {
+    // Batch trades clone and resize the deserialized stack before publishing events.
+    // Only MockK ItemStacks need synthetic mutable amount state; real Bukkit
+    // ItemStacks already implement clone/amount and must not be passed to every {}.
+    if (isMockKMock(mockItemStack)) {
+        var amount = mockItemStack.amount
+        every { mockItemStack.clone() } returns mockItemStack
+        every { mockItemStack.amount } answers { amount }
+        every { mockItemStack.amount = any() } answers { amount = firstArg<Int>() }
+    }
 }

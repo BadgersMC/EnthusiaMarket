@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.persistence
 
 import net.badgersmc.em.domain.stall.*
+import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.time.Instant
@@ -47,94 +48,112 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
     }
 
     override fun save(stall: Stall) {
+        ds.connection.use { conn -> conn.inMarketTransaction { save(conn, stall) } }
+    }
+
+    override fun savePendingSellback(stall: Stall) {
+        require(stall.state == StallState.UNOWNED)
+        ds.connection.use { updateRow(it, stall) }
+    }
+
+    override fun finishSellbackAccess(previous: Stall) {
         ds.connection.use { conn ->
-            conn.prepareStatement(
-                """UPDATE stalls SET
-                    region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
-                    owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
-                    members = ?, max_members = ?, next_rent_at = ?, kind = ?,
-                    extra_entities = ?, extra_total = ?
-                   WHERE id = ? AND moderation_revision = ?
-                     AND NOT EXISTS (
-                         SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
-                     )"""
-            ).use { ps ->
-                ps.setString(1, stall.regionId)
-                ps.setString(2, stall.world)
-                ps.setString(3, stall.state.name)
-                ps.setString(4, stall.owner.type.name)
-                ps.setString(5, stall.owner.id)
-                if (stall.ownerSince != null) ps.setLong(6, stall.ownerSince.toEpochMilli())
-                else ps.setNull(6, java.sql.Types.INTEGER)
-                ps.setLong(7, stall.winningBid)
-                ps.setString(8, stall.rentTerms.mode.name)
-                ps.setDouble(9, stall.rentTerms.pct)
-                ps.setLong(10, stall.rentTerms.flatAmount)
-                ps.setString(11, encodeMembers(stall.members))
-                ps.setInt(12, stall.maxMembers)
-                if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
-                else ps.setNull(13, java.sql.Types.INTEGER)
-                ps.setString(14, stall.kind)
-                ps.setString(15, encodeExtraEntities(stall.extraEntities))
-                ps.setInt(16, stall.extraTotal)
-                ps.setString(17, stall.id.value)
-                ps.setLong(18, stall.moderationRevision)
-                ps.setString(19, stall.id.value)
-                if (ps.executeUpdate() != 1) {
-                    throw MarketModerationConflictException(
-                        "Stall ${stall.id.value} changed or is reserved for moderation"
-                    )
-                }
+            conn.prepareStatement("DELETE FROM stall_access_settings WHERE stall_id = ? AND ownership_key = ? AND EXISTS (SELECT 1 FROM stalls WHERE id = ? AND state = 'UNOWNED')").use {
+                it.setString(1, previous.id.value)
+                it.setString(2, StallAccessSettings.ownershipKey(previous))
+                it.setString(3, previous.id.value)
+                it.executeUpdate()
+            }
+        }
+    }
+
+    override fun saveOpeningRoundGuildAward(stall: Stall, roundId: String) {
+        ds.connection.use { conn ->
+            conn.inMarketTransaction { saveGuildAward(conn, stall, roundId) }
+        }
+    }
+
+    internal fun saveGuildAward(conn: Connection, stall: Stall, roundId: String) {
+        require(stall.owner.type == OwnerType.GUILD && stall.state == StallState.OWNED)
+        conn.prepareStatement(
+            "INSERT INTO guild_auction_round_wins (round_id, guild_id, stall_id) VALUES (?, ?, ?)"
+        ).use { ps ->
+            ps.setString(1, roundId)
+            ps.setString(2, stall.owner.id)
+            ps.setString(3, stall.id.value)
+            check(ps.executeUpdate() == 1)
+        }
+        save(conn, stall)
+    }
+
+    override fun savePaidExtension(stall: Stall, payment: RentPayment) {
+        ds.connection.use { conn ->
+            conn.inMarketTransaction {
+                save(conn, stall)
+                conn.recordRentPayment(stall, payment)
+            }
+        }
+    }
+
+    private fun bindStallFields(ps: PreparedStatement, stall: Stall, offset: Int) {
+        ps.setString(offset + 1, stall.regionId)
+        ps.setString(offset + 2, stall.world)
+        ps.setString(offset + 3, stall.state.name)
+        ps.setString(offset + 4, stall.owner.type.name)
+        ps.setString(offset + 5, stall.owner.id)
+        ps.setInstant(offset + 6, stall.ownerSince)
+        ps.setLong(offset + 7, stall.winningBid)
+        ps.setString(offset + 8, stall.rentTerms.mode.name)
+        ps.setDouble(offset + 9, stall.rentTerms.pct)
+        ps.setLong(offset + 10, stall.rentTerms.flatAmount)
+        ps.setString(offset + 11, StallSqlCodec.encodeMembers(stall.members))
+        ps.setInt(offset + 12, stall.maxMembers)
+        ps.setInstant(offset + 13, stall.nextRentAt)
+        ps.setString(offset + 14, stall.kind)
+        ps.setString(offset + 15, StallSqlCodec.encodeExtraEntities(stall.extraEntities))
+        ps.setInt(offset + 16, stall.extraTotal)
+    }
+
+    internal fun save(conn: Connection, stall: Stall) {
+        updateRow(conn, stall)
+        if (stall.state == StallState.MODERATION_HOLD) return
+        val keepCurrent = stall.state == StallState.OWNED || stall.state == StallState.GRACE
+        val predicate = if (keepCurrent) " AND ownership_key <> ?" else ""
+        conn.prepareStatement("DELETE FROM stall_access_settings WHERE stall_id = ?" + predicate).use {
+            it.setString(1, stall.id.value)
+            if (keepCurrent) it.setString(2, StallAccessSettings.ownershipKey(stall))
+            it.executeUpdate()
+        }
+    }
+
+    private fun updateRow(conn: Connection, stall: Stall) {
+        conn.prepareStatement(
+            """UPDATE stalls SET
+                region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
+                owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
+                members = ?, max_members = ?, next_rent_at = ?, kind = ?,
+                extra_entities = ?, extra_total = ?
+               WHERE id = ? AND moderation_revision = ?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
+                 )"""
+        ).use { ps ->
+            bindStallFields(ps, stall, offset = 0)
+            ps.setString(17, stall.id.value)
+            ps.setLong(18, stall.moderationRevision)
+            ps.setString(19, stall.id.value)
+            if (ps.executeUpdate() != 1) {
+                throw MarketModerationConflictException(
+                    "Stall ${stall.id.value} changed or is reserved for moderation"
+                )
             }
         }
     }
 
     private fun bind(ps: PreparedStatement, stall: Stall) {
         ps.setString(1, stall.id.value)
-        ps.setString(2, stall.regionId)
-        ps.setString(3, stall.world)
-        ps.setString(4, stall.state.name)
-        ps.setString(5, stall.owner.type.name)
-        ps.setString(6, stall.owner.id)
-        if (stall.ownerSince != null) ps.setLong(7, stall.ownerSince.toEpochMilli())
-        else ps.setNull(7, java.sql.Types.INTEGER)
-        ps.setLong(8, stall.winningBid)
-        ps.setString(9, stall.rentTerms.mode.name)
-        ps.setDouble(10, stall.rentTerms.pct)
-        ps.setLong(11, stall.rentTerms.flatAmount)
-        ps.setString(12, encodeMembers(stall.members))
-        ps.setInt(13, stall.maxMembers)
-        if (stall.nextRentAt != null) ps.setLong(14, stall.nextRentAt.toEpochMilli())
-        else ps.setNull(14, java.sql.Types.INTEGER)
-        ps.setString(15, stall.kind)
-        ps.setString(16, encodeExtraEntities(stall.extraEntities))
-        ps.setInt(17, stall.extraTotal)
+        bindStallFields(ps, stall, offset = 1)
         ps.setLong(18, stall.moderationRevision)
-    }
-
-    private fun encodeMembers(members: Set<UUID>): String =
-        members.joinToString(",") { it.toString() }
-
-    private fun decodeMembers(raw: String?): Set<UUID> {
-        if (raw.isNullOrEmpty()) return emptySet()
-        return raw.split(',')
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .map { UUID.fromString(it.trim()) }
-            .toSet()
-    }
-
-    private fun encodeExtraEntities(map: Map<String, Int>): String =
-        if (map.isEmpty()) "" else map.entries.joinToString(",") { "${it.key}:${it.value}" }
-
-    private fun decodeExtraEntities(raw: String?): Map<String, Int> {
-        if (raw.isNullOrEmpty()) return emptyMap()
-        return raw.split(',')
-            .filter { it.isNotBlank() }
-            .associate { entry ->
-                val parts = entry.trim().split(':', limit = 2)
-                parts[0] to (parts.getOrElse(1) { "0" }.toIntOrNull() ?: 0)
-            }
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Stall? {
@@ -177,13 +196,55 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             ownerSince = ownerSinceMs?.let { Instant.ofEpochMilli(it) },
             winningBid = rs.getLong("winning_bid"),
             rentTerms = rentTerms,
-            members = decodeMembers(rs.getString("members")),
+            members = StallSqlCodec.decodeMembers(rs.getString("members")),
             maxMembers = rs.getInt("max_members"),
             nextRentAt = rs.getLong("next_rent_at").takeIf { !rs.wasNull() }?.let { Instant.ofEpochMilli(it) },
             kind = rs.getString("kind"),
-            extraEntities = decodeExtraEntities(rs.getString("extra_entities")),
+            extraEntities = StallSqlCodec.decodeExtraEntities(rs.getString("extra_entities")),
             extraTotal = rs.getInt("extra_total"),
             moderationRevision = rs.getLong("moderation_revision"),
         )
+    }
+}
+
+/** Database encodings kept separate from repository orchestration. */
+private object StallSqlCodec {
+    fun encodeMembers(members: Set<UUID>): String = members.joinToString(",") { it.toString() }
+
+    fun decodeMembers(raw: String?): Set<UUID> {
+        if (raw.isNullOrEmpty()) return emptySet()
+        return raw.split(',').asSequence().filter { it.isNotBlank() }.map { UUID.fromString(it.trim()) }.toSet()
+    }
+
+    fun encodeExtraEntities(map: Map<String, Int>): String =
+        if (map.isEmpty()) "" else map.entries.joinToString(",") { "${it.key}:${it.value}" }
+
+    fun decodeExtraEntities(raw: String?): Map<String, Int> {
+        if (raw.isNullOrEmpty()) return emptyMap()
+        return raw.split(',').filter { it.isNotBlank() }.associate { entry ->
+            val parts = entry.trim().split(':', limit = 2)
+            parts[0] to (parts.getOrElse(1) { "0" }.toIntOrNull() ?: 0)
+        }
+    }
+}
+
+private const val INSERT_RENT_PAYMENT = """INSERT INTO rent_ledger
+    (stall_id, charged_at, amount, paid, payer_type, payer_id, covered_from, covered_until)
+    VALUES (?, ?, ?, 1, ?, ?, ?, ?)"""
+
+private fun PreparedStatement.setInstant(index: Int, value: java.time.Instant?) {
+    if (value == null) setNull(index, java.sql.Types.INTEGER) else setLong(index, value.toEpochMilli())
+}
+
+private fun Connection.recordRentPayment(stall: Stall, payment: RentPayment) {
+    prepareStatement(INSERT_RENT_PAYMENT).use { ps ->
+        ps.setString(1, stall.id.value)
+        ps.setLong(2, payment.paidAt.toEpochMilli())
+        ps.setLong(3, payment.amount)
+        ps.setString(4, payment.payer.type.name)
+        ps.setString(5, payment.payer.id)
+        ps.setLong(6, payment.coveredFrom.toEpochMilli())
+        ps.setLong(7, requireNotNull(stall.nextRentAt).toEpochMilli())
+        check(ps.executeUpdate() == 1)
     }
 }

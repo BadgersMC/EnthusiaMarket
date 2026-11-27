@@ -1,5 +1,7 @@
 package net.badgersmc.em.infrastructure.commands
 
+import net.badgersmc.em.interaction.EmergencyShopPreview
+import net.badgersmc.em.interaction.MarketText
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
@@ -41,6 +43,11 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 import java.time.Instant
 import net.badgersmc.em.websync.WebsiteSyncService
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.event.ClickEvent
+import java.io.IOException
+import java.nio.file.Files
+import java.util.logging.Level
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
@@ -51,7 +58,7 @@ class AdminCommands(
     private val auctionService: AuctionLifecycleService,
     private val configManager: ConfigManager,
     private val auctions: AuctionRepository,
-    @Suppress("UnusedPrivateProperty") private val plugin: JavaPlugin,
+    private val plugin: JavaPlugin,
     private val lang: LangService,
     private val nexusScheduler: NexusScheduler,
     private val stallMembers: StallMemberService,
@@ -76,6 +83,10 @@ class AdminCommands(
     private val pricing: net.badgersmc.em.application.StallVolumePricingService? = null,
     private val websiteSync: WebsiteSyncService? = null,
     private val bulkRentExtension: net.badgersmc.em.application.BulkRentExtensionService? = null,
+    private val mutationGate: net.badgersmc.em.domain.ports.MarketMutationGate =
+        net.badgersmc.em.domain.ports.MarketMutationGate.Open,
+    private val lotImport: AuctionLotImport = AuctionLotImport(),
+    private val regionEditor: net.badgersmc.em.infrastructure.listeners.StallRegionEditor? = null,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -130,7 +141,7 @@ class AdminCommands(
     @Permission("enthusiamarket.admin.rent")
     fun rentExtendAll(
         @Context sender: CommandSender,
-        @Arg("duration") duration: String,
+        @Arg("duration") @Suggests("rentDurations") duration: String,
     ) {
         val parsed = parseBulkRentDuration(duration)
         if (parsed == null) {
@@ -238,9 +249,26 @@ class AdminCommands(
         }
     }
 
+    @Subcommand("preview")
+    fun preview(@Context sender: CommandSender, @Arg("stall") @Suggests("emergencyStalls") stall: String) =
+        previewPage(sender, stall, 1)
+
+    @Subcommand("preview")
+    fun previewPage(@Context sender: CommandSender, @Arg("stall") @Suggests("emergencyStalls") stall: String,
+                    @Arg("page") page: Int) {
+        val target = stalls.findById(StallId(stall))
+        val auction = if (target?.state == StallState.EMERGENCY_AUCTIONING) auctions.findOpenByStall(target.id) else null
+        if (auction == null) sender.sendMessage(lang.msg("emergency_preview.unavailable"))
+        else EmergencyShopPreview.send(EmergencyShopPreview.Request(sender, auction, page, auctions, lang))
+    }
+
     @Subcommand("list")
     @Permission("enthusiamarket.admin.list")
     fun list(@Context sender: CommandSender) {
+        if (sender is Player) {
+            listPage(sender, 1)
+            return
+        }
         for (s in stalls.all()) {
             sender.sendMessage(
                 lang.msg(
@@ -254,13 +282,19 @@ class AdminCommands(
         }
     }
 
+    @Subcommand("list page")
+    @Permission("enthusiamarket.admin.list")
+    fun listPage(@Context sender: CommandSender, @Arg("page") @Suggests("directoryPages") page: Int) {
+        StallDirectory(lang).send(sender, stalls.all(), page)
+    }
+
     @Subcommand("auction start")
     @Permission("enthusiamarket.admin")
     fun auctionStart(
         @Context sender: CommandSender,
-        @Arg("stall") stall: String,
-        @Arg("price") price: Long,
-        @Arg("duration") duration: String? = null
+        @Arg("stall") @Suggests("stallIds") stall: String,
+        @Arg("price") @Suggests("startingBids") price: Long,
+        @Arg("duration") @Suggests("auctionDurations") duration: String? = null
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.createAuction(
@@ -281,8 +315,8 @@ class AdminCommands(
     @Permission("enthusiamarket.auction.bid")
     fun bid(
         @Context sender: CommandSender,
-        @Arg("auction") auction: String,
-        @Arg("amount") amount: Long
+        @Arg("auction") @Suggests("openAuctionIds") auction: String,
+        @Arg("amount") @Suggests("nextBid") amount: Long
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.placeBid(AuctionId(auction), player.uniqueId, amount,
@@ -302,9 +336,9 @@ class AdminCommands(
     @Permission("enthusiamarket.auction.bid")
     fun bidGuild(
         @Context sender: CommandSender,
-        @Arg("auction") auction: String,
-        @Arg("amount") amount: Long,
-        @Arg("guild") guild: String? = null,
+        @Arg("auction") @Suggests("openAuctionIds") auction: String,
+        @Arg("amount") @Suggests("nextBid") amount: Long,
+        @Arg("guild") @Suggests("bidGuilds") guild: String? = null,
     ) {
         val player = sender as? Player ?: return
         val eligible = auctionService.eligibleGuilds(player.uniqueId)
@@ -329,12 +363,72 @@ class AdminCommands(
         })
     }
 
+
+
+    @Subcommand("auction preview")
+    @Permission("enthusiamarket.admin")
+    fun auctionPreview(
+        @Context sender: CommandSender,
+        @Arg("file") @Suggests("lotFiles") file: String,
+        @Arg("round") @Suggests("roundExamples") round: String,
+        @Arg("duration") @Suggests("auctionDurations") duration: String,
+    ) = runLotCommand(sender) {
+        val actor = AuctionLotImport.actor(sender)
+        lotImport.discard(actor)
+        AuctionLotImport.validateRound(round)
+        val directory = plugin.dataFolder.toPath().resolve("auction-lots")
+        Files.createDirectories(directory)
+        val plan = auctionService.previewImportedLots(AuctionLotImport.read(directory, file), round, duration)
+        val token = lotImport.remember(actor, plan)
+        sendAuctionPreview(sender, plan, token)
+    }
+
+    private fun sendAuctionPreview(sender: CommandSender, plan: net.badgersmc.em.application.AuctionLotPlan, token: String) {
+        sender.sendMessage(Component.text("Auction preview • ${plan.lots.size} lots", MarketText.gold))
+        sender.sendMessage(Component.text("Opening round ${plan.round} • Duration ${plan.duration}", MarketText.gold))
+        for ((stall, lot) in plan.lots) {
+            sender.sendMessage(Component.text(
+                "${stall.id.value} (${stall.world}/${stall.regionId}) • ${lot.minimumBid} raw gold minimum",
+                MarketText.cream,
+            ))
+        }
+        val command = "/em auction confirm $token"
+        sender.sendMessage(Component.text("Review all lots, then run $command within 5 minutes.", MarketText.gold)
+            .clickEvent(ClickEvent.suggestCommand(command)))
+    }
+
+    @Subcommand("auction confirm")
+    @Permission("enthusiamarket.admin")
+    fun auctionConfirm(@Context sender: CommandSender, @Arg("token") @Suggests("previewToken") token: String) = runLotCommand(sender) {
+        val plan = lotImport.consume(AuctionLotImport.actor(sender), token)
+        val ends = auctionService.openImportedLots(plan)
+        val receipt = "Opened ${plan.lots.size} lots in opening round ${plan.round}. Scheduled close $ends."
+        plugin.logger.info("${sender.name}: $receipt")
+        sender.sendMessage(Component.text(receipt, MarketText.sage))
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun runLotCommand(sender: CommandSender, action: () -> Unit) {
+        try {
+            require(!maintenanceFreeze.isFrozen()) { "Market maintenance is active." }
+            action()
+        } catch (failure: IllegalArgumentException) {
+            sender.sendMessage(Component.text(failure.message ?: "Invalid auction import.", MarketText.error))
+        } catch (failure: IOException) {
+            sender.sendMessage(Component.text("Could not read the UTF-8 auction CSV. Check the server log.", MarketText.error))
+            plugin.logger.log(Level.WARNING, "Auction import file error", failure)
+        } catch (failure: Exception) {
+            sender.sendMessage(Component.text("Auction import failed. Check the server log and auction state.", MarketText.error))
+            plugin.logger.log(Level.WARNING, "Auction import failed", failure)
+        }
+    }
+
     @Subcommand("auction startall")
     @Permission("enthusiamarket.admin")
     fun auctionStartAll(
         @Context sender: CommandSender,
-        @Arg("price") price: Long,
-        @Arg("duration") duration: String? = null
+        @Arg("price") @Suggests("startingBids") price: Long,
+        @Arg("duration") @Suggests("auctionDurations") duration: String? = null
     ) {
         val component = when (val result = auctionService.startMassAuction(price, duration)) {
             is MassAuctionResult.Report -> lang.msg(
@@ -355,14 +449,14 @@ class AdminCommands(
             sender.sendMessage(lang.msg("command.players_only"))
             return
         }
-        AuctionBrowserMenu(auctions, stalls, auctionService, nexusScheduler, lang).open(sender)
+        AuctionBrowserMenu(auctions, stalls, auctionService, nexusScheduler, lang, regionProvider).open(sender)
     }
 
     @Subcommand("auction cancel")
     @Permission("enthusiamarket.admin")
     fun auctionCancel(
         @Context sender: CommandSender,
-        @Arg("auction") auction: String
+        @Arg("auction") @Suggests("openAuctionIds") auction: String
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.cancelAuction(AuctionId(auction), player.uniqueId)) {
@@ -385,7 +479,7 @@ class AdminCommands(
     fun auctionExtend(
         @Context sender: CommandSender,
         @Arg("auction") @Suggests("openAuctionIds") auction: String,
-        @Arg("duration") duration: String,
+        @Arg("duration") @Suggests("auctionDurations") duration: String,
     ) {
         val component = when (val result = auctionService.extendAuction(AuctionId(auction), duration)) {
             is AuctionResult.Success -> lang.msg(
@@ -404,7 +498,7 @@ class AdminCommands(
     @Permission("enthusiamarket.admin")
     fun auctionClear(
         @Context sender: CommandSender,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("stallIds") stall: String,
     ) {
         val cleared = auctionService.clearStaleBidData(StallId(stall))
         sender.sendMessage(lang.msg("admin.auction.clear.done", "stall" to stall, "count" to cleared))
@@ -414,8 +508,8 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.members")
     fun membersAdd(
         @Context sender: Player,
-        @Arg("stall") stall: String,
-        @Arg("player") player: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
+        @Arg("player") @Suggests("visiblePlayers") player: String,
     ) {
         val target = playerNameResolver.resolve(player)
         if (target == null) {
@@ -432,8 +526,8 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.members")
     fun membersRemove(
         @Context sender: Player,
-        @Arg("stall") stall: String,
-        @Arg("player") player: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
+        @Arg("player") @Suggests("rosterMembers") player: String,
     ) {
         val target = playerNameResolver.resolve(player)
         if (target == null) {
@@ -450,7 +544,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.members")
     fun membersList(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
     ) {
         when (val r = stallMembers.listMembers(StallId(stall), sender.uniqueId)) {
             is StallMemberService.Result.NotFound ->
@@ -507,8 +601,8 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.offer")
     fun stallOffer(
         @Context sender: Player,
-        @Arg("stall") stall: String,
-        @Arg("price") price: Long,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
+        @Arg("price") @Suggests("goldExamples") price: Long,
     ) {
         val msg = when (val r = sellOffers.create(StallId(stall), sender.uniqueId, price)) {
             is SellOfferService.Result.Created ->
@@ -534,7 +628,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.offer")
     fun stallOfferCancel(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("cancelOffers") stall: String,
     ) {
         val msg = when (val r = sellOffers.cancel(StallId(stall), sender.uniqueId)) {
             is SellOfferService.Result.Cancelled ->
@@ -557,7 +651,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.buy")
     fun stallBuy(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("buyOffers") stall: String,
     ) {
         val msg = when (val r = sellOffers.purchase(StallId(stall), sender.uniqueId)) {
             is SellOfferService.Result.Purchased -> {
@@ -591,7 +685,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.sellback")
     fun sellback(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
     ) {
         prunePendingSellbacks()
         when (val r = sellback.quote(StallId(stall), sender.uniqueId)) {
@@ -623,7 +717,7 @@ class AdminCommands(
     @Permission("enthusiamarket.stall.sellback")
     fun sellbackConfirm(
         @Context sender: Player,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("ownerStalls") stall: String,
     ) {
         val key = sender.uniqueId to stall
         val stagedAt = pendingSellbacks[key]
@@ -664,47 +758,17 @@ class AdminCommands(
         var fixed = 0
         var skipped = 0
         var errors = 0
+        val access = net.badgersmc.em.application.StallRegionAccessService(guildProvider, regionMembers, mutationGate)
         for (stall in stalls.all()) {
-            // Re-apply region flags (idempotent — safe to run on already-correct regions)
-            regionProvisioner.provision(stall.world, stall.regionId, config.market.stallPriority)
-            when (stall.state) {
-                StallState.OWNED, StallState.GRACE -> when (stall.owner.type) {
-                    OwnerType.SOLO -> try {
-                        val uuid = UUID.fromString(stall.owner.id)
-                        // Rebuild full ACL: clear first, set owner, then replay members.
-                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                        regionMembers.setOwner(stall.world, stall.regionId, uuid)
-                        for (memberId in stall.members) {
-                            regionMembers.addMember(stall.world, stall.regionId, memberId)
-                        }
-                        fixed++
-                    } catch (_: Exception) {
-                        errors++
-                    }
-                    OwnerType.GUILD -> try {
-                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                        val guids = guildProvider.memberIds(stall.owner.id)
-                        if (guids.isNotEmpty()) {
-                            regionMembers.syncGuildMembers(stall.world, stall.regionId, guids)
-                        }
-                        fixed++  // owners/members always cleared above; sync best-effort
-                    } catch (_: Exception) {
-                        errors++
-                    }
-                    OwnerType.NONE -> Unit
-                }
-                StallState.UNOWNED -> try {
-                    regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+            try {
+                if (access.sync(stall)) {
+                    regionProvisioner.provision(stall.world, stall.regionId, config.market.stallPriority)
                     fixed++
-                } catch (_: Exception) {
-                    errors++
+                } else {
+                    skipped++
                 }
-                // Active auctions and moderation holds are left alone. Auction ownership is
-                // finalized at settlement, while moderation fencing owns its held-stall ACL.
-                StallState.AUCTIONING,
-                StallState.MODERATION_HOLD,
-                StallState.RE_AUCTIONING,
-                StallState.EMERGENCY_AUCTIONING -> skipped++
+            } catch (_: Exception) {
+                errors++
             }
         }
         sender.sendMessage(lang.msg(
@@ -715,7 +779,7 @@ class AdminCommands(
 
     @Subcommand("stall setkind")
     @Permission("enthusiamarket.stall.setkind")
-    fun stallSetKind(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("kind") kind: String) {
+    fun stallSetKind(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String, @Arg("kind") @Suggests("stallKinds") kind: String) {
         val ok = applySetKind(stalls, stallId, kind)
         sender.sendMessage(
             if (ok) lang.msg("stall.setkind.ok", "stall" to stallId, "kind" to kind)
@@ -725,7 +789,7 @@ class AdminCommands(
 
     @Subcommand("stall entitylimit set")
     @Permission("enthusiamarket.stall.entitylimit")
-    fun stallEntityLimit(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("type") type: String, @Arg("extra") extra: Int) {
+    fun stallEntityLimit(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String, @Arg("type") @Suggests("entityTypes") type: String, @Arg("extra") @Suggests("extraCounts") extra: Int) {
         val ok = applyEntityLimit(stalls, stallId, type, extra)
         sender.sendMessage(
             if (ok) lang.msg("stall.entitylimit.ok", "stall" to stallId, "type" to type, "extra" to extra)
@@ -735,12 +799,18 @@ class AdminCommands(
 
     @Subcommand("stall recount")
     @Permission("enthusiamarket.stall.recount")
-    fun stallRecount(@Context sender: CommandSender, @Arg("stall") stallId: String) {
+    fun stallRecount(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String) {
         val stall = stalls.findById(StallId(stallId))
         if (stall == null) {
             sender.sendMessage(lang.msg("stall.recount.missing", "stall" to stallId))
             return
         }
+        val counts = entityCounts(stall)
+        entityCounter.recount(stallId, counts)
+        sender.sendMessage(lang.msg("stall.recount.ok", "stall" to stallId, "total" to counts.values.sum()))
+    }
+
+    private fun entityCounts(stall: net.badgersmc.em.domain.stall.Stall): Map<String, Int> {
         val world = org.bukkit.Bukkit.getWorld(stall.world)
         val bounds = regionProvider.bounds(stall.world, stall.regionId)
         val counts = HashMap<String, Int>()
@@ -756,13 +826,12 @@ class AdminCommands(
                 counts[t] = (counts[t] ?: 0) + 1
             }
         }
-        entityCounter.recount(stallId, counts)
-        sender.sendMessage(lang.msg("stall.recount.ok", "stall" to stallId, "total" to counts.values.sum()))
+        return counts
     }
 
     @Subcommand("stall info")
     @Permission("enthusiamarket.stall.info")
-    fun stallInfo(@Context sender: CommandSender, @Arg("stall") stallId: String) {
+    fun stallInfo(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String) {
         val info = stallInfo.infoFor(StallId(stallId))
         if (info == null) {
             sender.sendMessage(lang.msg("stall.info.missing", "stall" to stallId))
@@ -788,11 +857,15 @@ class AdminCommands(
 
     @Subcommand("stall outline")
     @Permission("enthusiamarket.stall.outline")
-    fun stallOutline(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("seconds") seconds: Int) {
+    fun stallOutline(@Context sender: CommandSender, @Arg("stall") @Suggests("stallIds") stallId: String, @Arg("seconds") @Suggests("outlineSeconds") seconds: Int) {
         val player = sender as? Player ?: run {
             sender.sendMessage(lang.msg("stall.outline.player_only"))
             return
         }
+        outline(player, stallId, seconds)
+    }
+
+    private fun outline(sender: Player, stallId: String, seconds: Int) {
         val stall = stalls.findById(StallId(stallId))
         if (stall == null) {
             sender.sendMessage(lang.msg("stall.outline.missing", "stall" to stallId))
@@ -805,11 +878,51 @@ class AdminCommands(
         }
         val dur = if (seconds <= 0) 10 else seconds
         particleBorders.addOutline(
-            player.uniqueId, stallId, stall.world, bounds,
+            sender.uniqueId, stallId, stall.world, bounds,
             java.time.Instant.now().plusSeconds(dur.toLong())
         )
         sender.sendMessage(lang.msg("stall.outline.ok", "stall" to stallId, "seconds" to dur))
     }
+
+    @Subcommand("region edit")
+    @Permission("enthusiamarket.admin.region")
+    fun regionEdit(@Context sender: CommandSender, @Arg("stallId") @Suggests("stallRegionIds") stallId: String) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("stall_region.player_only")); return }
+        val editor = regionEditor ?: run { sender.sendMessage(lang.msg("stall_region.unavailable")); return }
+        sender.sendMessage(lang.msg(editor.begin(player, stallId)))
+    }
+
+    @Subcommand("region height")
+    @Permission("enthusiamarket.admin.region")
+    fun regionHeight(@Context sender: CommandSender, @Arg("topY") topY: Int) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("stall_region.player_only")); return }
+        val editor = regionEditor ?: run { sender.sendMessage(lang.msg("stall_region.unavailable")); return }
+        sender.sendMessage(lang.msg(editor.setTop(player, topY)))
+    }
+
+    @Subcommand("region undo")
+    @Permission("enthusiamarket.admin.region")
+    fun regionUndo(@Context sender: CommandSender) = regionCommand(sender) { it.undo(sender as Player) }
+
+    @Subcommand("region preview")
+    @Permission("enthusiamarket.admin.region")
+    fun regionPreview(@Context sender: CommandSender) = regionCommand(sender) { it.preview(sender as Player) }
+
+    @Subcommand("region confirm")
+    @Permission("enthusiamarket.admin.region")
+    fun regionConfirm(@Context sender: CommandSender) = regionCommand(sender) { it.confirm(sender as Player) }
+
+    @Subcommand("region cancel")
+    @Permission("enthusiamarket.admin.region")
+    fun regionCancel(@Context sender: CommandSender) = regionCommand(sender) { it.cancel(sender as Player) }
+
+    private fun regionCommand(sender: CommandSender, action: (net.badgersmc.em.infrastructure.listeners.StallRegionEditor) -> String) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("stall_region.player_only")); return }
+        val editor = regionEditor ?: run { sender.sendMessage(lang.msg("stall_region.unavailable")); return }
+        sender.sendMessage(lang.msg(action(editor)))
+    }
+
+    fun stallRegionIds(): List<String> = regionProvider.listByPrefix(config.market.world, config.market.regionPrefix).map { it.id }
 
     // ----- Guild trade policy -----
 
@@ -829,68 +942,17 @@ class AdminCommands(
     /** Pause all rent/auction timers before the server closes for maintenance. */
     @Subcommand("maintenance freeze")
     @Permission("enthusiamarket.admin.maintenance")
-    fun maintenanceFreeze(@Context sender: CommandSender) {
-        val msg = when (val result = maintenanceFreeze.begin()) {
-            is net.badgersmc.em.application.MaintenanceFreezeResult.Activated ->
-                lang.msg("admin.maintenance.freeze.activated")
-            is net.badgersmc.em.application.MaintenanceFreezeResult.AlreadyActive ->
-                lang.msg(
-                    "admin.maintenance.freeze.already_active",
-                    "since" to result.since.toString()
-                )
-            else -> lang.msg("admin.maintenance.freeze.activated")
-        }
-        sender.sendMessage(msg)
-    }
+    fun maintenanceFreeze(@Context sender: CommandSender) = MaintenanceCommandMessages(lang, maintenanceFreeze).freeze(sender)
 
     /** Lift the freeze and shift every timer forward by the frozen duration. */
     @Subcommand("maintenance unfreeze")
     @Permission("enthusiamarket.admin.maintenance")
-    fun maintenanceUnfreeze(@Context sender: CommandSender) {
-        val msg = when (val result = maintenanceFreeze.end()) {
-            is net.badgersmc.em.application.MaintenanceFreezeResult.Lifted ->
-                lang.msg(
-                    "admin.maintenance.unfreeze.done",
-                    "stalls" to result.stalls,
-                    "auctions" to result.auctions,
-                    "duration" to formatFreezeDuration(result.elapsed)
-                )
-            net.badgersmc.em.application.MaintenanceFreezeResult.NotFrozen ->
-                lang.msg("admin.maintenance.unfreeze.not_frozen")
-            else -> lang.msg("admin.maintenance.unfreeze.not_frozen")
-        }
-        sender.sendMessage(msg)
-    }
+    fun maintenanceUnfreeze(@Context sender: CommandSender) = MaintenanceCommandMessages(lang, maintenanceFreeze).unfreeze(sender)
 
     /** Show whether a maintenance freeze is active. */
     @Subcommand("maintenance status")
     @Permission("enthusiamarket.admin.maintenance")
-    fun maintenanceStatus(@Context sender: CommandSender) {
-        val status = maintenanceFreeze.status()
-        val msg = if (status.frozen && status.since != null) {
-            lang.msg(
-                "admin.maintenance.status.active",
-                "since" to status.since.toString(),
-                "duration" to formatFreezeDuration(
-                    java.time.Duration.between(status.since, java.time.Instant.now()).coerceAtLeast(java.time.Duration.ZERO)
-                )
-            )
-        } else {
-            lang.msg("admin.maintenance.status.inactive")
-        }
-        sender.sendMessage(msg)
-    }
-
-    private fun formatFreezeDuration(d: java.time.Duration): String {
-        val days = d.toDays()
-        val hours = d.toHours() % 24
-        val minutes = d.toMinutes() % 60
-        return buildString {
-            if (days > 0) append("${days}d ")
-            if (hours > 0 || days > 0) append("${hours}h ")
-            append("${minutes}m")
-        }
-    }
+    fun maintenanceStatus(@Context sender: CommandSender) = MaintenanceCommandMessages(lang, maintenanceFreeze).status(sender)
 
     // ----- Admin evict (force unclaim) -----
 
@@ -898,7 +960,7 @@ class AdminCommands(
     @Permission("enthusiamarket.admin.evict")
     fun evict(
         @Context sender: CommandSender,
-        @Arg("stall") stall: String,
+        @Arg("stall") @Suggests("stallIds") stall: String,
     ) {
         val msg = when (stallEviction.evict(StallId(stall))) {
             is StallEvictionService.Result.Evicted ->
@@ -958,91 +1020,41 @@ class AdminCommands(
 
     @Subcommand("websync status")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncStatus(@Context sender: CommandSender) {
-        val status = sync().status()
-        sender.sendMessage("Website sync: configured=${yesNo(status.configuredEnabled)}, active=${yesNo(status.active)}, " +
-            "secret=${yesNo(status.secretConfigured)}, validation=${status.validation}")
-        sender.sendMessage("Pending stalls=${status.pendingStalls}, full=${yesNo(status.pendingFull)}, " +
-            "oldest=${age(status.oldestPendingAgeMillis)}, snapshot=${status.snapshotRevision}")
-        sender.sendMessage("Last full=${instant(status.lastFullSuccess)}, last stall=${instant(status.lastStallSuccess)}, " +
-            "status=${status.errorCategory ?: "ok"}")
-        status.bedrockHeads?.let { heads ->
-            sender.sendMessage("Bedrock heads: geyser=${yesNo(status.geyserApiAvailable)}, " +
-                "capture=${yesNo(status.bedrockCaptureEnabled)}, published=${heads.captured}, pending=${heads.pending}, " +
-                "last=${instant(heads.lastSuccessAt)}, status=${heads.lastError ?: "ok"}")
-        }
-        status.floodgateCapture?.let { capture ->
-            sender.sendMessage("Floodgate capture: events=${capture.events}, accepted=${capture.accepted}, queued=${capture.queued}, " +
-                "rejected=${capture.rejected}, failed=${capture.failed}, dropped=${capture.dropped}, " +
-                "last=${capture.lastFailure ?: "ok"}")
-        }
-    }
+    fun webSyncStatus(@Context sender: CommandSender) = websiteCommands.webSyncStatus(sender)
 
     @Subcommand("websync secret")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncSecret(@Context sender: CommandSender, @Arg("value") value: WebsiteSyncSecretArgument) {
-        val result = sync().setSecret(value.value)
-        sender.sendMessage(if (result.config != null) "Website sync secret stored; synchronization remains in its configured state."
-            else "Website sync configuration is invalid; synchronization is disabled.")
-    }
+    fun webSyncSecret(@Context sender: CommandSender, @Arg("value") value: WebsiteSyncSecretArgument) = websiteCommands.webSyncSecret(sender, value)
 
     @Subcommand("websync clear-secret")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncClearSecret(@Context sender: CommandSender, @Arg("confirmation") confirmation: String) {
-        if (confirmation != "confirm") {
-            sender.sendMessage("Use /em websync clear-secret confirm")
-            return
-        }
-        sync().clearSecret()
-        sender.sendMessage("Website sync secret cleared and synchronization disabled.")
-    }
+    fun webSyncClearSecret(@Context sender: CommandSender, @Arg("confirmation") confirmation: String) = websiteCommands.webSyncClearSecret(sender, confirmation)
 
     @Subcommand("websync test")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncTest(@Context sender: CommandSender) {
-        sender.sendMessage("Testing website sync authentication...")
-        sync().authenticatedTest { success, category ->
-            sender.sendMessage(if (success) "Website sync authentication succeeded." else "Website sync test failed: $category")
-        }
-    }
+    fun webSyncTest(@Context sender: CommandSender) = websiteCommands.webSyncTest(sender)
 
     @Subcommand("websync validate")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncValidate(@Context sender: CommandSender) {
-        val report = sync().validateLiveReport()
-        if (report.errors.isEmpty()) sender.sendMessage("Website sync validation passed for all 71 exact stall identities.")
-        else sender.sendMessage("Website sync validation failed (${report.errors.size} safe issue(s)): ${report.errors.take(10).joinToString()}")
-        sender.sendMessage("Website sync diagnostics: ${report.diagnostics.joinToString()}")
-    }
+    fun webSyncValidate(@Context sender: CommandSender) = websiteCommands.webSyncValidate(sender)
 
     @Subcommand("websync full")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncFull(@Context sender: CommandSender) {
-        sender.sendMessage(if (sync().requestFull()) "Website full reconciliation requested." else "Website sync is not active.")
-    }
+    fun webSyncFull(@Context sender: CommandSender) = websiteCommands.webSyncFull(sender)
 
     @Subcommand("websync enable")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncEnable(@Context sender: CommandSender) {
-        sync().enable()
-        sender.sendMessage(if (sync().status().active) "Website sync enabled; full reconciliation started."
-            else "Website sync remains inactive until a valid secret, configuration, and persistence are present.")
-    }
+    fun webSyncEnable(@Context sender: CommandSender) = websiteCommands.webSyncEnable(sender)
 
     @Subcommand("websync disable")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncDisable(@Context sender: CommandSender) {
-        sync().disable()
-        sender.sendMessage("Website sync disabled; persistent pending state was retained.")
-    }
+    fun webSyncDisable(@Context sender: CommandSender) = websiteCommands.webSyncDisable(sender)
 
     @Subcommand("websync retry")
     @Permission(WEBSYNC_PERMISSION)
-    fun webSyncRetry(@Context sender: CommandSender) {
-        sender.sendMessage(if (sync().retry()) "Website sync delivery retry requested." else "Website sync retry could not be queued.")
-    }
+    fun webSyncRetry(@Context sender: CommandSender) = websiteCommands.webSyncRetry(sender)
 
-    private fun sync(): WebsiteSyncService = requireNotNull(websiteSync) { "Website sync service is unavailable" }
+    private val websiteCommands = WebsiteSyncCommands(websiteSync)
 
     /**
      * Drop expired entries from [pendingSellbacks] so the map doesn't
@@ -1059,15 +1071,13 @@ class AdminCommands(
 
 
     internal companion object {
+        internal const val LIST_PAGE_SIZE = 6
         private val BULK_RENT_DURATION = Regex("^([1-9][0-9]*)([mhd])$")
 
         const val KEY_WORLD = "world"
         const val KEY_REGION_PREFIX = "region_prefix"
         const val WEBSYNC_PERMISSION = "enthusiamarket.admin.websync"
 
-        private fun yesNo(value: Boolean) = if (value) "yes" else "no"
-        private fun age(value: Long?): String = value?.let { "${it / 1000}s" } ?: "none"
-        private fun instant(value: Long?): String = value?.let { Instant.ofEpochMilli(it).toString() } ?: "never"
 
         /** Set a stall's region kind. Returns false when the stall is missing. */
         fun applySetKind(repo: StallRepository, stallId: String, kind: String): Boolean {

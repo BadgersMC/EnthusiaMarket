@@ -5,7 +5,6 @@ import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.OutlinePane
-import com.github.stefvanschie.inventoryframework.pane.PaginatedPane
 import com.github.stefvanschie.inventoryframework.pane.Pane
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import com.github.stefvanschie.inventoryframework.pane.util.Slot
@@ -37,44 +36,40 @@ class GuildTradePolicyMenu(
 
     override fun open(player: Player) = render(player)
 
-    private fun render(player: Player) {
+    private fun render(player: Player, requestedPage: Int = 0) {
         val policies = policyService.list(ownerGuildId)
-        val pageCount = maxOf(1, (policies.size + PER_PAGE - 1) / PER_PAGE)
-        val gui = ChestGui(6, ComponentHolder.of(lang.msg("gui.guildpolicy.title")))
-        val pages = policyPages(player, policies, pageCount)
-        gui.addPane(Slot.fromXY(0, 0), pages)
-        gui.addPane(Slot.fromXY(0, 5), controls(player, gui, pages, pageCount))
+        val page = requestedPage.coerceIn(0, ((policies.size - 1) / PER_PAGE).coerceAtLeast(0))
+        val visible = policies.drop(page * PER_PAGE).take(PER_PAGE)
+        val rows = guildPolicyContentRows(visible.size)
+        val gui = ChestGui(rows + 1, ComponentHolder.of(lang.msg("gui.guildpolicy.title")))
+        val pane = OutlinePane(9, rows, Pane.Priority.LOWEST)
+        visible.forEach { policy ->
+            pane.addItem(GuiItem(icon(policy)) { ev ->
+                ev.isCancelled = true
+                // Only left/right clicks mutate; ignore middle/drop/number-key clicks.
+                if (ev.isLeftClick || ev.isRightClick) mutate(player, policy, ev.isLeftClick, ev.isShiftClick)
+            })
+        }
+        gui.addPane(Slot.fromXY(0, 0), pane)
+        gui.addPane(Slot.fromXY(0, rows), controls(player, page, (page + 1) * PER_PAGE < policies.size))
         gui.blockItemTheft()
         gui.show(player)
     }
 
-    private fun policyPages(player: Player, policies: List<GuildTradePolicy>, pageCount: Int): PaginatedPane {
-        val pages = PaginatedPane(9, 5)
-        for (p in 0 until pageCount) {
-            val pane = OutlinePane(9, 5, Pane.Priority.LOWEST)
-            policies.drop(p * PER_PAGE).take(PER_PAGE).forEach { policy ->
-                pane.addItem(GuiItem(icon(policy)) { ev ->
-                    ev.isCancelled = true
-                    // Only left/right clicks mutate; ignore middle/drop/number-key clicks.
-                    if (ev.isLeftClick || ev.isRightClick) mutate(player, policy, ev.isLeftClick, ev.isShiftClick)
-                })
-            }
-            pages.addPane(p, Slot.fromXY(0, 0), pane)
-        }
-        return pages
-    }
-
-    private fun controls(player: Player, gui: ChestGui, pages: PaginatedPane, pageCount: Int): StaticPane {
+    private fun controls(player: Player, page: Int, hasNext: Boolean): StaticPane {
         val bar = StaticPane(9, 1)
-        bar.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.common.prev"))) {
-            it.isCancelled = true; if (pages.page > 0) { pages.page -= 1; gui.update() }
+        bar.addItem(guildPolicyGuide(lang), 1, 0)
+        if (page > 0) bar.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.common.prev"))) {
+            it.isCancelled = true
+            render(player, page - 1)
         }, 0, 0)
-        bar.addItem(GuiItem(named(Material.EMERALD, lang.msg("gui.guildpolicy.add"))) {
+        bar.addItem(GuiItem(named(Material.RAW_GOLD, lang.msg("gui.guildpolicy.add"), lang.msg("gui.guildpolicy.pick_hint"))) {
             it.isCancelled = true
             GuildPickerMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)
         }, 4, 0)
-        bar.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.common.next"))) {
-            it.isCancelled = true; if (pages.page < pageCount - 1) { pages.page += 1; gui.update() }
+        if (hasNext) bar.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.common.next"))) {
+            it.isCancelled = true
+            render(player, page + 1)
         }, 8, 0)
         return bar
     }
@@ -108,12 +103,15 @@ class GuildTradePolicyMenu(
 
     private fun icon(policy: GuildTradePolicy): ItemStack {
         val target = guildProvider.guildById(policy.targetGuildId)?.name ?: policy.targetGuildId
-        val (mat, line) = if (policy.kind == PolicyKind.EMBARGO) {
-            Material.BARRIER to lang.msg("gui.guildpolicy.icon_embargo", "target" to target)
+        val line = if (policy.kind == PolicyKind.EMBARGO) {
+            lang.msg("gui.guildpolicy.icon_embargo", "target" to target)
         } else {
-            Material.GOLD_INGOT to lang.msg("gui.guildpolicy.icon_tariff", "target" to target, "rate" to policy.ratePct)
+            lang.msg("gui.guildpolicy.icon_tariff", "target" to target, "rate" to policy.ratePct)
         }
-        return named(mat, line, lang.msg("gui.guildpolicy.icon_controls"))
+        return guildPolicyBanner(
+            guildProvider.visualById(policy.targetGuildId)?.banner, line,
+            lang.msg("gui.guildpolicy.adjust"), lang.msg("gui.guildpolicy.block_clear"),
+        )
     }
 
     private fun named(material: Material, name: Component, vararg lore: Component): ItemStack =

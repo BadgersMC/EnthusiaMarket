@@ -9,6 +9,10 @@ api-version: '26.2'
 
 dependencies:
   server:
+    packetevents:
+      load: BEFORE
+      required: false
+      join-classpath: true
     LumaGuilds:
       # Guilds already enables in STARTUP. Ordering it before POSTWORLD Market
       # closes Staff -> Market -> Guilds -> Staff; keep the required classpath only.
@@ -36,6 +40,10 @@ dependencies:
       required: false
       join-classpath: true
     Geyser-Spigot:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    FancyNpcs:
       load: BEFORE
       required: false
       join-classpath: true
@@ -85,6 +93,7 @@ permissions:
     - enthusiamarket.admin.bypasslimit
     - enthusiamarket.admin.shop
     - enthusiamarket.admin.websync
+    - enthusiamarket.admin.region
   enthusiamarket.admin.bypasslimit:
     default: op
     description: Bypass all stall-ownership limits
@@ -113,6 +122,9 @@ permissions:
   enthusiamarket.admin.websync:
     default: op
     description: Manage website synchronization
+  enthusiamarket.admin.region:
+    default: op
+    description: Create and edit WorldGuard stall region geometry
   enthusiamarket.auction.bid:
     default: true
     description: Bid in an auction

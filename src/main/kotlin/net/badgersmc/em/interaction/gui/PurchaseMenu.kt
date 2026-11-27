@@ -1,5 +1,6 @@
 package net.badgersmc.em.interaction.gui
 
+import net.badgersmc.em.interaction.MarketText
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
@@ -18,6 +19,7 @@ import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.em.interaction.blockTopInventoryExcept
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextDecoration
+import kotlin.math.roundToLong
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
@@ -70,23 +72,13 @@ class PurchaseMenu(
         val gui = ChestGui(rows, ComponentHolder.of(lang.msg("gui.shop.title", "amount" to (shop.sellAmount.toLong() * multiplier))))
         val pane = StaticPane(9, rows)
 
-        // --- Row 0: YOU RECEIVE / arrow / YOU GIVE labels ---
-        val receiveLabel = lang.msg("gui.shop.receive_label")
-        val giveLabel = lang.msg("gui.shop.give_label")
-        pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
-        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, if (barter) 0 else 1)
-        if (shop.direction == SignDirection.TRADE) {
-            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel, listOf(
-                lang.msg("gui.shop.trade_drop_hint")
-            ))), 6, 0)
-        } else {
-            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
-        }
+        addTradeLabels(pane, barter)
 
         // --- Row 1: the actual items ---
-        val row = buildRowItems()
+        val summary = summary(shop, player, tradeService)
+        val row = buildRowItems(summary.stockTrades, summary.costFor(multiplier))
         pane.addItem(GuiItem(decorated(row.receiveItem, row.receiveName, row.receiveLore)), 2, 1)
-        pane.addItem(GuiItem(statusItem(PurchaseMenu.summary(shop, player, tradeService))) {
+        pane.addItem(GuiItem(statusItem(summary)) {
             it.isCancelled = true
         }, 4, if (barter) 1 else 0)
         if (shop.direction == SignDirection.TRADE) {
@@ -98,7 +90,7 @@ class PurchaseMenu(
         }
 
         // --- Row 2/3: confirm the selected amount, or select a bulk amount ---
-        buildConfirmButton(pane, player)
+        buildConfirmButton(pane, player, summary)
         pane.addItem(GuiItem(decorated(Material.CHEST, lang.msg("gui.shop.bulk_button"), listOf(
             lang.msg("gui.shop.bulk_button_lore", "trades" to multiplier),
         ))) {
@@ -137,6 +129,21 @@ class PurchaseMenu(
         }
     }
 
+    private fun addTradeLabels(pane: StaticPane, barter: Boolean) {
+        // --- Row 0: YOU RECEIVE / arrow / YOU GIVE labels ---
+        val receiveLabel = lang.msg("gui.shop.receive_label")
+        val giveLabel = lang.msg("gui.shop.give_label")
+        pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
+        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→", MarketText.copper))), 4, if (barter) 0 else 1)
+        if (shop.direction == SignDirection.TRADE) {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel, listOf(
+                lang.msg("gui.shop.trade_drop_hint")
+            ))), 6, 0)
+        } else {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
+        }
+    }
+
     internal fun returnPlacementItem(player: Player, item: ItemStack?) {
         if (placementReturned || item == null || item.type.isAir) return
         placementReturned = true
@@ -144,13 +151,12 @@ class PurchaseMenu(
         remainder.values.forEach { player.world.dropItemNaturally(player.location, it) }
     }
 
-    private fun buildConfirmButton(pane: StaticPane, player: Player) {
+    private fun buildConfirmButton(pane: StaticPane, player: Player, summary: Summary) {
         val buttonKey = when (shop.direction) {
             SignDirection.SELL -> "gui.shop.confirm_buy"
             SignDirection.BUY -> "gui.shop.confirm_sell"
             SignDirection.TRADE -> "gui.shop.confirm_trade"
         }
-        val summary = PurchaseMenu.summary(shop, player, tradeService)
         val canPurchase = multiplier <= summary.maxTrades
         val buttonLore = listOf(
             lang.msg("gui.shop.confirm_lore", "dir" to dirLabel, "direction" to dirLabel),
@@ -161,14 +167,22 @@ class PurchaseMenu(
             if (canPurchase) Material.LIME_CONCRETE else Material.RED_CONCRETE,
             lang.msg(if (canPurchase) buttonKey else "gui.shop.confirm_unavailable",
                 "trades" to multiplier, "amount" to (shop.sellAmount.toLong() * multiplier),
-                "cost" to (shop.costAmount.toLong() * multiplier), "item" to sellName), buttonLore,
+                "cost" to summary.costFor(multiplier), "item" to sellName), buttonLore,
         )) { event ->
             event.isCancelled = true
-            if (!canPurchase) return@GuiItem
-            executeTrade(player)
-            multiplier = 1
-            render(player)
+            if (canPurchase) confirmOffer(player, summary)
         }, if (shop.direction == SignDirection.TRADE) 4 else 5, 2)
+    }
+
+    private fun confirmOffer(player: Player, summary: Summary) {
+        if (!tradeService.offerIsCurrent(shop) || tradeService.priceFactor(shop, player.uniqueId) != summary.factor) {
+            player.closeInventory()
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "The offer changed. Reopen the shop to review it."))
+            return
+        }
+        executeTrade(player)
+        multiplier = 1
+        render(player)
     }
 
     private fun unavailableReason(summary: Summary): Component {
@@ -179,7 +193,7 @@ class PurchaseMenu(
             else -> "gui.shop.unavailable_items"
         }
         return lang.msg(key, "amount" to (shop.sellAmount.toLong() * multiplier),
-            "cost" to (shop.costAmount.toLong() * multiplier), "item" to sellName)
+            "cost" to summary.costFor(multiplier), "item" to sellName)
     }
 
     private fun executeTrade(player: Player) {
@@ -187,28 +201,36 @@ class PurchaseMenu(
             executeTradeFromSlot(player)
             return
         }
-        // Clamp multiplier to actual available trades (stock may have changed
-        // since the GUI rendered). Prevents the confusing "bought N, rest failed"
-        // experience when denormalized stockCount is stale.
-        val available = if (shop.direction == SignDirection.BUY) multiplier else ShopDisplay.tradesAvailable(shop)
-        if (available <= 0) {
-            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Out of stock"))
-            return
-        }
-        val effectiveMultiplier = multiplier.coerceAtMost(available)
-        if (effectiveMultiplier < multiplier) {
-            player.sendMessage(lang.msg("shop.trade.multiplier_capped",
-                "asked" to multiplier, "available" to effectiveMultiplier))
-        }
-
+        if (!hasStock(player)) return
         // Execute all trades in a single batch operation — avoids N separate
         // inventory transfers, N separate transaction events, and N individual
         // log lines that compound and can crash the server on large purchases.
         val result = when (shop.direction) {
-            SignDirection.SELL -> tradeService.executeSellBatch(shop, player.uniqueId, effectiveMultiplier)
-            SignDirection.BUY -> tradeService.executeBuyBatch(shop, player.uniqueId, effectiveMultiplier)
+            SignDirection.SELL -> tradeService.executeSellBatch(shop, player.uniqueId, multiplier)
+            SignDirection.BUY -> tradeService.executeBuyBatch(shop, player.uniqueId, multiplier)
             else -> return
         }
+        reportResult(player, result)
+    }
+
+    private fun hasStock(player: Player): Boolean {
+        // Clamp multiplier to actual available trades (stock may have changed
+        // since the GUI rendered). Prevents the confusing "bought N, rest failed"
+        // experience when denormalized stockCount is stale.
+        val available = tradeService.availableTrades(shop)
+        if (available <= 0) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Out of stock"))
+            return false
+        }
+        if (available < multiplier) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Too little stock for the selected quantity"))
+            return false
+        }
+
+        return true
+    }
+
+    private fun reportResult(player: Player, result: ContainerTradeResult) {
         when (result) {
             is ContainerTradeResult.Success -> player.sendMessage(
                 lang.msg("shop.trade.success", "message" to result.message),
@@ -283,24 +305,6 @@ class PurchaseMenu(
         }
     }
 
-    private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
-        val item = ItemStack(material)
-        val meta = item.itemMeta ?: return item
-        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
-        if (lore.isNotEmpty()) meta.lore(lore)
-        item.itemMeta = meta
-        return item
-    }
-
-    private fun decorated(base: ItemStack, name: Component, lore: List<Component> = emptyList()): ItemStack {
-        val item = base.clone()
-        val meta = item.itemMeta ?: return item
-        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
-        if (lore.isNotEmpty()) meta.lore(lore)
-        item.itemMeta = meta
-        return item
-    }
-
     private fun statusItem(summary: Summary): ItemStack = decorated(Material.PAPER,
         lang.msg("gui.shop.purchase_status", "trades" to multiplier), listOf(
             lang.msg("gui.shop.purchase_stock", "trades" to summary.stockText),
@@ -325,69 +329,51 @@ class PurchaseMenu(
         }, 8, 0)
     }
 
-    /** Visual border around the empty placement slot 15 for TRADE shops. */
-    private fun addPlacementSlotBorder(pane: StaticPane) {
-        val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-            .apply { itemMeta = itemMeta?.apply { displayName(Component.text(" ")) } ?: return }
-        // Left, right, and bottom border around slot 15 (position 6,1).
-        // Row 0 col 6 already holds the YOU GIVE label framing the top.
-        listOf(Pair(5, 1), Pair(7, 1), Pair(6, 2)).forEach { (x, y) ->
-            pane.addItem(GuiItem(borderItem.clone()), x, y)
-        }
-    }
-
-    private data class RowItems(
-        val receiveItem: ItemStack,
-        val receiveName: Component,
-        val receiveLore: List<Component>,
-        val giveItem: ItemStack,
-        val giveName: Component,
-        val giveLore: List<Component>,
-    )
-
     @Suppress("CyclomaticComplexMethod")
-    private fun buildRowItems(): RowItems {
+    private fun buildRowItems(avail: Int, totalCost: Long): RowItems {
         val totalAmount = shop.sellAmount.toLong() * multiplier
-        val totalCost = shop.costAmount.toLong() * multiplier
-        val avail = ShopDisplay.tradesAvailable(shop)
         val stockStr = if (avail == Int.MAX_VALUE) "Unlimited" else avail.toString()
         return when (shop.direction) {
-            SignDirection.SELL -> RowItems(
-                receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
-                receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
-                receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
-                    lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
-                ),
-                giveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
-                giveName = lang.msg("gui.shop.give_currency", "cost" to totalCost),
-                giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to totalCost)),
-            )
-            SignDirection.BUY -> RowItems(
-                receiveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
-                receiveName = lang.msg("gui.shop.receive_currency", "cost" to totalCost),
-                receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to totalCost)),
-                giveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
-                giveName = lang.msg("gui.shop.give_item", "amount" to totalAmount, "item" to sellName),
-                giveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
-                ),
-            )
-            SignDirection.TRADE -> RowItems(
-                receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
-                receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
-                receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
-                ),
-                giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
-                giveName = Component.empty(),
-                giveLore = emptyList(),
-            )
+            SignDirection.SELL -> sellRow(totalAmount, totalCost, stockStr)
+            SignDirection.BUY -> buyRow(totalAmount, totalCost)
+            SignDirection.TRADE -> tradeRow(totalAmount, stockStr)
         }
     }
 
-    private fun displayAmount(item: ItemStack, requested: Long): ItemStack = item.apply {
-        amount = requested.coerceIn(1, maxStackSize.coerceAtLeast(1).toLong()).toInt()
+    private fun sellRow(totalAmount: Long, totalCost: Long, stockStr: String) = RowItems(
+        receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
+        receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
+        receiveLore = listOf(
+            lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
+            lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
+        ),
+        giveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
+        giveName = lang.msg("gui.shop.give_currency", "cost" to totalCost),
+        giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to totalCost)),
+    )
+
+    private fun buyRow(totalAmount: Long, totalCost: Long) = RowItems(
+        receiveItem = displayAmount(MenuItems.currencyIcon(Component.empty()), totalCost),
+        receiveName = lang.msg("gui.shop.receive_currency", "cost" to totalCost),
+        receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to totalCost)),
+        giveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
+        giveName = lang.msg("gui.shop.give_item", "amount" to totalAmount, "item" to sellName),
+        giveLore = listOf(
+            lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
+        ),
+    )
+
+    private fun tradeRow(totalAmount: Long, stockStr: String): RowItems {
+        return RowItems(
+            receiveItem = displayAmount(sellStack?.clone() ?: ItemStack(Material.BARRIER), totalAmount),
+            receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
+            receiveLore = listOf(
+                lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
+            ),
+            giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
+            giveName = Component.empty(),
+            giveLore = emptyList(),
+        )
     }
 
     companion object {
@@ -399,21 +385,33 @@ class PurchaseMenu(
             private val paymentPerTrade: Int,
             private val currencyPayment: Boolean,
             private val currencyReceive: Boolean = false,
+            val factor: Double = 1.0,
         ) {
             val stockText: String get() = if (stockTrades == Int.MAX_VALUE) "Unlimited" else stockTrades.toString()
-            fun receivedFor(trades: Int): String = (receivePerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
+            fun costFor(trades: Int): Long = ((if (currencyReceive) receivePerTrade else paymentPerTrade).toLong() * trades * factor).roundToLong()
+            fun receivedFor(trades: Int): String = (if (currencyReceive) costFor(trades) else receivePerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
                 if (currencyReceive) " currency" else " items"
-            fun paymentFor(trades: Int): String = (paymentPerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
+            fun paymentFor(trades: Int): String = (if (currencyPayment) costFor(trades) else paymentPerTrade.toLong() * trades.coerceAtLeast(0)).toString() +
                 if (currencyPayment) " currency" else " items"
         }
 
+        private fun affordableTrades(price: Int, factor: Double, balance: Long): Int {
+            var low = 0L
+            var high = Int.MAX_VALUE.toLong()
+            while (low < high) {
+                val mid = (low + high + 1) / 2
+                if ((price * mid * factor).roundToLong() <= balance) low = mid else high = mid - 1
+            }
+            return low.toInt()
+        }
+
         fun summary(shop: Shop, player: Player, tradeService: ContainerTradeService): Summary {
-            val stock = ShopDisplay.tradesAvailable(shop)
+            val stock = tradeService.availableTrades(shop)
             val sell = ItemStackSerializer.deserialize(shop.sellItem)
             val cost = ItemStackSerializer.deserialize(shop.costItem)
+            val factor = tradeService.priceFactor(shop, player.uniqueId)
             val affordable = when (shop.direction) {
-                SignDirection.SELL -> (tradeService.balanceOf(player.uniqueId) / shop.costAmount)
-                    .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                SignDirection.SELL -> affordableTrades(shop.costAmount, factor, tradeService.balanceOf(player.uniqueId))
                 SignDirection.BUY -> sell?.let { ItemStackMatch.countSimilar(player.inventory, it) / shop.sellAmount } ?: 0
                 SignDirection.TRADE -> cost?.let { ItemStackMatch.countSimilar(player.inventory, it) / shop.costAmount } ?: 0
             }
@@ -421,7 +419,48 @@ class PurchaseMenu(
             return Summary(stock, affordable, if (shop.frozen) 0 else minOf(stock, affordable),
                 if (buyingItems) shop.costAmount else shop.sellAmount,
                 if (buyingItems) shop.sellAmount else shop.costAmount,
-                shop.direction == SignDirection.SELL, buyingItems)
+                shop.direction == SignDirection.SELL, buyingItems, factor)
         }
     }
 }
+
+private fun displayAmount(item: ItemStack, requested: Long): ItemStack {
+    item.amount = requested.coerceIn(1, item.maxStackSize.coerceAtLeast(1).toLong()).toInt()
+    return item
+}
+
+private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
+    return decorateItem(ItemStack(material), name, lore)
+}
+
+private fun decorated(base: ItemStack, name: Component, lore: List<Component> = emptyList()): ItemStack {
+    return decorateItem(base.clone(), name, lore)
+}
+
+private fun decorateItem(item: ItemStack, name: Component, lore: List<Component>): ItemStack {
+    val meta = item.itemMeta ?: return item
+    meta.displayName(name.decoration(TextDecoration.ITALIC, false))
+    if (lore.isNotEmpty()) meta.lore(lore)
+    item.itemMeta = meta
+    return item
+}
+
+/** Visual border around the empty placement slot 15 for TRADE shops. */
+private fun addPlacementSlotBorder(pane: StaticPane) {
+    val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
+        .apply { itemMeta = itemMeta?.apply { displayName(Component.text(" ")) } ?: return }
+    // Left, right, and bottom border around slot 15 (position 6,1).
+    // Row 0 col 6 already holds the YOU GIVE label framing the top.
+    for ((x, y) in listOf(5 to 1, 7 to 1, 6 to 2)) {
+        pane.addItem(GuiItem(borderItem.clone()), x, y)
+    }
+}
+
+private data class RowItems(
+    val receiveItem: ItemStack,
+    val receiveName: Component,
+    val receiveLore: List<Component>,
+    val giveItem: ItemStack,
+    val giveName: Component,
+    val giveLore: List<Component>,
+)

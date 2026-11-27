@@ -140,7 +140,7 @@ class PurchaseSignClickListenerTest {
         listener.onClick(interactEvent(player, block))
 
         verify(exactly = 0) { buyout.buy(any(), any(), any(), any()) }
-        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any(), any()) }
+        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any()) }
         assertTrue(menuCalls.isEmpty(), "Menu should not open when player lacks buyout permission")
         verify { player.sendMessage(any<Component>()) }
     }
@@ -165,7 +165,7 @@ class PurchaseSignClickListenerTest {
         assertTrue(menuCalls.isNotEmpty(), "Menu should open when player has buyout permission")
         assertTrue(menuCalls.any { it.first.value == "stall_01" && it.second == 500L }, "Menu should receive correct stall and price")
         verify(exactly = 0) { buyout.buy(any(), any(), any(), any()) }
-        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any(), any()) }
+        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any()) }
     }
 
     @Test
@@ -210,6 +210,23 @@ class PurchaseSignClickListenerTest {
         verify { auctions.findOpenByStall(stallId) }
         // Verifies the auction_live message + bid suggestion were sent
         verify(atLeast = 2) { player.sendMessage(any<Component>()) }
+    }
+
+    @Test
+    fun `emergency purchase sign reads listings from the active auction`() {
+        val signs = mockk<PurchaseSignRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val auctions = mockk<AuctionRepository>(relaxed = true)
+        val id = StallId("stall_01")
+        val auction = openAuction(id, AuctionId("emergency"))
+        every { signs.findAt("world", 10, 64, 20) } returns purchaseSign(id.value, 500)
+        every { stalls.findById(id) } returns auctioningStall(StallState.EMERGENCY_AUCTIONING)
+        every { auctions.findOpenByStall(id) } returns auction
+        every { auctions.previewListings(auction.id, 0, 6) } returns emptyList()
+        val (listener, menus) = listenerWithRecording(signs, stalls, mockk(relaxed = true), auctions)
+        listener.onClick(interactEvent(mockk<Player>(relaxed = true), signBlock(x = 10, y = 64, z = 20)))
+        verify(exactly = 1) { auctions.previewListings(auction.id, 0, 6) }
+        assertTrue(menus.isEmpty())
     }
 
     @Test

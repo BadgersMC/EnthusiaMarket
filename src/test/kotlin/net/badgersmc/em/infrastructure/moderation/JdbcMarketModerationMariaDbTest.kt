@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.moderation
 
+import net.badgersmc.em.domain.stall.RentPayment
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import net.badgersmc.em.domain.auction.AuctionId
@@ -12,15 +13,13 @@ import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.infrastructure.persistence.AuctionRepositorySql
 import net.badgersmc.em.infrastructure.persistence.StallRepositorySql
+import net.badgersmc.em.testing.MarketMariaDbFixture
 import net.badgersmc.nexus.persistence.MigrationRunner
 import net.enthusia.market.api.moderation.MarketBlacklistRequest
 import net.enthusia.market.api.moderation.MarketBlacklistResult
 import net.enthusia.market.api.moderation.MarketOperationRequest
 import net.enthusia.market.api.moderation.MarketOperationResult
-import org.testcontainers.containers.MariaDBContainer
-import org.testcontainers.utility.DockerImageName
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import org.junit.jupiter.api.extension.RegisterExtension
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -38,7 +37,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-@Testcontainers(disabledWithoutDocker = true)
 class JdbcMarketModerationMariaDbTest {
     private lateinit var dataSource: HikariDataSource
     private val now = Instant.parse("2026-08-13T12:00:00Z")
@@ -54,7 +52,7 @@ class JdbcMarketModerationMariaDbTest {
         })
         createV27UpgradeBaseline()
         val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
-        assertEquals((28..34).toList(), applied.map { it.version })
+        assertEquals((28..40).toList(), applied.map { it.version })
         createStallAndShop()
     }
 
@@ -83,6 +81,24 @@ class JdbcMarketModerationMariaDbTest {
 
         repository.save(original)
         assertEquals(personalBid, repository.findById(auctionId)?.highBid)
+    }
+
+    @Test
+    fun `mariadb upgraded tables preserve refund claim and rent coverage`() {
+        val auctions = AuctionRepositorySql(dataSource)
+        val open = assertNotNull(auctions.findById(AuctionId("auction-legacy")))
+        val payment = net.badgersmc.em.domain.auction.AuctionPayment(open.id, "REFUND", OwnerRef.solo(ownerId), open.highBid!!.amount)
+        auctions.commitTransition(open, open.close(), null, payment)
+        assertEquals(listOf(payment), auctions.pendingPayments(now.toEpochMilli()))
+        assertTrue(auctions.claimPayment(payment.id))
+        assertFalse(auctions.claimPayment(payment.id))
+        auctions.finishPayment(payment.id, true, 0)
+        assertTrue(auctions.pendingPayments(now.toEpochMilli()).isEmpty())
+        val stalls = StallRepositorySql(dataSource)
+        val stall = assertNotNull(stalls.findById(StallId("stall-maria")))
+        val start = stall.nextRentAt!!
+        stalls.savePaidExtension(stall.copy(nextRentAt = start.plusSeconds(DAY_SECONDS)), RentPayment(stall.owner, 75, now, start))
+        assertEquals(75, scalarInt("SELECT amount FROM rent_ledger WHERE covered_from=${start.toEpochMilli()}"))
     }
 
     @Test
@@ -304,6 +320,7 @@ class JdbcMarketModerationMariaDbTest {
     private fun createV27UpgradeBaseline() {
         dataSource.connection.use { connection ->
             listOf(
+                "emergency_listings", "rent_ledger", "auction_payments",
                 "market_moderation_locks",
                 "market_moderation_operations",
                 "market_stall_blacklists",
@@ -313,90 +330,23 @@ class JdbcMarketModerationMariaDbTest {
                 "auctions",
                 "stalls",
                 "guild_sale_xp_journal", "guild_stock_lots", "guild_accounting_receipts",
-                "guild_stock_events", "guild_sale_attribution", "stall_access_settings", "schema_migration",
+                "guild_stock_events", "guild_sale_attribution", "stall_access_settings", "guild_auction_round_wins",
+                "website_public_sales", "website_sales_rejections", "schema_migration",
             ).forEach { table -> connection.prepareStatement("DROP TABLE IF EXISTS $table").use { it.executeUpdate() } }
-            createStallsBaseline(connection)
-            createShopsBaseline(connection)
-            createAuctionsBaseline(connection)
+            createLegacyTables(connection)
+            seedLegacyAuction(connection)
+            connection.createStatement().use(::createLedgerBaseline)
             createMigrationBaseline(connection)
         }
     }
 
-    private fun createStallsBaseline(connection: java.sql.Connection) {
-        connection.prepareStatement(
-            """CREATE TABLE stalls (
-                   id VARCHAR(128) PRIMARY KEY,
-                   region_id VARCHAR(128) NOT NULL,
-                   world VARCHAR(128) NOT NULL,
-                   state VARCHAR(32) NOT NULL,
-                   owner_type VARCHAR(16) NOT NULL,
-                   owner_id VARCHAR(128) NOT NULL,
-                   owner_since BIGINT,
-                   winning_bid BIGINT NOT NULL DEFAULT 0,
-                   rent_mode VARCHAR(16) NOT NULL,
-                   rent_pct DOUBLE NOT NULL DEFAULT 0,
-                   rent_flat BIGINT NOT NULL DEFAULT 0,
-                   members TEXT NOT NULL,
-                   max_members INTEGER NOT NULL DEFAULT -1,
-                   next_rent_at BIGINT,
-                   kind VARCHAR(64) NOT NULL DEFAULT 'default',
-                   extra_entities TEXT NOT NULL,
-                   extra_total INTEGER NOT NULL DEFAULT 0,
-                   UNIQUE(world, region_id)
-                )""",
-        ).use { it.executeUpdate() }
+    private fun createLegacyTables(connection: java.sql.Connection) {
+        connection.createStatement().use { statement ->
+            for (ddl in legacyMarketTables) statement.executeUpdate(ddl)
+        }
     }
 
-    private fun createShopsBaseline(connection: java.sql.Connection) {
-        connection.prepareStatement(
-            """CREATE TABLE shop_items (
-                   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-                   stall_id VARCHAR(128) NOT NULL,
-                   owner VARCHAR(36) NOT NULL,
-                   sign_world VARCHAR(128) NOT NULL,
-                   sign_x INTEGER NOT NULL,
-                   sign_y INTEGER NOT NULL,
-                   sign_z INTEGER NOT NULL,
-                   container_world VARCHAR(128) NOT NULL,
-                   container_x INTEGER NOT NULL,
-                   container_y INTEGER NOT NULL,
-                   container_z INTEGER NOT NULL,
-                   sell_item TEXT NOT NULL,
-                   sell_amount INTEGER NOT NULL DEFAULT 1,
-                   cost_item TEXT NOT NULL,
-                   cost_amount INTEGER NOT NULL DEFAULT 1,
-                   trusted TEXT NOT NULL,
-                   hopper_allow_in BOOLEAN NOT NULL DEFAULT TRUE,
-                   hopper_allow_out BOOLEAN NOT NULL DEFAULT TRUE,
-                   frozen BOOLEAN NOT NULL DEFAULT FALSE,
-                   admin_shop BOOLEAN NOT NULL DEFAULT FALSE,
-                   direction VARCHAR(16) NOT NULL DEFAULT 'SELL',
-                   search_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                   sell_material VARCHAR(128),
-                   stock_count INTEGER NOT NULL DEFAULT 0,
-                   FOREIGN KEY (stall_id) REFERENCES stalls(id)
-                )""",
-        ).use { it.executeUpdate() }
-    }
-
-    private fun createAuctionsBaseline(connection: java.sql.Connection) {
-        connection.prepareStatement(
-            """CREATE TABLE auctions (
-                   id VARCHAR(128) PRIMARY KEY,
-                   stall_id VARCHAR(128) NOT NULL,
-                   state VARCHAR(32) NOT NULL,
-                   start_at BIGINT NOT NULL,
-                   end_at BIGINT NOT NULL,
-                   starting_bid BIGINT NOT NULL,
-                   high_bid_amount BIGINT,
-                   high_bidder VARCHAR(36),
-                   high_placed_at BIGINT,
-                   anti_snipe_sec INTEGER NOT NULL,
-                   anti_snipe_extend_sec INTEGER NOT NULL DEFAULT 30,
-                   auction_duration_sec INTEGER NOT NULL DEFAULT 0,
-                   FOREIGN KEY (stall_id) REFERENCES stalls(id)
-                )""",
-        ).use { it.executeUpdate() }
+    private fun seedLegacyAuction(connection: java.sql.Connection) {
         connection.prepareStatement(
             """INSERT INTO stalls
                (id, region_id, world, state, owner_type, owner_id,
@@ -493,14 +443,22 @@ class JdbcMarketModerationMariaDbTest {
         const val CONCURRENCY_ROUNDS = 8
         const val PREPARATION_BLOCK_CHECK_MILLIS = 200L
 
-        @Container
-        @JvmStatic
-        val database = MarketMariaDbContainer("mariadb:11.8.3")
-            .withDatabaseName("enthusia_market_test")
-            .withUsername("market_test")
-            .withPassword("market_test")
+        @RegisterExtension
+        @JvmField
+        val database = MarketMariaDbFixture("moderation")
     }
 
-    private class MarketMariaDbContainer(image: String) :
-        MariaDBContainer<MarketMariaDbContainer>(DockerImageName.parse(image))
+    private fun createLedgerBaseline(statement: java.sql.Statement) {
+        statement.executeUpdate("""CREATE TABLE rent_ledger (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT, stall_id VARCHAR(128) NOT NULL,
+            charged_at BIGINT NOT NULL, amount BIGINT NOT NULL, paid INTEGER NOT NULL DEFAULT 0,
+            payer_type VARCHAR(16) NOT NULL, payer_id VARCHAR(128) NOT NULL
+        ) ENGINE=InnoDB""")
+        statement.executeUpdate("""CREATE TABLE shop_transactions (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT, shop_id BIGINT NOT NULL,
+            owner VARCHAR(36) NOT NULL, buyer VARCHAR(36) NOT NULL,
+            direction VARCHAR(16) NOT NULL, item TEXT NOT NULL, quantity INTEGER NOT NULL,
+            total_price BIGINT NOT NULL, created_at BIGINT NOT NULL, notified INTEGER NOT NULL DEFAULT 0
+        ) ENGINE=InnoDB""")
+    }
 }
