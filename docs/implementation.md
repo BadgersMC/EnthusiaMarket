@@ -1,5 +1,9 @@
 # Implementation — EnthusiaMarket
 
+## In-game irregular stall region editor (REQ-410)
+
+`/em region edit <stallId>` opens a temporary, operator-only selection in the configured Market world. Left-click solid floor blocks to add polygon corners; right-click a block to undo the latest corner. `/em region height <topY>` sets the inclusive upper block while the floor itself is excluded. `/em region preview` privately renders the floor/top perimeter and vertical edges for 30 seconds. Only `/em region confirm` after the latest preview writes WorldGuard geometry; any edit requires another preview. `/em region cancel` discards the draft. The editor validates simple non-crossing polygons, same-world/floor corners, ID prefix, bounded area, world height, and Market-parent containment. Existing region owners, members, flags, priority and parent are copied onto replacement geometry. New regions receive the configured parent and Market flags. A newly created WorldGuard region still needs `/em import` to register in Market storage.
+
 ## Search stock feedback (REQ-380)
 
 SearchResultsMenu.open applies its existing stock filter before constructing a

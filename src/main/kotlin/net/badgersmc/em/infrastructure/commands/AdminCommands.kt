@@ -86,6 +86,7 @@ class AdminCommands(
     private val mutationGate: net.badgersmc.em.domain.ports.MarketMutationGate =
         net.badgersmc.em.domain.ports.MarketMutationGate.Open,
     private val lotImport: AuctionLotImport = AuctionLotImport(),
+    private val regionEditor: net.badgersmc.em.infrastructure.listeners.StallRegionEditor? = null,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -882,6 +883,46 @@ class AdminCommands(
         )
         sender.sendMessage(lang.msg("stall.outline.ok", "stall" to stallId, "seconds" to dur))
     }
+
+    @Subcommand("region edit")
+    @Permission("enthusiamarket.admin.region")
+    fun regionEdit(@Context sender: CommandSender, @Arg("stallId") @Suggests("stallRegionIds") stallId: String) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("stall_region.player_only")); return }
+        val editor = regionEditor ?: run { sender.sendMessage(lang.msg("stall_region.unavailable")); return }
+        sender.sendMessage(lang.msg(editor.begin(player, stallId)))
+    }
+
+    @Subcommand("region height")
+    @Permission("enthusiamarket.admin.region")
+    fun regionHeight(@Context sender: CommandSender, @Arg("topY") topY: Int) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("stall_region.player_only")); return }
+        val editor = regionEditor ?: run { sender.sendMessage(lang.msg("stall_region.unavailable")); return }
+        sender.sendMessage(lang.msg(editor.setTop(player, topY)))
+    }
+
+    @Subcommand("region undo")
+    @Permission("enthusiamarket.admin.region")
+    fun regionUndo(@Context sender: CommandSender) = regionCommand(sender) { it.undo(sender as Player) }
+
+    @Subcommand("region preview")
+    @Permission("enthusiamarket.admin.region")
+    fun regionPreview(@Context sender: CommandSender) = regionCommand(sender) { it.preview(sender as Player) }
+
+    @Subcommand("region confirm")
+    @Permission("enthusiamarket.admin.region")
+    fun regionConfirm(@Context sender: CommandSender) = regionCommand(sender) { it.confirm(sender as Player) }
+
+    @Subcommand("region cancel")
+    @Permission("enthusiamarket.admin.region")
+    fun regionCancel(@Context sender: CommandSender) = regionCommand(sender) { it.cancel(sender as Player) }
+
+    private fun regionCommand(sender: CommandSender, action: (net.badgersmc.em.infrastructure.listeners.StallRegionEditor) -> String) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("stall_region.player_only")); return }
+        val editor = regionEditor ?: run { sender.sendMessage(lang.msg("stall_region.unavailable")); return }
+        sender.sendMessage(lang.msg(action(editor)))
+    }
+
+    fun stallRegionIds(): List<String> = regionProvider.listByPrefix(config.market.world, config.market.regionPrefix).map { it.id }
 
     // ----- Guild trade policy -----
 

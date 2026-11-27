@@ -331,6 +331,14 @@ open class EnthusiaMarket : JavaPlugin() {
                         .forEach(builder::suggest)
                     builder.buildFuture()
                 },
+                "stallRegionIds" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
+                    val known = ctx.getBean(net.badgersmc.em.domain.ports.RegionProvider::class)
+                        .listByPrefix(cfg.market.world, cfg.market.regionPrefix)
+                        .map { it.id }
+                    val suggestions = known + (1..200).map { "${cfg.market.regionPrefix}$it" }.filterNot(known::contains)
+                    suggestions.forEach(builder::suggest)
+                    builder.buildFuture()
+                },
             ) + net.badgersmc.em.infrastructure.commands.StallCommandSuggestions.providers(ctx, stallRepository, dataFolder.toPath().resolve("auction-lots"), cfg),
         )
 
