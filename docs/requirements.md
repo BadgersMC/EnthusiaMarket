@@ -773,6 +773,7 @@ WHEN Market displays an auction listing, it SHALL show the stall region's inclus
 ## REQ-396 — Accurate finder results for buying and selling
 
 WHEN the finder displays mixed shop directions, Market SHALL use a neutral localized results title. WHEN a non-admin BUY shop appears, Market SHALL identify it as a buying shop and state that capacity and funds are checked when trading, without promising stock or unlimited trades. Admin shops SHALL retain their unlimited stock label and SELL/TRADE shops SHALL retain their finite complete-trade stock labels and stock status. Existing search, sort, filter, navigation and transaction behavior SHALL remain unchanged. New locale keys SHALL permit customization without overwriting existing locale files.
+
 ## REQ-398 - Guild shop bank counterparty
 
 **Event-driven.** WHEN Market records a guild shop payment or its reversal THE SYSTEM SHALL preserve system-bank settlement and include the sale-time buyer or seller name in the bank transaction description when that name is safe to display.
@@ -832,6 +833,7 @@ When a player completes a registered stall argument, Market shall suggest curren
 When a player browses the market or selects a registered public stall, Market shall list selectable stalls in pages and guide only the requesting player to the selected region, including empty stalls. Held stalls shall be excluded. The existing finder settings, cancellation and lifetime shall apply.
 
 WHEN a personal or guild stall tenancy ends, THE SYSTEM SHALL remove its owner-managed visitor settings, including its blacklist and blocked effects. During rent grace or a failed sellback that restores the tenancy, THE SYSTEM SHALL retain those settings.
+
 ## REQ-410 — In-game irregular stall region editor
 
 **Event-driven.** WHEN an authorized operator starts `/em region edit <stallId>` THE SYSTEM SHALL let the operator mark a polygon by clicking solid floor blocks in the configured Market world, undo points, set the inclusive top Y bound, and privately preview the resulting polygon-prism outline in game before saving. The floor block and all stall structure blocks below the selected top bound SHALL remain outside the usable region; the lower region bound SHALL begin one block above the marked floor.

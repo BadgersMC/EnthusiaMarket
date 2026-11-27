@@ -259,7 +259,7 @@ class AdminCommands(
         val target = stalls.findById(StallId(stall))
         val auction = if (target?.state == StallState.EMERGENCY_AUCTIONING) auctions.findOpenByStall(target.id) else null
         if (auction == null) sender.sendMessage(lang.msg("emergency_preview.unavailable"))
-        else EmergencyShopPreview.send(sender, auction, page, auctions, lang)
+        else EmergencyShopPreview.send(EmergencyShopPreview.Request(sender, auction, page, auctions, lang))
     }
 
     @Subcommand("list")
@@ -942,68 +942,17 @@ class AdminCommands(
     /** Pause all rent/auction timers before the server closes for maintenance. */
     @Subcommand("maintenance freeze")
     @Permission("enthusiamarket.admin.maintenance")
-    fun maintenanceFreeze(@Context sender: CommandSender) {
-        val msg = when (val result = maintenanceFreeze.begin()) {
-            is net.badgersmc.em.application.MaintenanceFreezeResult.Activated ->
-                lang.msg("admin.maintenance.freeze.activated")
-            is net.badgersmc.em.application.MaintenanceFreezeResult.AlreadyActive ->
-                lang.msg(
-                    "admin.maintenance.freeze.already_active",
-                    "since" to result.since.toString()
-                )
-            else -> lang.msg("admin.maintenance.freeze.activated")
-        }
-        sender.sendMessage(msg)
-    }
+    fun maintenanceFreeze(@Context sender: CommandSender) = MaintenanceCommandMessages(lang, maintenanceFreeze).freeze(sender)
 
     /** Lift the freeze and shift every timer forward by the frozen duration. */
     @Subcommand("maintenance unfreeze")
     @Permission("enthusiamarket.admin.maintenance")
-    fun maintenanceUnfreeze(@Context sender: CommandSender) {
-        val msg = when (val result = maintenanceFreeze.end()) {
-            is net.badgersmc.em.application.MaintenanceFreezeResult.Lifted ->
-                lang.msg(
-                    "admin.maintenance.unfreeze.done",
-                    "stalls" to result.stalls,
-                    "auctions" to result.auctions,
-                    "duration" to formatFreezeDuration(result.elapsed)
-                )
-            net.badgersmc.em.application.MaintenanceFreezeResult.NotFrozen ->
-                lang.msg("admin.maintenance.unfreeze.not_frozen")
-            else -> lang.msg("admin.maintenance.unfreeze.not_frozen")
-        }
-        sender.sendMessage(msg)
-    }
+    fun maintenanceUnfreeze(@Context sender: CommandSender) = MaintenanceCommandMessages(lang, maintenanceFreeze).unfreeze(sender)
 
     /** Show whether a maintenance freeze is active. */
     @Subcommand("maintenance status")
     @Permission("enthusiamarket.admin.maintenance")
-    fun maintenanceStatus(@Context sender: CommandSender) {
-        val status = maintenanceFreeze.status()
-        val msg = if (status.frozen && status.since != null) {
-            lang.msg(
-                "admin.maintenance.status.active",
-                "since" to status.since.toString(),
-                "duration" to formatFreezeDuration(
-                    java.time.Duration.between(status.since, java.time.Instant.now()).coerceAtLeast(java.time.Duration.ZERO)
-                )
-            )
-        } else {
-            lang.msg("admin.maintenance.status.inactive")
-        }
-        sender.sendMessage(msg)
-    }
-
-    private fun formatFreezeDuration(d: java.time.Duration): String {
-        val days = d.toDays()
-        val hours = d.toHours() % 24
-        val minutes = d.toMinutes() % 60
-        return buildString {
-            if (days > 0) append("${days}d ")
-            if (hours > 0 || days > 0) append("${hours}h ")
-            append("${minutes}m")
-        }
-    }
+    fun maintenanceStatus(@Context sender: CommandSender) = MaintenanceCommandMessages(lang, maintenanceFreeze).status(sender)
 
     // ----- Admin evict (force unclaim) -----
 

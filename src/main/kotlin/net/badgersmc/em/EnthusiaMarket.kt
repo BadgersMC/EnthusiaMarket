@@ -2,7 +2,6 @@ package net.badgersmc.em
 
 import java.time.Instant
 import net.badgersmc.em.infrastructure.website.WebsiteSalesHttpServer
-import org.bukkit.configuration.file.YamlConfiguration
 import net.badgersmc.em.application.ItemStackMatch
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.shop.Shop
@@ -61,7 +60,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // — which makes Brigadier hide every /em and /shop subcommand from non-ops
         // ("Unknown command"). Reading the same generated descriptor keeps the
         // nexus-permissions DSL the single source of truth (no drift). Idempotent.
-        registerDeclaredPermissions()
+        DeclaredPermissionRegistrar.register(this)
 
         // Phase 1: Detect Vault availability before Nexus DI context is created,
         // so that schedulers/listeners see the correct VaultHealth value (REQ-041).
@@ -499,67 +498,6 @@ open class EnthusiaMarket : JavaPlugin() {
         return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
             as? org.bukkit.block.Container
     }
-
-    /**
-     * Register every permission declared in the bundled `paper-plugin.yml`
-     * `permissions:` block with Bukkit, with its declared default. This is the
-     * runtime registration Paper/Leaf isn't performing for us; without it,
-     * default-true player nodes resolve to op-only on a server with no permission
-     * manager and Brigadier hides the commands from non-ops. Idempotent — skips
-     * nodes already present so it never clobbers an externally-managed perm.
-     */
-    private fun registerDeclaredPermissions() {
-        val perms = loadDeclaredPermissions() ?: return
-        val pm = Bukkit.getPluginManager()
-        val registered = perms.getKeys(false).count { registerPermissionNode(pm, perms, it) }
-        logger.info("Registered $registered EnthusiaMarket permissions")
-    }
-
-    /**
-     * Parse the bundled `paper-plugin.yml` `permissions:` section. The path separator
-     * is set to `/` so dotted node names (e.g. `enthusiamarket.shop.use`) aren't split
-     * by `getString("$node/default")` — splitting on `.` reads a missing path and
-     * silently defaults every perm to OP. Null on any IO/parse failure.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun loadDeclaredPermissions(): org.bukkit.configuration.ConfigurationSection? {
-        val stream = this::class.java.classLoader.getResourceAsStream("paper-plugin.yml") ?: run {
-            logger.warning("paper-plugin.yml not found on classpath; skipping permission registration")
-            return null
-        }
-        return try {
-            val yaml = YamlConfiguration()
-            yaml.options().pathSeparator('/')
-            yaml.load(java.io.InputStreamReader(stream, Charsets.UTF_8))
-            yaml.getConfigurationSection("permissions")
-        } catch (e: Exception) {
-            logger.warning("Failed to read declared permissions: ${e.message}")
-            null
-        }
-    }
-
-    /** Register [node] with its declared default if Bukkit doesn't already have it. Returns true when added. */
-    private fun registerPermissionNode(
-        pm: org.bukkit.plugin.PluginManager,
-        perms: org.bukkit.configuration.ConfigurationSection,
-        node: String,
-    ): Boolean {
-        if (pm.getPermission(node) != null) return false
-        return try {
-            pm.addPermission(org.bukkit.permissions.Permission(node, permissionDefault(perms.getString("$node/default"))))
-            true
-        } catch (e: IllegalArgumentException) {
-            false // registered concurrently between the check and the add
-        }
-    }
-
-    private fun permissionDefault(token: String?): org.bukkit.permissions.PermissionDefault =
-        when (token?.lowercase()) {
-            "true" -> org.bukkit.permissions.PermissionDefault.TRUE
-            "false" -> org.bukkit.permissions.PermissionDefault.FALSE
-            "not op", "notop", "!op" -> org.bukkit.permissions.PermissionDefault.NOT_OP
-            else -> org.bukkit.permissions.PermissionDefault.OP
-        }
 
     private fun startBedrockHeadProviders(headStore: net.badgersmc.em.websync.heads.BedrockHeadStore) {
         geyserHeadIntegration = net.badgersmc.em.websync.heads.GeyserHeadIntegration.start(

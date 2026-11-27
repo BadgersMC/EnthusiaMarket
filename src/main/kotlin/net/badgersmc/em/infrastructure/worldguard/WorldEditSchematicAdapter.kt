@@ -138,10 +138,19 @@ class WorldEditSchematicAdapter(
 }
 
 /** Legacy files contain the bounding box. Clip writes in world coordinates, including writes of air. */
+private data class SchematicRestore(
+    val source: Extent,
+    val saved: Region,
+    val target: Extent,
+    val boundary: ProtectedRegion,
+    val offset: BlockVector3,
+    val clipped: Region,
+)
+
 internal fun restoreStallBlocks(source: Extent, saved: Region, target: Extent, boundary: ProtectedRegion) {
     val offset = schematicOffset(saved, boundary)
     val clipped = clippedBounds(saved, boundary, offset)
-    restoreContainedBlocks(source, saved, target, boundary, offset, clipped)
+    restoreContainedBlocks(SchematicRestore(source, saved, target, boundary, offset, clipped))
 }
 
 private fun schematicOffset(saved: Region, boundary: ProtectedRegion): BlockVector3 {
@@ -165,17 +174,12 @@ private fun clippedBounds(saved: Region, boundary: ProtectedRegion, offset: Bloc
     return CuboidRegion(min, max)
 }
 
-private fun restoreContainedBlocks(
-    source: Extent,
-    saved: Region,
-    target: Extent,
-    boundary: ProtectedRegion,
-    offset: BlockVector3,
-    clipped: Region,
-) {
-    for (position in clipped) {
-        val local = position.subtract(offset)
-        if (boundary.contains(position) && saved.contains(local)) target.setBlock(position, source.getFullBlock(local))
+private fun restoreContainedBlocks(restore: SchematicRestore) {
+    for (position in restore.clipped) {
+        val local = position.subtract(restore.offset)
+        if (restore.boundary.contains(position) && restore.saved.contains(local)) {
+            restore.target.setBlock(position, restore.source.getFullBlock(local))
+        }
     }
 }
 

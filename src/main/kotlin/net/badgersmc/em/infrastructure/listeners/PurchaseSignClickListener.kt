@@ -112,7 +112,7 @@ open class PurchaseSignClickListener(
                 val auction = auctions.findOpenByStall(sign.stallId)
                 if (auction != null) {
                     if (stall.state == StallState.EMERGENCY_AUCTIONING) {
-                        EmergencyShopPreview.send(player, auction, 1, auctions, lang)
+                        EmergencyShopPreview.send(EmergencyShopPreview.Request(player, auction, 1, auctions, lang))
                     }
                     val cmd = "/em bid ${auction.id} "
                     player.sendMessage(

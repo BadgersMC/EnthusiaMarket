@@ -13,8 +13,8 @@ Date: 2026-11-27
 
 - Merged the fork's current `main`, the emergency-auction shop preview, and the in-game irregular region editor into the release candidate.
 - Resolved overlapping release code by retaining the release branch's readable `/em list`, tab-completion wiring, and Balanced locale implementation while keeping the new fork features.
-- Reduced the six Codacy findings reported on PR #226: startup complexity, stall access authorization complexity, policy pruning complexity, repository method count, and schematic restore length/complexity.
-- The combined emergency listing work also exposed repository function-count and SQL nesting findings in Detekt. Emergency snapshot capture is now an explicit option on the existing auction creation operation and remains transactional with auction insertion. Auction row query helpers are factored out of the repository class.
+- Resolved the Codacy annotations reported on the combined PR #226 head: permission registration and maintenance messaging are extracted; polygon/editor/WorldGuard validation and preview helpers are simplified; emergency listing tests and SQL row mapping are separated; schematic restoration and rent test fixtures use small context objects.
+- Emergency snapshot capture remains an explicit option on the existing auction creation operation and transactional with auction insertion.
 
 ## Verification
 

@@ -24,18 +24,18 @@ import javax.sql.DataSource
 @Repository
 class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, AuctionPaymentRepository by AuctionPaymentSql(ds) {
 
-    override fun findById(id: AuctionId): Auction? = ds.queryOneAuction("SELECT * FROM auctions WHERE id = ?", ::mapRow) {
+    override fun findById(id: AuctionId): Auction? = ds.queryOneAuction("SELECT * FROM auctions WHERE id = ?", AuctionSqlMapper::mapRow) {
         setString(1, id.value)
     }
 
     override fun findOpenByStall(stallId: StallId): Auction? =
-        ds.queryOneAuction("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN' AND end_at > ? ORDER BY start_at DESC LIMIT 1", ::mapRow) {
+        ds.queryOneAuction("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN' AND end_at > ? ORDER BY start_at DESC LIMIT 1", AuctionSqlMapper::mapRow) {
             setString(1, stallId.value)
             setLong(2, Instant.now().toEpochMilli())
         }
 
     override fun allOpen(): List<Auction> =
-        ds.queryManyAuctions("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at > ?", ::mapRow) {
+        ds.queryManyAuctions("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at > ?", AuctionSqlMapper::mapRow) {
             setLong(1, Instant.now().toEpochMilli())
         }
 
@@ -206,17 +206,17 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, Auct
     }
 
     override fun findExpired(): List<Auction> =
-        ds.queryManyAuctions("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at <= ?", ::mapRow) {
+        ds.queryManyAuctions("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at <= ?", AuctionSqlMapper::mapRow) {
             setLong(1, Instant.now().toEpochMilli())
         }
 
     override fun findMostRecentClosedByStall(stallId: StallId): Auction? =
-        ds.queryOneAuction("SELECT * FROM auctions WHERE stall_id = ? AND state = 'CLOSED' ORDER BY end_at DESC LIMIT 1", ::mapRow) {
+        ds.queryOneAuction("SELECT * FROM auctions WHERE stall_id = ? AND state = 'CLOSED' ORDER BY end_at DESC LIMIT 1", AuctionSqlMapper::mapRow) {
             setString(1, stallId.value)
         }
 
     override fun findByStall(stallId: StallId): List<Auction> =
-        ds.queryManyAuctions("SELECT * FROM auctions WHERE stall_id = ? ORDER BY end_at DESC", ::mapRow) {
+        ds.queryManyAuctions("SELECT * FROM auctions WHERE stall_id = ? ORDER BY end_at DESC", AuctionSqlMapper::mapRow) {
             setString(1, stallId.value)
         }
 
@@ -261,34 +261,6 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository, Auct
             }
         }
 
-    private fun mapRow(rs: ResultSet): Auction {
-        val highBidAmount = rs.getLong("high_bid_amount").takeIf { !rs.wasNull() }
-        val highBidderStr = rs.getString("high_bidder")
-        val highPlacedAtMs = rs.getLong("high_placed_at").takeIf { !rs.wasNull() }
-        val highBid = if (highBidAmount != null && highBidderStr != null && highPlacedAtMs != null) {
-            Bid(
-                bidder = UUID.fromString(highBidderStr),
-                amount = highBidAmount,
-                placedAt = Instant.ofEpochMilli(highPlacedAtMs),
-                guildId = rs.getString("high_bid_guild_id"),
-            )
-        } else {
-            null
-        }
-        return Auction(
-            id = AuctionId(rs.getString("id")),
-            stallId = StallId(rs.getString("stall_id")),
-            state = AuctionState.valueOf(rs.getString("state")),
-            startAt = Instant.ofEpochMilli(rs.getLong("start_at")),
-            endAt = Instant.ofEpochMilli(rs.getLong("end_at")),
-            startingBid = rs.getLong("starting_bid"),
-            highBid = highBid,
-            antiSnipeWindow = Duration.ofSeconds(rs.getLong("anti_snipe_sec")),
-            antiSnipeExtension = Duration.ofSeconds(rs.getLong("anti_snipe_extend_sec")),
-            auctionDuration = Duration.ofSeconds(rs.getLong("auction_duration_sec")),
-            openingRoundId = rs.getString("opening_round_id"),
-        )
-    }
 }
 
 private fun DataSource.queryOneAuction(
@@ -310,5 +282,31 @@ private fun DataSource.queryManyAuctions(
     connection.prepareStatement(sql).use { statement ->
         statement.prep()
         statement.executeQuery().use { rows -> buildList { while (rows.next()) add(mapper(rows)) } }
+    }
+}
+
+private object AuctionSqlMapper {
+    fun mapRow(rs: ResultSet): Auction {
+        val bid = readBid(rs)
+        return Auction(
+            id = AuctionId(rs.getString("id")),
+            stallId = StallId(rs.getString("stall_id")),
+            state = AuctionState.valueOf(rs.getString("state")),
+            startAt = Instant.ofEpochMilli(rs.getLong("start_at")),
+            endAt = Instant.ofEpochMilli(rs.getLong("end_at")),
+            startingBid = rs.getLong("starting_bid"),
+            highBid = bid,
+            antiSnipeWindow = Duration.ofSeconds(rs.getLong("anti_snipe_sec")),
+            antiSnipeExtension = Duration.ofSeconds(rs.getLong("anti_snipe_extend_sec")),
+            auctionDuration = Duration.ofSeconds(rs.getLong("auction_duration_sec")),
+            openingRoundId = rs.getString("opening_round_id"),
+        )
+    }
+
+    private fun readBid(rs: ResultSet): Bid? {
+        val amount = rs.getLong("high_bid_amount").takeIf { !rs.wasNull() } ?: return null
+        val bidder = rs.getString("high_bidder")?.let(UUID::fromString) ?: return null
+        val placedAt = rs.getLong("high_placed_at").takeIf { !rs.wasNull() } ?: return null
+        return Bid(bidder, amount, Instant.ofEpochMilli(placedAt), rs.getString("high_bid_guild_id"))
     }
 }

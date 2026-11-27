@@ -5,6 +5,7 @@ import java.math.BigInteger
 /** Validates simple integer polygons without floating-point overflow. */
 internal object StallPolygonGeometry {
     private data class Orientations(val first: Int, val second: Int, val third: Int, val fourth: Int)
+    private data class Segment(val start: StallRegionPoint, val end: StallRegionPoint)
 
     fun valid(points: List<StallRegionPoint>): Boolean {
         if (points.size !in MIN_POINTS..MAX_POINTS || points.distinct().size != points.size) return false
@@ -35,8 +36,10 @@ internal object StallPolygonGeometry {
     }
 
     private fun intersects(a: StallRegionPoint, b: StallRegionPoint, c: StallRegionPoint, d: StallRegionPoint): Boolean {
+        val first = Segment(a, b)
+        val second = Segment(c, d)
         val orientations = Orientations(orientation(a, b, c), orientation(a, b, d), orientation(c, d, a), orientation(c, d, b))
-        return hasProperCrossing(orientations) || hasCollinearIntersection(a, b, c, d, orientations)
+        return hasProperCrossing(orientations) || hasCollinearIntersection(first, second, orientations)
     }
 
     private fun hasProperCrossing(orientations: Orientations): Boolean =
@@ -44,12 +47,14 @@ internal object StallPolygonGeometry {
 
     private fun oppositeSigns(a: Int, b: Int): Boolean = (a > 0 && b < 0) || (a < 0 && b > 0)
 
-    private fun hasCollinearIntersection(
-        a: StallRegionPoint, b: StallRegionPoint, c: StallRegionPoint, d: StallRegionPoint,
-        orientations: Orientations,
-    ): Boolean = (orientations.first == 0 && onSegment(a, c, b)) ||
-        (orientations.second == 0 && onSegment(a, d, b)) ||
-        (orientations.third == 0 && onSegment(c, a, d)) || (orientations.fourth == 0 && onSegment(c, b, d))
+    private fun hasCollinearIntersection(first: Segment, second: Segment, orientations: Orientations): Boolean =
+        firstContains(second.start, first, orientations.first) ||
+        firstContains(second.end, first, orientations.second) ||
+        firstContains(first.start, second, orientations.third) ||
+        firstContains(first.end, second, orientations.fourth)
+
+    private fun firstContains(point: StallRegionPoint, segment: Segment, orientation: Int): Boolean =
+        orientation == 0 && onSegment(segment.start, point, segment.end)
 
     private fun orientation(p: StallRegionPoint, q: StallRegionPoint, r: StallRegionPoint): Int {
         val first = BigInteger.valueOf(q.x.toLong() - p.x).multiply(BigInteger.valueOf(r.z.toLong() - p.z))

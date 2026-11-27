@@ -9,19 +9,20 @@ import java.sql.Connection
 import java.util.Locale
 
 internal object EmergencyListingSql {
+    private const val INSERT_LISTING = """INSERT INTO emergency_listings
+        (auction_id, shop_id, direction, item, quantity, payment, amount) VALUES (?, ?, ?, ?, ?, ?, ?)"""
+
     fun capture(connection: Connection, auction: Auction) {
         val select = """SELECT id, direction, sell_material, sell_item, sell_amount, cost_item, cost_amount
             FROM shop_items WHERE stall_id = ? AND admin_shop = 0 AND search_enabled = 1"""
-        val insert = """INSERT INTO emergency_listings
-            (auction_id, shop_id, direction, item, quantity, payment, amount) VALUES (?, ?, ?, ?, ?, ?, ?)"""
         connection.prepareStatement(select).use { source ->
             source.setString(1, auction.stallId.value)
-            source.executeQuery().use { rows -> copyRows(connection, insert, auction, rows) }
+            source.executeQuery().use { rows -> copyRows(connection, auction, rows) }
         }
     }
 
-    private fun copyRows(connection: Connection, sql: String, auction: Auction, rows: java.sql.ResultSet) {
-        connection.prepareStatement(sql).use { target ->
+    private fun copyRows(connection: Connection, auction: Auction, rows: java.sql.ResultSet) {
+        connection.prepareStatement(INSERT_LISTING).use { target ->
             while (rows.next()) {
                 val direction = SignDirection.valueOf(rows.getString("direction"))
                 val material = rows.getString("sell_material")?.takeIf { it.isNotBlank() }

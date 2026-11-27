@@ -19,21 +19,48 @@ internal class StallRegionWorldGuardWriter(
     private data class FootprintBounds(val minX: Int, val maxX: Int, val minZ: Int, val maxZ: Int) {
         val area: Long get() = (maxX.toLong() - minX + 1) * (maxZ.toLong() - minZ + 1)
     }
+    private data class ParentBoundsCheck(
+        val polygon: ProtectedPolygonalRegion,
+        val parent: ProtectedRegion,
+        val bounds: FootprintBounds,
+        val bottomY: Int,
+        val topY: Int,
+    )
     private data class RegionPlan(val manager: RegionManager, val previous: ProtectedRegion?, val replacement: ProtectedRegion)
     private data class PlanResult(val plan: RegionPlan? = null, val error: String? = null)
 
     fun validate(draft: StallRegionDraft): String? {
-        if (draft.points.size < MIN_POINTS || !StallPolygonGeometry.valid(draft.points)) return "stall_region.need_polygon"
-        val floor = draft.floorY ?: return "stall_region.mark_floor_first"
-        val top = draft.topY ?: return "stall_region.height_required"
-        if (top <= floor) return "stall_region.bad_height"
+        if (!validPoints(draft)) return "stall_region.need_polygon"
+        val verticalError = validateVerticalBounds(draft)
+        if (verticalError != null) return verticalError
         val manager = manager(draft) ?: return managerError(draft)
         val parent = manager.getRegion(config.market.parentRegion) ?: return "stall_region.parent_missing"
-        val polygon = createPolygon(draft, floor, top) ?: return "stall_region.invalid_polygon"
+        val polygon = createPolygon(draft) ?: return "stall_region.invalid_polygon"
         val bounds = bounds(draft)
         if (bounds.area > MAX_AREA) return "stall_region.area_limit"
-        return if (allColumnsInsideParent(polygon, parent, bounds, floor + 1, top)) null else "stall_region.outside_parent"
+        return validateParentBounds(polygon, parent, bounds, draft)
     }
+
+    private fun validateVerticalBounds(draft: StallRegionDraft): String? {
+        val floor = draft.floorY ?: return "stall_region.mark_floor_first"
+        val top = draft.topY ?: return "stall_region.height_required"
+        return if (top <= floor) "stall_region.bad_height" else null
+    }
+
+    private fun validateParentBounds(
+        polygon: ProtectedPolygonalRegion,
+        parent: ProtectedRegion,
+        bounds: FootprintBounds,
+        draft: StallRegionDraft,
+    ): String? {
+        val bottomY = (draft.floorY ?: return "stall_region.mark_floor_first") + 1
+        val topY = draft.topY ?: return "stall_region.height_required"
+        val check = ParentBoundsCheck(polygon, parent, bounds, bottomY, topY)
+        return if (allColumnsInsideParent(check)) null else "stall_region.outside_parent"
+    }
+
+    private fun validPoints(draft: StallRegionDraft): Boolean =
+        draft.points.size >= MIN_POINTS && StallPolygonGeometry.valid(draft.points)
 
     fun save(draft: StallRegionDraft): String {
         validate(draft)?.let { return it }
@@ -56,36 +83,48 @@ internal class StallRegionWorldGuardWriter(
     private fun managerError(draft: StallRegionDraft): String =
         if (Bukkit.getWorld(draft.world) == null) "stall_region.world_missing" else "stall_region.manager_missing"
 
-    private fun createPolygon(draft: StallRegionDraft, floor: Int, top: Int): ProtectedPolygonalRegion? =
-        runCatching { ProtectedPolygonalRegion(draft.id, draft.points.map { BlockVector2.at(it.x, it.z) }, floor + 1, top) }.getOrNull()
+    private fun createPolygon(draft: StallRegionDraft): ProtectedPolygonalRegion? {
+        val floor = draft.floorY ?: return null
+        val top = draft.topY ?: return null
+        return runCatching {
+            ProtectedPolygonalRegion(draft.id, draft.points.map { BlockVector2.at(it.x, it.z) }, floor + 1, top)
+        }.getOrNull()
+    }
 
     private fun bounds(draft: StallRegionDraft): FootprintBounds = FootprintBounds(
         draft.points.minOf { it.x }, draft.points.maxOf { it.x }, draft.points.minOf { it.z }, draft.points.maxOf { it.z },
     )
 
-    private fun allColumnsInsideParent(
-        polygon: ProtectedPolygonalRegion,
-        parent: ProtectedRegion,
-        bounds: FootprintBounds,
-        bottomY: Int,
-        topY: Int,
-    ): Boolean = (bounds.minX..bounds.maxX).all { x -> (bounds.minZ..bounds.maxZ).all { z ->
-        val bottom = BlockVector3.at(x, bottomY, z)
-        !polygon.contains(bottom) || (parent.contains(bottom) && parent.contains(BlockVector3.at(x, topY, z)))
+    private fun allColumnsInsideParent(check: ParentBoundsCheck): Boolean =
+        (check.bounds.minX..check.bounds.maxX).all { x -> (check.bounds.minZ..check.bounds.maxZ).all { z ->
+        val bottom = BlockVector3.at(x, check.bottomY, z)
+        !check.polygon.contains(bottom) || (check.parent.contains(bottom) && check.parent.contains(BlockVector3.at(x, check.topY, z)))
     } }
 
     private fun plan(draft: StallRegionDraft, manager: RegionManager): PlanResult {
-        val floor = draft.floorY ?: return PlanResult(error = "stall_region.mark_floor_first")
-        val top = draft.topY ?: return PlanResult(error = "stall_region.height_required")
+        if (draft.floorY == null) return PlanResult(error = "stall_region.mark_floor_first")
+        if (draft.topY == null) return PlanResult(error = "stall_region.height_required")
         val previous = manager.getRegion(draft.id)
-        val replacement = createPolygon(draft, floor, top) ?: return PlanResult(error = "stall_region.invalid_polygon")
-        if (previous != null) replacement.copyFrom(previous)
-        else {
-            val parent = manager.getRegion(config.market.parentRegion) ?: return PlanResult(error = "stall_region.parent_missing")
-            replacement.priority = config.market.stallPriority
-            if (runCatching { replacement.parent = parent }.isFailure) return PlanResult(error = "stall_region.parent_invalid")
-        }
+        val replacement = createPolygon(draft) ?: return PlanResult(error = "stall_region.invalid_polygon")
+        configureReplacement(replacement, previous, manager)?.let { return PlanResult(error = it) }
         return PlanResult(RegionPlan(manager, previous, replacement))
+    }
+
+    private fun configureReplacement(
+        replacement: ProtectedPolygonalRegion,
+        previous: ProtectedRegion?,
+        manager: RegionManager,
+    ): String? = if (previous != null) {
+        replacement.copyFrom(previous)
+        null
+    } else {
+        configureNewRegion(replacement, manager)
+    }
+
+    private fun configureNewRegion(replacement: ProtectedPolygonalRegion, manager: RegionManager): String? {
+        val parent = manager.getRegion(config.market.parentRegion) ?: return "stall_region.parent_missing"
+        replacement.priority = config.market.stallPriority
+        return if (runCatching { replacement.parent = parent }.isFailure) "stall_region.parent_invalid" else null
     }
 
     private fun persist(draft: StallRegionDraft, plan: RegionPlan): String = try {

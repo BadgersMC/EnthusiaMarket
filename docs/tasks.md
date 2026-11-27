@@ -1226,6 +1226,7 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 
 - [x] Spec: user approved showing dimensions and volume in auction results; region bounds are inclusive and may be a polygon's bounding box, so label bounds/volume accurately rather than claim usable interior.
 - [ ] Prove/refine: verify 5 × 5 × 10 = 250, negative coordinates, one block, missing/invalid bounds and overflow; resolve Bukkit/WorldGuard on the main render thread. Build, hosted checks and live Java/Bedrock acceptance remain separate; manual evidence because project-local EARS/state tools are absent.
+
 ## Finder BUY result presentation (REQ-396)
 
 - [x] Spec/prove: native TEST screenshot `11-search-guild-buy.jpg` showed a non-admin BUY shop called In Stock with Unlimited trades, and an existing server locale override named the mixed list Shops selling. Bundled default title is already neutral, so changing only the bundled existing key cannot fix the observed override. Keep the old key/file intact and introduce a separately customizable neutral results key.
@@ -1235,8 +1236,6 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 - [ ] **GUILD-STALL-CAP** — guild stall cap with LumaGuilds prestige bonus (REQ-399)
   References: REQ-399, LimitResolutionService.canClaimForGuild, StallBuyoutService.enforceGuildLimit, AuctionLifecycleService.guildClaimDecision, OptionalGuildPrestigePerkLookup
   Tag: TDD
-
-## Finder BUY result presentation (REQ-396)
 
 - Source and regression evidence: [finder-buy-display-verification.md](finder-buy-display-verification.md).
 
@@ -1267,6 +1266,6 @@ No repository-local EARS validator or SPEAR state helper was found; requirements
 ## Upstream release reconciliation (2026-11-27)
 
 - [x] Spec/source audit: combine fork `main` (39bc541a), emergency auction shop preview (55abd072), and irregular stall-region editor (9198b428) into the open upstream release candidate based on PR #226 head 2a1019ab. Preserve the upstream release branch's `/em list`, suggestion wiring, and Balanced locale work where merge conflicts overlapped.
-- [x] Prove/refine: addressed the six Codacy findings reported on the exact PR #226 head by splitting startup setup, authorization/prune predicates, SQL mapping, and schematic clipping/write responsibilities. Refined emergency listing snapshot creation and moved auction row query helpers after the combined branch surfaced extra repository method-count diagnostics; preserve transactional auction/listing capture behavior.
-- [x] Local verification: `test detekt shadowJar` passes on Java 22 analyzer + Java 25 toolchain; 1,269 tests, 0 failures, 0 errors, 17 skips. `git diff --check` passes. Initial Java 25 Detekt launch failed before analysis; supported Java 22 run is green.
-- [ ] Hosted exact-head checks and maintainer review remain pending after pushing the update to the existing upstream PR #226 branch. No PR was merged and no server was changed.
+- [x] Prove/refine: resolved the Codacy annotations reported on the combined PR #226 head by separating permission registration and maintenance messaging, simplifying polygon/editor/WorldGuard validation, extracting emergency listing tests, and reducing the mapper, preview, schematic and test helper findings. Emergency auction listing capture remains transactional with auction creation.
+- [x] Local verification: `test detekt shadowJar -PuseMavenLocal=true` passes on Java 22 analyzer + Java 25 toolchain; 1,269 tests, 0 failures, 0 errors, 17 skips. `git diff --check` passes. Initial Java 25 Detekt launch failed before analysis; supported Java 22 analyzer run is green.
+- [ ] Hosted exact-head checks and maintainer review remain pending after the next update to the existing upstream PR #226 branch. No PR was merged and no server was changed.

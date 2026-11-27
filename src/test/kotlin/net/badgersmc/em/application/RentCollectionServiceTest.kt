@@ -98,6 +98,18 @@ class RentCollectionServiceTest {
         val auctionRepo: AuctionRepository
     )
 
+    private data class RentServiceDependencies(
+        val stalls: StallRepository,
+        val shops: net.badgersmc.em.domain.shop.ShopRepository,
+        val config: EnthusiaMarketConfig,
+        val auctions: AuctionRepository,
+        val lang: net.badgersmc.nexus.i18n.LangService,
+        val regions: RegionMemberSync,
+        val ipLimiter: IpLimiter,
+        val mutationGate: MarketMutationGate,
+        val schematics: SchematicService = SchematicService.Disabled,
+    )
+
     private fun buildService(
         stalls: List<Stall> = listOf(ownedStall),
         gracePeriod: String = "P3D",
@@ -117,16 +129,9 @@ class RentCollectionServiceTest {
         val ipLimiter = mockk<IpLimiter>(relaxed = true)
 
         return ServiceWithMocks(
-            service = newRentCollectionService(
-                stallRepo = stallRepo,
-                shopRepo = shopRepo,
-                cfg = cfg,
-                auctionRepo = auctionRepo,
-                lang = lang,
-                regions = regions,
-                ipLimiter = ipLimiter,
-                mutationGate = mutationGate,
-            ),
+            service = newRentCollectionService(RentServiceDependencies(
+                stallRepo, shopRepo, cfg, auctionRepo, lang, regions, ipLimiter, mutationGate,
+            )),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             config = cfg,
@@ -134,26 +139,16 @@ class RentCollectionServiceTest {
         )
     }
 
-    private fun newRentCollectionService(
-        stallRepo: StallRepository,
-        shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
-        cfg: EnthusiaMarketConfig,
-        auctionRepo: AuctionRepository,
-        lang: net.badgersmc.nexus.i18n.LangService,
-        regions: RegionMemberSync,
-        ipLimiter: IpLimiter,
-        mutationGate: MarketMutationGate,
-        schematics: SchematicService = SchematicService.Disabled,
-    ) = RentCollectionService(
-        stallRepository = stallRepo,
-        shops = shopRepo,
-        config = cfg,
-        auctionRepository = auctionRepo,
-        lang = lang,
-        regionMembers = regions,
-        ipLimiter = ipLimiter,
-        mutationGate = mutationGate,
-        schematics = schematics,
+    private fun newRentCollectionService(dependencies: RentServiceDependencies) = RentCollectionService(
+        stallRepository = dependencies.stalls,
+        shops = dependencies.shops,
+        config = dependencies.config,
+        auctionRepository = dependencies.auctions,
+        lang = dependencies.lang,
+        regionMembers = dependencies.regions,
+        ipLimiter = dependencies.ipLimiter,
+        mutationGate = dependencies.mutationGate,
+        schematics = dependencies.schematics,
     )
 
     private data class RecoveryLifecycleFixture(
@@ -180,16 +175,9 @@ class RentCollectionServiceTest {
         val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
 
         return RecoveryLifecycleFixture(
-            service = newRentCollectionService(
-                stallRepo = stallRepo,
-                shopRepo = shopRepo,
-                cfg = cfg,
-                auctionRepo = auctionRepo,
-                lang = lang,
-                regions = regions,
-                ipLimiter = ipLimiter,
-                mutationGate = mutationGate,
-            ),
+            service = newRentCollectionService(RentServiceDependencies(
+                stallRepo, shopRepo, cfg, auctionRepo, lang, regions, ipLimiter, mutationGate,
+            )),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             auctionRepo = auctionRepo,
@@ -265,17 +253,10 @@ class RentCollectionServiceTest {
         val lang = mockk<net.badgersmc.nexus.i18n.LangService>(relaxed = true)
 
         return EmergencyForfeitureFixture(
-            service = newRentCollectionService(
-                stallRepo = stallRepo,
-                shopRepo = shopRepo,
-                cfg = cfg,
-                auctionRepo = auctionRepo,
-                lang = lang,
-                regions = regions,
-                ipLimiter = ipLimiter,
-                mutationGate = MarketMutationGate.Open,
-                schematics = schematics,
-            ),
+            service = newRentCollectionService(RentServiceDependencies(
+                stallRepo, shopRepo, cfg, auctionRepo, lang, regions, ipLimiter,
+                MarketMutationGate.Open, schematics,
+            )),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             auctionRepo = auctionRepo,
