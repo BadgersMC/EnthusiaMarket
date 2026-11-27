@@ -23,9 +23,9 @@ Date: 2026-11-27
 - Test results: 1,269 tests, 0 failures, 0 errors, 17 skipped.
 - `git diff --check`: passed.
 - A Detekt invocation under Java 25 failed before analysis with the runtime/tool error `25.0.3`; rerunning on the supported Java 22 analyzer passed.
+- Updated upstream PR #226 branch `codex/market-test-integration-20261030` through commit `cc08b58ebd65fd235c658d9398272a0807cb3dfc`.
+- Hosted checks passed on that exact head: build, security, Codacy with zero findings, diagnostics, Markdown lint, frontmatter checks and strict MkDocs build. CodeRabbit was skipped because manual review is required for this repository.
 
 ## Remaining release gates
 
-- Push the reviewed combined source to the existing fork head used by upstream PR #226 only after verifying the remote head has not moved.
-- Re-read hosted checks and actionable review findings for the pushed exact head.
-- The PR remains open until BadgersMC review. No upstream PR merge, server deployment, or runtime activation is part of this work.
+- BadgersMC maintainer review and merge remain outstanding. No upstream PR merge, server deployment, or runtime activation is part of this work.
