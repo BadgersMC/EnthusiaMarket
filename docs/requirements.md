@@ -706,6 +706,10 @@ Detailed taxonomy, proof and delivery boundaries: expanded-search-verification.m
 
 **Event-driven.** WHEN a Market item search has shops matching the selected direction but no entries visible under the default stock filter THE SYSTEM SHALL send localized feedback naming the query as not in stock without opening or replacing the player's inventory.
 
+### REQ-409 — Guild policy notification text
+
+WHEN a guild trade policy is set, embargoed or cleared, or a targeted player enters a guild stall, THE SYSTEM SHALL render the applicable localized notification with the relevant guild names and tariff instead of exposing an untranslated key. Existing locale overrides SHALL remain usable and missing entries SHALL fall back to bundled text. Policy enforcement, permissions and announcement cooldowns SHALL remain unchanged.
+
 ### REQ-381 — Private destination outline
 
 WHEN a player selects a shop search result THE SYSTEM SHALL retain its existing private direction guide and highlight only that destination stall within a configurable distance, using its actual cuboid or polygon footprint and a bounded shop-height outline. The highlight SHALL be private, replace the prior destination and never load terrain or alter blocks/permissions. Missing or unsupported geometry SHALL preserve the direction guide without inventing a region boundary.
@@ -766,6 +770,9 @@ WHEN the owned-shop menu renders an entry, Market SHALL display its localized Ac
 
 WHEN Market displays an auction listing, it SHALL show the stall region's inclusive bounding-box width, length and height in blocks and the bounding-box volume. WHEN bounds are missing, invalid or volume overflows, it SHALL display size unavailable instead of fabricated values. Bounding volume SHALL NOT be described as guaranteed empty or usable space. Resolving the region SHALL use the main thread; auction bidding, ownership, sorting and permissions SHALL remain unchanged.
 
+## REQ-396 — Accurate finder results for buying and selling
+
+WHEN the finder displays mixed shop directions, Market SHALL use a neutral localized results title. WHEN a non-admin BUY shop appears, Market SHALL identify it as a buying shop and state that capacity and funds are checked when trading, without promising stock or unlimited trades. Admin shops SHALL retain their unlimited stock label and SELL/TRADE shops SHALL retain their finite complete-trade stock labels and stock status. Existing search, sort, filter, navigation and transaction behavior SHALL remain unchanged. New locale keys SHALL permit customization without overwriting existing locale files.
 ## REQ-398 - Guild shop bank counterparty
 
 **Event-driven.** WHEN Market records a guild shop payment or its reversal THE SYSTEM SHALL preserve system-bank settlement and include the sale-time buyer or seller name in the bank transaction description when that name is safe to display.
