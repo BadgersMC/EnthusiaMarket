@@ -81,10 +81,7 @@ class StallRegionEditor(
 
     fun setTop(player: Player, y: Int): String {
         val draft = drafts[player.uniqueId] ?: return "stall_region.not_editing"
-        val world = Bukkit.getWorld(draft.world) ?: return "stall_region.world_missing"
-        val floor = draft.floorY ?: return "stall_region.mark_floor_first"
-        if (!StallRegionDraftValidation.validHeight(world, floor, y)) return "stall_region.bad_height"
-        if (!StallRegionDraftValidation.validDraftPolygon(draft)) return "stall_region.need_polygon"
+        StallRegionDraftValidation.topError(draft, y)?.let { return it }
         draft.topY = y
         invalidate(draft)
         renderer.render(player, draft)
@@ -197,6 +194,13 @@ private object StallRegionDraftValidation {
 
     fun validDraftPolygon(draft: StallRegionDraft): Boolean =
         draft.points.size >= 3 && StallPolygonGeometry.valid(draft.points)
+
+    fun topError(draft: StallRegionDraft, y: Int): String? {
+        val world = Bukkit.getWorld(draft.world) ?: return "stall_region.world_missing"
+        val floor = draft.floorY ?: return "stall_region.mark_floor_first"
+        if (!validHeight(world, floor, y)) return "stall_region.bad_height"
+        return if (validDraftPolygon(draft)) null else "stall_region.need_polygon"
+    }
 
     fun canSelect(event: PlayerInteractEvent, isActive: (Player) -> Boolean): Boolean =
         event.hand == EquipmentSlot.HAND && isActive(event.player) && event.player.hasPermission("enthusiamarket.admin.region")

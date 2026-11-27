@@ -30,15 +30,32 @@ internal class StallRegionWorldGuardWriter(
     private data class PlanResult(val plan: RegionPlan? = null, val error: String? = null)
 
     fun validate(draft: StallRegionDraft): String? {
+        validateDraft(draft)?.let { return it }
+        return validateParentMembership(draft)
+    }
+
+    private fun validateDraft(draft: StallRegionDraft): String? {
         if (!validPoints(draft)) return "stall_region.need_polygon"
-        val verticalError = validateVerticalBounds(draft)
-        if (verticalError != null) return verticalError
+        return validateVerticalBounds(draft)
+    }
+
+    private fun validateParentMembership(draft: StallRegionDraft): String? {
         val manager = manager(draft) ?: return managerError(draft)
         val parent = manager.getRegion(config.market.parentRegion) ?: return "stall_region.parent_missing"
         val polygon = createPolygon(draft) ?: return "stall_region.invalid_polygon"
         val bounds = bounds(draft)
-        if (bounds.area > MAX_AREA) return "stall_region.area_limit"
-        return validateParentBounds(polygon, parent, bounds, draft)
+        return validateFootprint(polygon, parent, bounds, draft)
+    }
+
+    private fun validateFootprint(
+        polygon: ProtectedPolygonalRegion,
+        parent: ProtectedRegion,
+        bounds: FootprintBounds,
+        draft: StallRegionDraft,
+    ): String? = when {
+        bounds.area > MAX_AREA -> "stall_region.area_limit"
+        parentBoundsContain(polygon, parent, bounds, draft) -> null
+        else -> "stall_region.outside_parent"
     }
 
     private fun validateVerticalBounds(draft: StallRegionDraft): String? {
@@ -47,16 +64,16 @@ internal class StallRegionWorldGuardWriter(
         return if (top <= floor) "stall_region.bad_height" else null
     }
 
-    private fun validateParentBounds(
+    private fun parentBoundsContain(
         polygon: ProtectedPolygonalRegion,
         parent: ProtectedRegion,
         bounds: FootprintBounds,
         draft: StallRegionDraft,
-    ): String? {
-        val bottomY = (draft.floorY ?: return "stall_region.mark_floor_first") + 1
-        val topY = draft.topY ?: return "stall_region.height_required"
+    ): Boolean {
+        val bottomY = requireNotNull(draft.floorY) + 1
+        val topY = requireNotNull(draft.topY)
         val check = ParentBoundsCheck(polygon, parent, bounds, bottomY, topY)
-        return if (allColumnsInsideParent(check)) null else "stall_region.outside_parent"
+        return allColumnsInsideParent(check)
     }
 
     private fun validPoints(draft: StallRegionDraft): Boolean =
